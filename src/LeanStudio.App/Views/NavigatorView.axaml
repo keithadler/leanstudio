@@ -8,6 +8,26 @@
   <Grid RowDefinitions="Auto,Auto,*,4,*" Margin="8,6">
     <StackPanel Grid.Row="0" Spacing="4">
       <TextBox Text="{Binding Query}" PlaceholderText="Search declarations (e.g. Nat.add_comm)" />
+      <Expander Header="Ask in plain English (LeanSearch)" FontSize="11" Padding="4" IsExpanded="True">
+        <StackPanel Spacing="4">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Text="{Binding MeaningQuery}" PlaceholderText="the square root of 2 is irrational" FontSize="12" KeyDown="OnMeaningKey" />
+            <Button Grid.Column="1" Content="Ask" Command="{Binding SearchMeaningCommand}" IsEnabled="{Binding !MeaningBusy}" FontSize="11" Padding="8,2" Margin="4,0,0,0" />
+          </Grid>
+          <TextBlock Text="{Binding MeaningStatus}" FontSize="10" Classes="dim" TextWrapping="Wrap" />
+          <ListBox ItemsSource="{Binding MeaningResults}" SelectedItem="{Binding SelectedMeaning}" MaxHeight="260" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="wf:MeaningHit">
+                <StackPanel ToolTip.Tip="{Binding InformalStatement}">
+                  <TextBlock Text="{Binding InformalName}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Name}" Classes="mono" FontSize="11" Foreground="{DynamicResource GoalAccent}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Type}" Classes="dim mono" FontSize="10" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Expander>
       <Expander Header="Search all of Mathlib (Loogle)" FontSize="11" Padding="4">
         <StackPanel Spacing="4">
           <TextBox Text="{Binding LoogleQuery}" PlaceholderText="Real.sqrt, &quot;prime&quot;, _ * (_ ^ _)" FontSize="12" KeyDown="OnLoogleKey" />

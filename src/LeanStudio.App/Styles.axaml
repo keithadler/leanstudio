@@ -12,6 +12,9 @@
   </Style>
   <Style Selector="TextBlock.ok"><Setter Property="Foreground" Value="#3FB950" /></Style>
   <Style Selector="TextBlock.warn"><Setter Property="Foreground" Value="#E59E2C" /></Style>
+  <Style Selector="Border.bar"><Setter Property="Background" Value="#6E8FA8" /></Style>
+  <Style Selector="Border.bar.warm"><Setter Property="Background" Value="#E59E2C" /></Style>
+  <Style Selector="Border.bar.hot"><Setter Property="Background" Value="#F14C4C" /></Style>
   <Style Selector="TextBlock.bad"><Setter Property="Foreground" Value="#F14C4C" /></Style>
   <Style Selector="TextBlock.dim">
     <Setter Property="Opacity" Value="0.65" />

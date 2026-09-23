@@ -2,6 +2,15 @@
 
 ## 0.4.0
 
+**Five new features**:
+- **Prove It** runs a portfolio of tactics (rfl, decide, simp, omega, norm_num, ring, linarith, aesop, grind, exact? and more) against each `sorry`, independently and in one pass of Lean. Use any that works with a click, or fill in every sorry it proved.
+- **Why isn't this proved?** shows the chain of lemmas from a theorem down to the `sorry` or axiom it rests on, found by Tenet.
+- **A performance heat map** shows Lean's profiler per declaration, with the costliest step in each, in a Timing panel and in the editor.
+- **Proof walkthroughs**: every proof in a file, step by step, as a web page anyone can read. Share links open the file in the Lean 4 web editor.
+- **Plain-English search of Mathlib** uses LeanSearch.
+
+MCP tools for all five: `prove`, `why_not_proved`, `profile`, `export_walkthrough`, `search_mathlib`.
+
 **Essentials**: "Install Lean" for a computer without it (the official elan installer and the latest stable
 Lean); back and forward through jumps; next and previous problem (F8); a banner to rebuild imports and recheck
 when an imported file changes; "Add import" for unknown names, found on Loogle; creating, renaming (as a

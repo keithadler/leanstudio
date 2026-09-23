@@ -42,6 +42,27 @@ public sealed record VerificationProgress(string Module, int ModuleIndex, int Mo
 
 public sealed record DeclarationSummary(string Name, string Module);
 
+/// <summary>One declaration on the way from a theorem down to what it rests on.</summary>
+public sealed record TrailLink(string Name, string Module, string? SourceFile, int? Line)
+{
+    public bool IsSorry => Name == "sorryAx";
+    public string Display => IsSorry ? "sorry" : Name;
+}
+
+/// <summary>
+/// Why a declaration is not fully proved: the chain of declarations from it to one assumption (sorry, or an axiom
+/// the project adds), shortest first. The last declaration before the assumption is where to go and fix it.
+/// </summary>
+public sealed record AssumptionTrail(string Assumption, IReadOnlyList<TrailLink> Path)
+{
+    public bool IsSorry => Assumption == "sorryAx";
+
+    /// <summary>The declaration that uses the assumption itself.</summary>
+    public TrailLink? Culprit => Path.Count >= 2 ? Path[^2] : null;
+
+    public string Summary => string.Join("  →  ", Path.Select(l => l.Display));
+}
+
 public sealed record DeclarationDetails(
     string Name,
     string Kind,
@@ -297,6 +318,117 @@ public sealed class TenetWorkspace : IDisposable
             (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(_checker.Resolve, TenetName.Parse(name));
             return axioms.Select(a => a.ToString()).ToList();
         }
+    }
+
+    /// <summary>
+    /// For each assumption (sorry, or an axiom beyond Lean's standard three) a declaration rests on, the shortest
+    /// chain of declarations that leads to it, found breadth-first through what each one uses. Names Lean made
+    /// (<c>foo._proof_1</c>, <c>foo.match_1</c>, private names) are shown as the declaration they belong to.
+    /// </summary>
+    public IReadOnlyList<AssumptionTrail> WhyNotProved(string name, CancellationToken ct = default)
+    {
+        TenetName start = TenetName.Parse(name);
+        lock (_lock)
+        {
+            if (_checker.Resolve(start) is null)
+            {
+                return [];
+            }
+            (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(_checker.Resolve, start);
+            var wanted = new HashSet<TenetName>(axioms.Where(a => !StandardAxioms.Contains(a)));
+            if (wanted.Count == 0)
+            {
+                return [];
+            }
+            var parent = new Dictionary<TenetName, TenetName?> { [start] = null };
+            var queue = new Queue<TenetName>();
+            queue.Enqueue(start);
+            var found = new List<TenetName>();
+            while (queue.Count > 0 && found.Count < wanted.Count)
+            {
+                ct.ThrowIfCancellationRequested();
+                TenetName n = queue.Dequeue();
+                if (_checker.Resolve(n) is not ConstantInfo c)
+                {
+                    continue;
+                }
+                if (wanted.Contains(n) && c is AxiomInfo)
+                {
+                    found.Add(n);
+                    continue;
+                }
+                foreach (TenetName u in Replay.UsedConstants(c))
+                {
+                    if (parent.TryAdd(u, n))
+                    {
+                        queue.Enqueue(u);
+                    }
+                }
+            }
+            var trails = new List<AssumptionTrail>();
+            foreach (TenetName ax in found)
+            {
+                var chain = new List<TenetName>();
+                for (TenetName? k = ax; k is not null; k = parent[k])
+                {
+                    chain.Add(k);
+                }
+                chain.Reverse();
+                var links = new List<TrailLink>();
+                foreach (TenetName k in chain)
+                {
+                    TrailLink link = LinkFor(k);
+                    if (links.Count == 0 || links[^1].Name != link.Name)
+                    {
+                        links.Add(link);
+                    }
+                }
+                trails.Add(new AssumptionTrail(ax.ToString(), links));
+            }
+            return trails.OrderBy(t => t.IsSorry ? 0 : 1).ThenBy(t => t.Path.Count).ToList();
+        }
+    }
+
+    /// <summary>The user-facing declaration a name belongs to, and where it is written.</summary>
+    private TrailLink LinkFor(TenetName n)
+    {
+        string s = UserFacingOwner(n.ToString());
+        TenetName owner = TenetName.Parse(s);
+        TenetName lookup = _checker.Resolve(owner) is not null ? owner : n;
+        OleanModule? file = _checker.Modules.Values.FirstOrDefault(m => m.Contains(lookup));
+        string module = file is null ? "" : _checker.Modules.First(kv => ReferenceEquals(kv.Value, file)).Key.ToString();
+        string? source = SourceFileOf(module);
+        int? line = file?.SourceRangeOf(lookup)?.Line is int l
+            ? source is not null ? Proofs.ProofSteps.DeclarationLine(File.ReadAllLines(source), l) : l
+            : null;
+        return new TrailLink(s, module, source, line);
+    }
+
+    /// <summary><c>foo._proof_1</c> → <c>foo</c>; <c>_private.Mod.0.foo.match_1</c> → <c>foo</c>.</summary>
+    public static string UserFacingOwner(string name)
+    {
+        string s = name;
+        if (s.StartsWith("_private.", StringComparison.Ordinal))
+        {
+            int zero = s.IndexOf(".0.", StringComparison.Ordinal);
+            if (zero > 0)
+            {
+                s = s[(zero + 3)..];
+            }
+        }
+        string[] parts = s.Split('.');
+        int keep = parts.Length;
+        for (int i = 1; i < parts.Length; i++)
+        {
+            string p = parts[i];
+            if (p.StartsWith('_') || p.StartsWith("match_", StringComparison.Ordinal) || p.StartsWith("proof_", StringComparison.Ordinal)
+                || p.StartsWith("eq_", StringComparison.Ordinal) || p == "sizeOf_spec")
+            {
+                keep = i;
+                break;
+            }
+        }
+        return string.Join('.', parts.Take(keep));
     }
 
     /// <summary>Declarations that mention <paramref name="name"/> directly, among the project's own modules (or all, when asked).</summary>

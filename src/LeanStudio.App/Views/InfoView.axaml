@@ -14,6 +14,8 @@
           <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Content="⚡ Prove it" Command="{Binding Search.ProveCommand}" FontSize="11" Padding="8,2" Classes="accent"
+                  ToolTip.Tip="Try rfl, decide, simp, omega, norm_num, linarith, aesop, grind, exact? and more on the sorry at the cursor, each on its own, and show which close it" />
           <Button Content="📌 Pin" Command="{Binding PinCommand}" FontSize="11" Padding="8,2"
                   ToolTip.Tip="Keep these goals on screen to compare with later ones" />
           <ToggleButton Content="English" IsChecked="{Binding ShowEnglish}" FontSize="11" Padding="8,2"
@@ -27,6 +29,54 @@
     <!-- Goals -->
     <ScrollViewer Grid.Row="1" Padding="12,4,12,8">
       <StackPanel>
+        <!-- Prove It -->
+        <Border Classes="card" BorderThickness="3,0,0,0" BorderBrush="#E5B93A" IsVisible="{Binding Search.IsVisible}" Margin="0,4,0,6">
+          <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="⚡ Prove It" FontWeight="SemiBold" />
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                <Button Content="Every sorry in the file" Command="{Binding Search.ProveAllCommand}" FontSize="11" Padding="6,1" IsEnabled="{Binding !Search.IsRunning}"
+                        ToolTip.Tip="Search for a proof of each sorry in this file, in one pass of Lean" />
+                <Button Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Close (and stop a running search)" Command="{Binding Search.CloseCommand}" />
+              </StackPanel>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ProgressBar IsIndeterminate="True" Width="40" Height="4" MinHeight="4" IsVisible="{Binding Search.IsRunning}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding Search.Status}" TextWrapping="Wrap" FontSize="12" Classes="dim" MaxWidth="360" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding Search.Results}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SearchResultView">
+                  <StackPanel Spacing="2" Margin="0,4,0,0">
+                    <TextBlock Text="{Binding Title}" Classes="mono" FontSize="12" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Verdict}" FontSize="11" Classes="dim" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Shown}" IsVisible="{Binding !IsApplied}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TrialView">
+                          <Button Classes.accent="{Binding Closes}" Classes.flat="{Binding !Closes}" FontSize="11" Padding="8,2" Margin="0,2,4,2" ToolTip.Tip="{Binding Tip}"
+                                  Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).Search.UseCommand}" CommandParameter="{Binding}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                              <TextBlock Text="{Binding Label}" Classes="mono" />
+                              <TextBlock Text="{Binding Time}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                            </StackPanel>
+                          </Button>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Fill in every sorry it proved" Classes="accent" Command="{Binding Search.FillAllCommand}" IsVisible="{Binding Search.CanFillAll}" FontSize="11" Padding="8,2" />
+              <CheckBox Content="show the tactics that failed" IsChecked="{Binding Search.ShowFailures}" FontSize="11" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
         <!-- Pinned goals -->
         <ItemsControl ItemsSource="{Binding Pinned}" IsVisible="{Binding HasPinned}">
           <ItemsControl.ItemTemplate>

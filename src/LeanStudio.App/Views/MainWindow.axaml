@@ -49,6 +49,10 @@
         <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+S', macOS='Cmd+Shift+S'}" />
         <MenuItem Header="Auto Save" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoSave}" Click="OnApplySettings" />
         <MenuItem Header="Local History…" Click="OnLocalHistory" />
+        <Separator />
+        <MenuItem Header="Export Proof Walkthrough…" Command="{Binding ExportWalkthroughCommand}" />
+        <MenuItem Header="Open in the Lean 4 Web Editor" Command="{Binding OpenInWebEditorCommand}" />
+        <MenuItem Header="Copy Share Link" Command="{Binding CopyShareLinkCommand}" />
         <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
         <Separator />
         <MenuItem Header="Preferences…" Click="OnPreferences" InputGesture="{OnPlatform Default='Ctrl+OemComma', macOS='Cmd+OemComma'}" />
@@ -104,6 +108,10 @@
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
         <Separator />
+        <MenuItem Header="Prove It (try tactics on this sorry)" Command="{Binding ProveItCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+P', macOS='Cmd+Alt+P'}" />
+        <MenuItem Header="Prove Every Sorry in File" Command="{Binding ProveAllSorriesCommand}" />
+        <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
+        <Separator />
         <MenuItem Header="Restart File (rebuild its imports)" Command="{Binding RestartFileCommand}" />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
         <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
@@ -133,6 +141,7 @@
       <MenuItem Header="_Tenet">
         <MenuItem Header="Verify Project" Command="{Binding VerifyCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" />
         <MenuItem Header="Verify After Every Build" ToggleType="CheckBox" IsChecked="{Binding Settings.VerifyAfterBuild}" />
+        <MenuItem Header="Why Isn't This Proved?" Command="{Binding WhyNotProvedAtCaretCommand}" />
       </MenuItem>
       <MenuItem Header="_AI">
         <MenuItem Header="Connect an AI Assistant…" Click="OnConnectAssistant" />
@@ -397,6 +406,30 @@
                       <TextBlock Text="{Binding Where}" Classes="dim" FontSize="12" />
                       <TextBlock Text="{Binding Text}" Classes="mono" FontSize="12" />
                     </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </TabItem>
+          <TabItem Header="Timing" ToolTip.Tip="How long each declaration takes Lean to check (Lean ▸ Profile File)">
+            <DockPanel Margin="8,4">
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto">
+                <TextBlock Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" FontSize="11" Padding="8,2" Margin="8,0,0,0" />
+              </Grid>
+              <ListBox ItemsSource="{Binding TimingItems}" Background="Transparent" Margin="0,4,0,0" x:Name="TimingList" Tapped="OnTimingTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:TimingItem">
+                    <Grid ColumnDefinitions="126,70,70,*" ToolTip.Tip="{Binding HotSpot}">
+                      <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
+                              Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
+                      <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
+                      <TextBlock Grid.Column="2" Text="{Binding Where}" Classes="dim" FontSize="12" />
+                      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding Declaration}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding HotSpot}" Classes="dim mono" FontSize="11" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>

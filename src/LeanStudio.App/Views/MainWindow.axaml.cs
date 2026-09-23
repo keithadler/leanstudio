@@ -149,6 +149,7 @@ public sealed partial class MainWindow : Window, IDialogs
         Action? action = (e.Key, cmd, shift) switch
         {
             (Key.P, true, true) => () => _ = CommandPaletteAsync(),
+            (Key.P, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ProveItCommand.Execute(null),
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
             (Key.T, true, false) => () => _ = GoToSymbolAsync(),
             (Key.F, true, true) => () => ShowFindInFiles(),
@@ -182,6 +183,14 @@ public sealed partial class MainWindow : Window, IDialogs
     private void OnTogglePanel(object? sender, RoutedEventArgs e) => TogglePanel();
     private void OnToggleInfo(object? sender, RoutedEventArgs e) => ToggleInfo();
     private void OnZen(object? sender, RoutedEventArgs e) => Zen();
+
+    private void OnTimingTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: TimingItem t })
+        {
+            _vm.OpenTimingCommand.Execute(t);
+        }
+    }
 
     private void OnMarkerTapped(object? sender, TappedEventArgs e)
     {
@@ -590,6 +599,15 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("View: Outline", "", Act(() => _vm.SidebarTab = MainViewModel.OutlineTab));
         yield return ("View: Library (declarations)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Toolchains", "", Act(() => _vm.SidebarTab = MainViewModel.ToolchainsTab));
+        yield return ("Lean: Prove It (try tactics on this sorry)", m + "⌥P", Cmd(_vm.ProveItCommand));
+        yield return ("Lean: Prove Every Sorry in File", "", Cmd(_vm.ProveAllSorriesCommand));
+        yield return ("Lean: Profile File (where the time goes)", "", Cmd(_vm.ProfileFileCommand));
+        yield return ("Tenet: Why Isn't This Proved?", "", Cmd(_vm.WhyNotProvedAtCaretCommand));
+        yield return ("File: Export Proof Walkthrough…", "", Cmd(_vm.ExportWalkthroughCommand));
+        yield return ("Share: Open in the Lean 4 Web Editor", "", Cmd(_vm.OpenInWebEditorCommand));
+        yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
+        yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
+        yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
         yield return ("Help: Keyboard Shortcuts", "", Act(() => OnShortcuts(null, new RoutedEventArgs())));
         yield return ("Help: About Lean Studio", "", Act(() => OnAbout(null, new RoutedEventArgs())));
     }
@@ -676,6 +694,28 @@ public sealed partial class MainWindow : Window, IDialogs
             FileTypeChoices = [new FilePickerFileType("Lean") { Patterns = ["*.lean"] }],
         });
         return f?.TryGetLocalPath();
+    }
+
+    public async Task<string?> SaveWebPageAsync(string title, string suggestedName, string? folder)
+    {
+        IStorageFolder? start = folder is null ? null : await StorageProvider.TryGetFolderFromPathAsync(folder);
+        IStorageFile? f = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedFileName = suggestedName,
+            SuggestedStartLocation = start,
+            DefaultExtension = "html",
+            FileTypeChoices = [new FilePickerFileType("Web page") { Patterns = ["*.html"] }],
+        });
+        return f?.TryGetLocalPath();
+    }
+
+    public async Task CopyTextAsync(string text)
+    {
+        if (Clipboard is { } cb)
+        {
+            await Avalonia.Input.Platform.ClipboardExtensions.SetValueAsync(cb, Avalonia.Input.DataFormat.Text, text);
+        }
     }
 
     public Task<bool> ConfirmAsync(string title, string message) => Dialogs.ConfirmAsync(this, title, message);
@@ -795,6 +835,7 @@ public sealed partial class MainWindow : Window, IDialogs
             $"{mod}O  open file     {mod}N  new file     {mod}W  close file",
             $"{mod}B  build         {mod}⇧V  verify with Tenet",
             $"{mod}⇧R  restart Lean",
+            $"{mod}⌥P  Prove It: try a portfolio of tactics on the sorry at the cursor",
             $"F12 or {mod}click  go to definition",
             $"{mod}⇧D  show the declaration under the cursor in the navigator",
             "Ctrl+Space  completion",

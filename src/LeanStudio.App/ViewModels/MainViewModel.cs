@@ -24,6 +24,8 @@ public interface IDialogs
     Task LaunchAsync(Uri uri);
     /// <summary>Show a file in the system's file manager (or open it, where revealing is not possible).</summary>
     Task RevealAsync(string path);
+    Task<string?> SaveWebPageAsync(string title, string suggestedName, string? folder);
+    Task CopyTextAsync(string text);
 }
 
 /// <summary>
@@ -54,6 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Verification = new VerificationViewModel();
         InitFeatures();
         InitLearn();
+        InitAssist();
     }
 
     public Settings Settings { get; }
@@ -614,6 +617,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnDocumentEdited(DocumentViewModel doc)
     {
         ScheduleAutoSave(doc);
+        if (doc.Timings.Count > 0)
+        {
+            doc.Timings = []; // they describe the text as it was
+        }
         if (!doc.IsLean || _server is not { State: LeanServerState.Running } server)
         {
             return;

@@ -37,6 +37,7 @@ public sealed class LeanEditor : UserControl
     private readonly StatusMargin _margin = new();
     private readonly BracketHighlighter _brackets = new();
     private readonly InlineResults _inline = new();
+    private readonly TimingRenderer _timings = new(labels: false), _timingLabels = new(labels: true);
     private AvaloniaEdit.Folding.FoldingManager? _folding;
     private CancellationTokenSource? _foldCts;
     private readonly TextMate.Installation _textMate;
@@ -69,6 +70,8 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnostics);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_brackets);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_inline);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_timings);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_timingLabels);
         _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
         _textMate = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
@@ -193,6 +196,8 @@ public sealed class LeanEditor : UserControl
             _editor.IsEnabled = false;
             _diagnostics.Update([]);
             _inline.Update([]);
+            _timings.Update([]);
+            _timingLabels.Update([]);
             _margin.Update([], new Dictionary<int, DeclarationVerdict>(), []);
             return;
         }
@@ -226,6 +231,8 @@ public sealed class LeanEditor : UserControl
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
         _inline.Update(doc.Diagnostics);
+        _timings.Update(doc.Timings);
+        _timingLabels.Update(doc.Timings);
         _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
         UpdateBulbs();
         _editor.IsReadOnly = doc.IsVirtual;
@@ -254,6 +261,12 @@ public sealed class LeanEditor : UserControl
                 _inline.Update(_current.Diagnostics);
                 UpdateBulbs();
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
+                break;
+            case nameof(DocumentViewModel.Timings):
+                _timings.Update(_current.Timings);
+                _timingLabels.Update(_current.Timings);
+                _editor.TextArea.TextView.InvalidateLayer(_timings.Layer);
+                _editor.TextArea.TextView.InvalidateLayer(_timingLabels.Layer);
                 break;
             case nameof(DocumentViewModel.Processing):
             case nameof(DocumentViewModel.Verdicts):
@@ -671,6 +684,10 @@ public sealed class LeanEditor : UserControl
             Main.BottomTab = 2;
             _ = Main.Navigator.ShowAsync(v.Name);
             Main.SidebarTab = MainViewModel.LibraryTab;
+            if (v.Status == VerificationStatus.RestsOnAssumption && !v.Assumptions.Contains(v.Name))
+            {
+                _ = Main.WhyNotProvedAsync(v.Name);
+            }
         }
     }
 

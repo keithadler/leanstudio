@@ -47,6 +47,25 @@ The Outline also shows, live, which theorems Lean accepts (✓), which still use
 
 ## Features
 
+### Five things other Lean editors don't do
+
+1. **⚡ Prove It.** Put the cursor on a `sorry` and press ⌘⌥P (Ctrl+Alt+P), or click **⚡ Prove it** in the Tactic State. Lean Studio tries `rfl`, `decide`, `simp`, `omega`, `norm_num`, `ring`, `linarith`, `nlinarith`, `positivity`, `aesop`, `grind`, `exact?` and more on that goal. Each tactic runs separately from the same state, with its own time budget, in a single pass of Lean. You see every one that closes the goal and how long it took; one click puts it in place of the `sorry`. **Every sorry in the file** does the whole file at once, and **Fill in every sorry it proved** applies them all. A search tactic like `exact?` is replaced by what it found (`exact Nat.mul_comm a b`), so the proof doesn't search again on every check. Tactics that your imports don't provide (Mathlib's, in a file without Mathlib) are skipped rather than breaking anything.
+
+   ![Prove It: grind and exact Nat.mul_comm a b both close a * b = b * a](docs/images/prove-it.png)
+
+2. **Why isn't this proved?** When Tenet says a theorem rests on `sorry` or on an axiom, **Why?** (in the Tenet panel, from the ◐ badge in the gutter, or from **Tenet ▸ Why Isn't This Proved?**) shows the chain of lemmas from that theorem down to the `sorry`. It finds the shortest chain through what each declaration uses, and marks the lemma that uses the `sorry` itself. Every link opens its source. In a big project, it answers "which lemma, three files away, is still unfinished?" in one click.
+
+   ![Why not_not_elim is not fully proved: it uses the axiom em'](docs/images/why-not-proved.png)
+
+3. **A performance heat map.** **Lean ▸ Profile File** runs Lean's own profiler over the file and lists every declaration by how long it takes to check, slowest first. For each one it names the step inside that costs the most (`omega`, a `simp` call, the kernel). The times are also shown in the editor on each declaration, tinted warmer the slower it is. It profiles unsaved text, and your file is never modified.
+
+   ![The Timing panel: the slow theorem, with omega as the step that costs the most](docs/images/timing.png)
+
+4. **Proof walkthroughs and share links.** **File ▸ Export Proof Walkthrough…** writes every tactic proof in the file to one self-contained web page, step by step. Each step shows the tactic, what it does in plain words, and the goals before and after, exactly as Lean reported them. You can step through with ← and →. It works for a class handout, a blog post or a code review, and readers don't need Lean installed. **Open in the Lean 4 Web Editor** and **Copy Share Link** give a link that runs the file at [live.lean-lang.org](https://live.lean-lang.org), which has Mathlib.
+5. **Ask Mathlib in plain English.** The Library panel takes a description, such as "the sum of the first n odd numbers is n squared" or "a continuous function on a closed interval attains its maximum". It returns the Mathlib results that say that, with their informal statements, using [LeanSearch](https://leansearch.net). Loogle (below it) finds what you can name or write the shape of. This finds what you can only describe.
+
+AI assistants get all five too: the `prove`, `why_not_proved`, `profile`, `export_walkthrough` and `search_mathlib` tools.
+
 ### A tactic state that follows every step
 
 The panel on the right always shows the goals at the cursor, **with Lean's own diff of the tactic you're on**:
@@ -220,6 +239,11 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
+| `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. |
+| `why_not_proved` | For a theorem that rests on `sorry` or an axiom, the chain of lemmas down to it, with file and line. |
+| `profile` | How long each declaration takes Lean, slowest first, with the costliest step in each. |
+| `search_mathlib` | Finds Mathlib results from a plain-English description (LeanSearch). |
+| `export_walkthrough` | Writes a step-by-step proof walkthrough web page, and returns a Lean 4 web editor link. |
 | `project_info`, `toolchains` | The project's layout, toolchain and build state. |
 | `studio_context` | What *you* are looking at in Lean Studio: file, cursor, selection, goals, messages. |
 | `studio_show` | Opens a file at a line in your Lean Studio window, so you can review what it did. |
@@ -335,6 +359,7 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | Go to file / Go to symbol | ⌘P / ⌘T | Ctrl+P / Ctrl+T |
 | Find in files | ⌘⇧F | Ctrl+Shift+F |
 | Quick fix / Try this | ⌘. | Ctrl+. |
+| Prove It (tactics on the sorry at the cursor) | ⌘⌥P | Ctrl+Alt+P |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
 | Fix all in file | ⌘⌥. | Ctrl+Alt+. |

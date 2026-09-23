@@ -62,6 +62,10 @@ public sealed partial class DocumentViewModel : ObservableObject
     [ObservableProperty]
     private IReadOnlyDictionary<int, DeclarationVerdict> _verdicts = new Dictionary<int, DeclarationVerdict>();
 
+    /// <summary>How long each declaration took Lean, from the last profile of this text (empty after an edit).</summary>
+    [ObservableProperty]
+    private IReadOnlyList<Core.Proofs.DeclarationTiming> _timings = [];
+
     /// <summary>Raised on every edit, for the session to forward to Lean.</summary>
     public event Action<DocumentViewModel>? TextChanged;
 

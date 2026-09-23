@@ -148,21 +148,10 @@ public static partial class EmittedC
         // Lean names a module after its path under the root, and insists the file is inside it: compile a copy
         // (the editor's text, saved or not) in a mirror of the project under .lake, rooted there, so the module
         // keeps its real name.
-        string mirror = Path.Combine(project.Root, ".lake", "leanstudio-c");
-        string rel = Path.GetRelativePath(project.Root, Path.GetFullPath(sourcePath));
-        if (rel.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(rel))
-        {
-            rel = Path.GetFileName(sourcePath);
-        }
-        string leanFile = Path.Combine(mirror, rel);
+        string leanFile = await LeanCli.MirrorAsync(project, sourcePath, text, "c", ct).ConfigureAwait(false);
         string cFile = Path.ChangeExtension(leanFile, ".c");
-        Directory.CreateDirectory(Path.GetDirectoryName(leanFile)!);
-        await File.WriteAllTextAsync(leanFile, text, ct).ConfigureAwait(false);
         File.Delete(cFile);
-        string[] args = ["--root=" + mirror, "-c", cFile, leanFile];
-        ProcessResult r = project.IsLakeProject
-            ? await ProcessRunner.RunAsync(Elan.FindExecutable("lake") ?? "lake", ["env", "lean", .. args], project.Root, ct: ct).ConfigureAwait(false)
-            : await ProcessRunner.RunAsync(Elan.FindExecutable("lean") ?? "lean", args, project.Root, ct: ct).ConfigureAwait(false);
+        ProcessResult r = await LeanCli.RunAsync(project, ["--root=" + LeanCli.MirrorRoot(project, "c"), "-c", cFile, leanFile], ct).ConfigureAwait(false);
         if (File.Exists(cFile))
         {
             return (await File.ReadAllTextAsync(cFile, ct).ConfigureAwait(false), "");

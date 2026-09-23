@@ -430,6 +430,58 @@ internal static class Scenario
         Check(await WaitFor(() => !vm.SourceControl.Unstaged.Any(c => c.FileName is "ModX.lean" or "ModY.lean" or "Scratch2.lean"), 10),
             "the Git panel forgets files that were deleted");
 
+        Console.WriteLine("prove it, why not proved, timing, walkthrough");
+        vm.ActiveDocument = doc;
+        vm.SidebarTab = MainViewModel.FilesTab;
+        doc.Reveal(20, 2); // the sorry in `unfinished` (a * b = b * a)
+        await vm.ProveAsync(false);
+        SearchResultView? found = vm.Info.Search.Results.FirstOrDefault();
+        Check(found?.Result.Best is not null, $"Prove It finds a tactic that proves a * b = b * a ({vm.Info.Search.Status})");
+        Console.WriteLine("    closes it: " + string.Join(", ", found?.Result.Successes.Select(t => t.Replacement) ?? []));
+        Snap(window, outDir, "16-prove-it");
+        if (found?.Shown.FirstOrDefault(t => t.Closes) is TrialView use)
+        {
+            vm.Info.Search.UseCommand.Execute(use);
+            Check(found.IsApplied && !doc.Document.Text.Contains("  sorry", StringComparison.Ordinal), $"using it replaces the sorry with {use.Trial.Replacement}");
+            Check(await WaitFor(() => !doc.IsProcessing && !doc.Diagnostics.Any(d => d.Message.Contains("sorry", StringComparison.Ordinal)), 60), "and Lean accepts the proof");
+            doc.Document.UndoStack.Undo();
+            Check(doc.Document.Text == doc.SavedText, "one undo brings the sorry back");
+        }
+        vm.Info.Search.CloseCommand.Execute(null);
+
+        await vm.WhyNotProvedAsync("unfinished");
+        Check(vm.Verification.Trails.Count == 1 && vm.Verification.TrailTitle.Contains("unfinished uses sorry", StringComparison.Ordinal),
+            $"Tenet explains why unfinished is not fully proved ({vm.Verification.TrailTitle})");
+        await vm.WhyNotProvedAsync("not_not_elim");
+        Check(vm.Verification.Trails.FirstOrDefault()?.Links.Select(l => l.Name).SequenceEqual(["not_not_elim", "em'"]) == true
+            && vm.Verification.Trails[0].Links[0].Where == "Basic.lean:15", "and traces not_not_elim to the axiom em' it uses, with where each is written");
+        Snap(window, outDir, "17-why-not-proved");
+
+        string slowFile = Path.Combine(proofsDir, "Slow.lean");
+        string walkFile = Path.Combine(Path.GetTempPath(), $"leanstudio-walk-{Environment.ProcessId}.html");
+        try
+        {
+            await File.WriteAllTextAsync(slowFile, "theorem slow (x y z w : Int) (h1 : 3*x + 5*y - 7*z + 11*w = 13) (h2 : 2*x - 9*y + 4*z - w = 8)\n"
+                + "    (h3 : x + y + z + w = 1) (h4 : 6*x - 2*y + 3*z - 5*w = 21) : 17*x + 3*y - 2*z + w ≠ 1000 := by\n  omega\n\n"
+                + "theorem quick (a b : Nat) : a + b = b + a := by\n  omega\n");
+            DocumentViewModel sd = (await vm.OpenFileAsync(slowFile))!;
+            await vm.ProfileFileAsync();
+            Check(vm.TimingItems.FirstOrDefault()?.Declaration.StartsWith("theorem slow", StringComparison.Ordinal) == true && sd.Timings.Count > 0,
+                $"profiling finds the slow theorem ({vm.TimingStatus})");
+            Check(vm.TimingItems.FirstOrDefault()?.HotSpot.Contains("omega", StringComparison.Ordinal) == true, "and that omega is where its time goes");
+            Snap(window, outDir, "18-timing");
+            Check(await WaitFor(() => !sd.IsProcessing, 60) && await vm.WriteWalkthroughAsync(walkFile)
+                && File.ReadAllText(walkFile).Contains("<h2>quick", StringComparison.Ordinal), "the proofs are written out as a walkthrough web page");
+            Check(LeanStudio.Core.Proofs.Walkthrough.MissingOnWeb(sd.Document.Text).Count == 0, "and the file can be shared to the web editor as it is");
+            await vm.CloseDocumentCommand.ExecuteAsync(sd);
+        }
+        finally
+        {
+            File.Delete(slowFile);
+            File.Delete(walkFile);
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("for newcomers");
         vm.ActiveDocument = doc;
         Check(await WaitFor(() => vm.Outline.Any(o => o.Name == "and_swap" && o.Status == "✓") && vm.Outline.Any(o => o.Name == "unfinished" && o.Status == "◐"), 20),

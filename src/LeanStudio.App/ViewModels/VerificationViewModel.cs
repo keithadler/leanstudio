@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using LeanStudio.Core.Verification;
 
 namespace LeanStudio.App.ViewModels;
@@ -21,6 +22,27 @@ public sealed record VerdictView(DeclarationVerdict Verdict)
         _ => "rejected: " + (Verdict.Message ?? "").Split('\n')[0],
     };
     public VerificationStatus Status => Verdict.Status;
+
+    /// <summary>It rests on an assumption without being one: there is a chain to show.</summary>
+    public bool CanExplain => Verdict.Status == VerificationStatus.RestsOnAssumption && !Verdict.Assumptions.Contains(Verdict.Name);
+}
+
+/// <summary>One step of a "why is this not proved" chain.</summary>
+public sealed record TrailLinkView(TrailLink Link, bool IsFirst, bool IsCulprit)
+{
+    public string Arrow => IsFirst ? "" : "→";
+    public string Name => Link.Display;
+    public string Where => Link.SourceFile is string f && Link.Line is int l ? $"{Path.GetFileName(f)}:{l}" : Link.IsSorry ? "" : Link.Module;
+    public bool CanOpen => Link.SourceFile is not null;
+    public string Note => IsCulprit ? (Link.IsSorry ? "" : "← fix this one") : "";
+}
+
+/// <summary>One chain, from the declaration down to the sorry or axiom it rests on.</summary>
+public sealed record TrailView(AssumptionTrail Trail)
+{
+    public string Heading => Trail.IsSorry ? "rests on sorry" : $"rests on the axiom {Trail.Assumption}";
+    public IReadOnlyList<TrailLinkView> Links { get; } =
+        Trail.Path.Select((l, i) => new TrailLinkView(l, i == 0, i == Trail.Path.Count - 2)).ToList();
 }
 
 /// <summary>The Tenet panel: the last independent re-check of the project, and its progress while one runs.</summary>
@@ -49,6 +71,53 @@ public sealed partial class VerificationViewModel : ObservableObject
     private VerificationReport? _report;
 
     partial void OnFilterChanged(int value) => Apply();
+
+    // ---- why a declaration is not fully proved ----
+
+    public ObservableList<TrailView> Trails { get; } = new();
+
+    [ObservableProperty]
+    private string _trailTitle = "";
+
+    [ObservableProperty]
+    private bool _hasTrail;
+
+    /// <summary>Set by the window's view model: find the chains for a declaration.</summary>
+    public Func<string, Task>? Explain { get; set; }
+
+    /// <summary>Opens a source file at a 1-based line.</summary>
+    public event Action<string, int>? OpenRequested;
+
+    [RelayCommand]
+    private Task Why(VerdictView? v) => v is null || Explain is null ? Task.CompletedTask : Explain(v.Name);
+
+    [RelayCommand]
+    private void OpenLink(TrailLinkView? l)
+    {
+        if (l?.Link.SourceFile is string f)
+        {
+            OpenRequested?.Invoke(f, l.Link.Line ?? 1);
+        }
+    }
+
+    [RelayCommand]
+    private void CloseTrail()
+    {
+        HasTrail = false;
+        Trails.Reset([]);
+    }
+
+    public void ShowTrails(string name, IReadOnlyList<AssumptionTrail> trails)
+    {
+        Trails.Reset(trails.Select(t => new TrailView(t)));
+        TrailTitle = trails.Count == 0
+            ? $"{name} is fully proved: no sorry, and no axiom beyond propext, Classical.choice and Quot.sound."
+            : $"Why {name} is not fully proved" + (trails.Count > 1 ? $" ({trails.Count} reasons)" : "") + ": "
+              + string.Join("; ", trails.Select(t => t.Culprit is TrailLink c
+                  ? (t.IsSorry ? $"{c.Display} uses sorry" : $"{c.Display} uses the axiom {t.Assumption}")
+                  : t.Assumption));
+        HasTrail = true;
+    }
 
     public void Show(VerificationReport r)
     {

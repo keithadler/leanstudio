@@ -33,7 +33,12 @@ public static class LeanTools
         - A theorem is only proved when check_file shows no errors and no "declaration uses 'sorry'" warning.
           For a stronger answer, run build and then verify: Tenet re-checks every declaration with a second kernel
           and lists any that rest on sorry or on axioms the project introduces.
+        - Stuck on a goal? Leave `sorry` there and call prove: it tries rfl, decide, simp, omega, norm_num, ring,
+          linarith, aesop, grind, exact? and more on each sorry, and can write the first one that works.
         - search_declarations, declaration and axioms read the compiled library (Mathlib included once built).
+          search_mathlib finds Mathlib results from a description in plain English when you do not know a name.
+        - If verify says a theorem rests on sorry, why_not_proved shows the chain of lemmas down to the one to fix.
+        - profile shows which declarations make a file slow to check, and the step inside each that costs most.
         - If the person has Lean Studio open, studio_context tells you which file, line and goal they are looking
           at, and studio_show opens a file at a line in their window so they can review your change.
         """;
@@ -332,6 +337,170 @@ public static class LeanTools
                 }
                 IReadOnlyList<string> axioms = ws.AxiomsOf(name);
                 return Task.FromResult(axioms.Count == 0 ? $"{name} depends on no axioms." : $"{name} depends on:\n" + string.Join('\n', axioms.Select(x => "  " + x)));
+            }),
+
+        new("why_not_proved",
+            "Why a declaration is not fully proved: for each sorry or project axiom it rests on, the shortest chain of declarations leading to it, with file and line of each. The last declaration before the sorry is the one to fix. Run build first.",
+            Schema(("name", "string", "Fully qualified declaration name.", true),
+                   ("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
+                string name = Str(a, "name");
+                if (ws.Details(name) is null)
+                {
+                    throw new ToolException($"{name} is not in the compiled library (is the project built, and is the name fully qualified?)");
+                }
+                IReadOnlyList<AssumptionTrail> trails = ws.WhyNotProved(name, ct);
+                if (trails.Count == 0)
+                {
+                    return Task.FromResult($"{name} is fully proved: it rests on no sorry and no axiom beyond propext, Classical.choice and Quot.sound.");
+                }
+                var sb = new StringBuilder();
+                foreach (AssumptionTrail t in trails)
+                {
+                    sb.Append(t.IsSorry ? "rests on sorry" : $"rests on the axiom {t.Assumption}").Append(":\n");
+                    foreach (TrailLink l in t.Path)
+                    {
+                        sb.Append("  ").Append(l.Display);
+                        if (l.SourceFile is not null && l.Line is int line)
+                        {
+                            sb.Append(CultureInfo.InvariantCulture, $"  ({l.SourceFile}:{line})");
+                        }
+                        sb.Append('\n');
+                    }
+                    if (t.Culprit is TrailLink c)
+                    {
+                        sb.Append("  → fix ").Append(c.Name).Append(t.IsSorry ? ", which uses sorry itself" : $", which uses {t.Assumption} directly").Append('\n');
+                    }
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
+            }),
+
+        new("prove",
+            "Try a portfolio of tactics (rfl, decide, simp, omega, norm_num, ring, linarith, aesop, grind, exact? and more) on the goal at each sorry in a file, independently, and report which close it and how long each took. Pass `line` to try only the sorry on that line, and `apply` true to write the first working tactic in place of each sorry.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("line", "integer", "Optional 1-based line: only the sorry on (or nearest) this line.", false),
+                   ("apply", "boolean", "Write the first tactic that works in place of each sorry it proves.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                ProjectSession s = bench.Session(path);
+                FileReport r = await s.CheckAsync(path, null, ct);
+                IReadOnlyList<SorrySite> sites = ProofSearch.Sites(r.Text);
+                if (OptInt(a, "line") is int ln)
+                {
+                    sites = ProofSearch.At(sites, ln - 1, 0) is SorrySite one ? [one] : [];
+                }
+                if (sites.Count == 0)
+                {
+                    return "no sorry to prove there";
+                }
+                IReadOnlyList<SearchResult> results = await ProofSearch.RunAsync(await s.ServerAsync(ct), path, r.Text, sites, ct);
+                var sb = new StringBuilder();
+                foreach (SearchResult res in results)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"sorry at line {res.Site.Line + 1}, column {res.Site.Column + 1}")
+                      .Append(res.Site.Declaration is string d ? $" in {d}" : "").Append(":\n");
+                    if (!res.Reached)
+                    {
+                        sb.Append("  not reached (an error earlier in the file stops Lean before it)\n");
+                        continue;
+                    }
+                    foreach (TacticTrial t in res.Trials.Where(t => t.Outcome != TrialOutcome.Unavailable))
+                    {
+                        sb.Append(CultureInfo.InvariantCulture, $"  {(t.Closes ? "closes" : "fails ")}  {(t.Closes ? t.Replacement : t.Tactic)}  ({t.Time})\n");
+                    }
+                    sb.Append(res.Best is TacticTrial b ? $"  best: {res.Fill(b)}\n" : "  none of the tactics closes this goal\n");
+                }
+                bool apply = a["apply"] is JsonValue v && v.TryGetValue(out bool ap) && ap;
+                if (apply && results.Any(x => x.Best is not null))
+                {
+                    string filled = ProofSearch.Apply(r.Text, results.Where(x => x.Best is not null).Select(x => (x, x.Best!)));
+                    await File.WriteAllTextAsync(path, filled, ct);
+                    sb.Append(CultureInfo.InvariantCulture, $"\nwrote {results.Count(x => x.Best is not null)} proof(s) into {path}; call check_file to confirm.");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("profile",
+            "Lean's profiler over a file: how long each declaration takes to elaborate, slowest first, and the step inside it that costs the most. Use it to find what makes a file slow. The file's imports must be built.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("content", "string", "Optional full text to profile instead of what is on disk.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                LeanProject project = bench.ProjectFor(path);
+                string text = OptStr(a, "content") ?? await File.ReadAllTextAsync(path, ct);
+                var (timings, error) = await Profiler.RunAsync(project, path, text, ct);
+                if (error is not null)
+                {
+                    throw new ToolException(error);
+                }
+                if (timings.Count == 0)
+                {
+                    return "nothing in this file takes more than a few milliseconds";
+                }
+                double total = timings.Sum(t => t.Seconds);
+                var sb = new StringBuilder(DeclarationTiming.Format(total) + " in total; slowest first:\n");
+                foreach (DeclarationTiming t in timings.Take(25))
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"  line {t.Line + 1}: {t.Detail}\n    {t.Declaration}\n");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("export_walkthrough",
+            "Write a proof walkthrough of a Lean file as one self-contained web page: every tactic proof, step by step, with the goals before and after each tactic and what the tactic does in plain words. Also returns a link that opens the file in the Lean 4 web editor.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("output", "string", "Where to write the .html file; defaults to <file>-walkthrough.html beside it.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                ProjectSession s = bench.Session(path);
+                FileReport r = await s.CheckAsync(path, null, ct);
+                string[] lines = r.Text.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+                IReadOnlyList<WalkProof> proofs = await Walkthrough.BuildAsync(await s.ServerAsync(ct), r.Uri, lines, ct);
+                if (proofs.Count == 0)
+                {
+                    throw new ToolException("there are no tactic proofs (… := by …) in this file");
+                }
+                string output = OptStr(a, "output") is string o ? bench.Resolve(o)
+                    : Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileNameWithoutExtension(path) + "-walkthrough.html");
+                await File.WriteAllTextAsync(output, Walkthrough.Html(Path.GetFileName(path), proofs, r.Text), ct);
+                return $"wrote a walkthrough of {proofs.Count} proof(s) to {output}\nopen it in the Lean 4 web editor: {Walkthrough.ShareUrl(r.Text)}";
+            }),
+
+        new("search_mathlib",
+            "Search Mathlib by meaning, in plain English (e.g. \"the sum of the first n odd numbers is n squared\"), with LeanSearch (leansearch.net). Returns names, statements and informal descriptions. Use it when you do not know a lemma's name; use search_declarations or Loogle-style name search when you do.",
+            Schema(("question", "string", "What the result says, in words.", true),
+                   ("limit", "integer", "How many results (default 10, at most 50).", false)),
+            async (a, ct) =>
+            {
+                int limit = Math.Clamp(OptInt(a, "limit") ?? 10, 1, 50);
+                IReadOnlyList<Core.Workflow.MeaningHit> hits;
+                try
+                {
+                    hits = await new Core.Workflow.LeanSearch().SearchAsync(Str(a, "question"), limit, ct);
+                }
+                catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+                {
+                    throw new ToolException("could not reach LeanSearch: " + e.Message);
+                }
+                if (hits.Count == 0)
+                {
+                    return "no results";
+                }
+                var sb = new StringBuilder();
+                foreach (Core.Workflow.MeaningHit h in hits)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{h.Name}  ({h.Kind}, {h.Module})\n  {h.Type}\n");
+                    if (h.InformalStatement is { Length: > 0 } inf)
+                    {
+                        sb.Append("  ").Append(inf.Replace("\n", " ", StringComparison.Ordinal)).Append('\n');
+                    }
+                }
+                return sb.ToString().TrimEnd();
             }),
 
         new("declaration",

@@ -252,6 +252,78 @@ public sealed class Loogle(HttpClient? http = null)
 }
 
 /// <summary>Links to the documentation site that covers Mathlib and its dependencies, Lean core included.</summary>
+/// <summary>A Mathlib result found by meaning, with its informal statement.</summary>
+public sealed record MeaningHit(string Name, string Kind, string Module, string Type, string? InformalName, string? InformalStatement, double Distance)
+{
+    /// <summary>How closely it matches the question, 0–100.</summary>
+    public int Relevance => (int)Math.Round(Math.Clamp(1 - Distance, 0, 1) * 100);
+}
+
+/// <summary>
+/// Search Mathlib by meaning, in plain English ("the sum of the first n odd numbers is n squared"), with LeanSearch
+/// (leansearch.net), which matches the question against informal statements of every Mathlib result. Loogle finds
+/// what you can name or shape; this finds what you can only describe.
+/// </summary>
+public sealed class LeanSearch(HttpClient? http = null)
+{
+    private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+
+    public const string Endpoint = "https://leansearch.net/search";
+
+    public async Task<IReadOnlyList<MeaningHit>> SearchAsync(string question, int results = 20, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(new { query = new[] { question }, num_results = results }),
+                System.Text.Encoding.UTF8, "application/json"),
+        };
+        req.Headers.UserAgent.ParseAdd("LeanStudio/" + Updates.UpdateChecker.CurrentVersion.ToString(3));
+        using HttpResponseMessage r = await _http.SendAsync(req, ct).ConfigureAwait(false);
+        r.EnsureSuccessStatusCode();
+        using JsonDocument doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
+        return Parse(doc.RootElement);
+    }
+
+    /// <summary>Read LeanSearch's answer: a list (one per query) of lists of <c>{result, distance}</c>.</summary>
+    public static IReadOnlyList<MeaningHit> Parse(JsonElement root)
+    {
+        var hits = new List<MeaningHit>();
+        JsonElement list = root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0 && root[0].ValueKind == JsonValueKind.Array ? root[0] : root;
+        if (list.ValueKind != JsonValueKind.Array)
+        {
+            return hits;
+        }
+        static string Joined(JsonElement e) => e.ValueKind == JsonValueKind.Array
+            ? string.Join('.', e.EnumerateArray().Select(x => x.GetString() ?? ""))
+            : e.ValueKind == JsonValueKind.String ? e.GetString() ?? "" : "";
+        static string? Str(JsonElement o, string name) =>
+            o.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        foreach (JsonElement item in list.EnumerateArray())
+        {
+            JsonElement res = item.TryGetProperty("result", out JsonElement rr) ? rr : item;
+            if (res.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+            string name = res.TryGetProperty("name", out JsonElement n) ? Joined(n) : "";
+            if (name.Length == 0)
+            {
+                continue;
+            }
+            hits.Add(new MeaningHit(
+                name,
+                Str(res, "kind") ?? "",
+                res.TryGetProperty("module_name", out JsonElement m) ? Joined(m) : "",
+                (Str(res, "type") ?? Str(res, "signature") ?? "").Trim(),
+                Str(res, "informal_name"),
+                Str(res, "informal_description"),
+                item.TryGetProperty("distance", out JsonElement d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 0));
+        }
+        return hits;
+    }
+}
+
 public static class DocLinks
 {
     public static string For(string module, string declaration) =>

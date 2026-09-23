@@ -143,6 +143,9 @@ public sealed partial class InfoViewModel : ObservableObject
     private CancellationTokenSource? _stepsCts;
     private string? _stepsKey;
 
+    /// <summary>The Prove It card: tactics tried against a sorry.</summary>
+    public ProofSearchViewModel Search { get; } = new();
+
     public ObservableList<GoalView> Goals { get; } = new();
     public ObservableList<MessageView> Messages { get; } = new();
 

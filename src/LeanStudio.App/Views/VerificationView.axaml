@@ -17,16 +17,57 @@
         <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" MinHeight="4" />
         <TextBlock Text="{Binding ProgressText}" Classes="dim mono" FontSize="11" />
       </StackPanel>
+      <!-- Why a declaration is not fully proved -->
+      <Border Classes="card" IsVisible="{Binding HasTrail}" BorderThickness="3,0,0,0" BorderBrush="#E59E2C" Margin="0,4,0,0">
+        <StackPanel Spacing="4">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding TrailTitle}" TextWrapping="Wrap" FontSize="12" FontWeight="SemiBold" />
+            <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" Command="{Binding CloseTrailCommand}" ToolTip.Tip="Close" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Trails}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:TrailView">
+                <StackPanel Margin="0,2">
+                  <TextBlock Text="{Binding Heading}" Classes="dim" FontSize="11" />
+                  <ItemsControl ItemsSource="{Binding Links}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:TrailLinkView">
+                        <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,6,0">
+                          <TextBlock Text="{Binding Arrow}" Classes="dim" VerticalAlignment="Center" />
+                          <Button Classes="flat" Padding="4,1" IsEnabled="{Binding CanOpen}" ToolTip.Tip="{Binding Where}"
+                                  Command="{Binding $parent[UserControl].((vm:VerificationViewModel)DataContext).OpenLinkCommand}" CommandParameter="{Binding}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                              <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" />
+                              <TextBlock Text="{Binding Where}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                            </StackPanel>
+                          </Button>
+                          <TextBlock Text="{Binding Note}" Classes="warn" FontSize="11" VerticalAlignment="Center" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
     </StackPanel>
     <ListBox ItemsSource="{Binding Items}" Background="Transparent" Margin="0,4,0,0" DoubleTapped="OnVerdictDoubleTapped">
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:VerdictView">
-          <Grid ColumnDefinitions="20,Auto,*" ToolTip.Tip="{Binding Detail}">
+          <Grid ColumnDefinitions="20,Auto,*,Auto" ToolTip.Tip="{Binding Detail}">
             <TextBlock Text="{Binding Icon}" Classes.ok="{Binding Status, Converter={x:Static vm:StatusConverters.IsVerified}}"
                        Classes.warn="{Binding Status, Converter={x:Static vm:StatusConverters.IsConditional}}"
                        Classes.bad="{Binding Status, Converter={x:Static vm:StatusConverters.IsRejected}}" />
             <TextBlock Grid.Column="1" Text="{Binding Name}" Classes="mono" FontSize="12" Margin="0,0,12,0" />
             <TextBlock Grid.Column="2" Text="{Binding Detail}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+            <Button Grid.Column="3" Content="Why?" FontSize="10" Padding="6,0" IsVisible="{Binding CanExplain}"
+                    ToolTip.Tip="Show the chain of lemmas from this declaration down to the sorry or axiom it rests on"
+                    Command="{Binding $parent[UserControl].((vm:VerificationViewModel)DataContext).WhyCommand}" CommandParameter="{Binding}" />
           </Grid>
         </DataTemplate>
       </ListBox.ItemTemplate>

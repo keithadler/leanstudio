@@ -41,6 +41,8 @@ public sealed class McpTests
         Assert.Contains("goals", names);
         Assert.Contains("verify", names);
         Assert.Contains("studio_context", names);
+        Assert.Contains("prove", names);
+        Assert.Contains("search_mathlib", names);
         Assert.All(list["result"]!["tools"]!.AsArray(), t => Assert.Equal("object", t!["inputSchema"]!["type"]!.GetValue<string>()));
 
         JsonObject unknown = (await server.HandleAsync(Request(3, "no/such/method"), TestContext.Current.CancellationToken))!;
@@ -127,6 +129,48 @@ public sealed class McpTests
 
         var (search, _) = await CallAsync(server, "search_declarations", new JsonObject { ["query"] = "and_swap" });
         Assert.Contains("and_swap", search, StringComparison.Ordinal);
+
+        var (why, _) = await CallAsync(server, "why_not_proved", new JsonObject { ["name"] = "unfinished" });
+        Assert.Contains("rests on sorry", why, StringComparison.Ordinal);
+        Assert.Contains("→ fix unfinished", why, StringComparison.Ordinal);
+        var (proved, _) = await CallAsync(server, "why_not_proved", new JsonObject { ["name"] = "and_swap" });
+        Assert.Contains("fully proved", proved, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProvesSorriesAndProfiles()
+    {
+        Lean.RequireLean();
+        string dir = Directory.CreateTempSubdirectory("leanstudio-prove").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n");
+            string file = Path.Combine(dir, "P.lean");
+            File.WriteAllText(file, "theorem t (a b : Nat) : a + b = b + a := by\n  sorry\n");
+            await using var bench = new Workbench(dir);
+            McpServer server = LeanTools.Create(bench, "test");
+            var (report, err) = await CallAsync(server, "prove", new JsonObject { ["path"] = "P.lean", ["apply"] = true });
+            Assert.False(err, report);
+            Assert.Contains("closes  omega", report, StringComparison.Ordinal);
+            Assert.Contains("wrote 1 proof", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("sorry", File.ReadAllText(file), StringComparison.Ordinal);
+
+            string slow = "theorem slow (x y z w : Int) (h1 : 3*x + 5*y - 7*z + 11*w = 13) (h2 : 2*x - 9*y + 4*z - w = 8)\n"
+                + "    (h3 : x + y + z + w = 1) (h4 : 6*x - 2*y + 3*z - 5*w = 21) : 17*x + 3*y - 2*z + w ≠ 1000 := by\n  omega\n";
+            var (profile, perr) = await CallAsync(server, "profile", new JsonObject { ["path"] = "P.lean", ["content"] = slow });
+            Assert.False(perr, profile);
+            Assert.Contains("line 1: ", profile, StringComparison.Ordinal);
+            Assert.Contains("slowest part: omega", profile, StringComparison.Ordinal);
+
+            var (walk, werr) = await CallAsync(server, "export_walkthrough", new JsonObject { ["path"] = "P.lean" });
+            Assert.False(werr, walk);
+            Assert.Contains("live.lean-lang.org/#code=", walk, StringComparison.Ordinal);
+            Assert.Contains("<h2>t", File.ReadAllText(Path.Combine(dir, "P-walkthrough.html")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 
     [Fact]

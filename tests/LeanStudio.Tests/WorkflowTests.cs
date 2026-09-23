@@ -191,6 +191,16 @@ public sealed class NetworkTests
     }
 
     [Fact]
+    public async Task LeanSearchFindsATheoremFromADescription()
+    {
+        RequireNetwork();
+        IReadOnlyList<MeaningHit> hits = await new LeanSearch().SearchAsync("a plus b equals b plus a for natural numbers", 20, TestContext.Current.CancellationToken);
+        Assert.NotEmpty(hits);
+        Assert.All(hits, h => Assert.NotEmpty(h.Name));
+        Assert.Contains(hits, h => h.Name.Contains("add_comm", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task FindsWhereAMissingNameIsDefined()
     {
         RequireNetwork();

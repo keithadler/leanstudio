@@ -42,6 +42,65 @@ public sealed partial class NavigatorViewModel : ObservableObject
     [ObservableProperty]
     private bool _searchEverywhere;
 
+    // ---- LeanSearch: find a Mathlib result from a description in plain English ----
+
+    public ObservableList<Core.Workflow.MeaningHit> MeaningResults { get; } = new();
+
+    [ObservableProperty]
+    private string _meaningQuery = "";
+
+    [ObservableProperty]
+    private string _meaningStatus = "Describe a result in words, e.g. \"the sum of the first n odd numbers is n squared\" or \"a continuous function on a closed interval attains its maximum\". Online, at leansearch.net.";
+
+    [ObservableProperty]
+    private Core.Workflow.MeaningHit? _selectedMeaning;
+
+    [ObservableProperty]
+    private bool _meaningBusy;
+
+    [RelayCommand]
+    public async Task SearchMeaningAsync()
+    {
+        string q = MeaningQuery.Trim();
+        if (q.Length == 0 || MeaningBusy)
+        {
+            return;
+        }
+        MeaningBusy = true;
+        MeaningStatus = "Asking LeanSearch…";
+        try
+        {
+            IReadOnlyList<Core.Workflow.MeaningHit> hits = await new Core.Workflow.LeanSearch().SearchAsync(q, 25);
+            MeaningResults.Reset(hits);
+            MeaningStatus = hits.Count == 0 ? "No results." : $"{hits.Count} results, closest first. Click one for its statement and documentation.";
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            MeaningStatus = "Could not reach LeanSearch: " + e.Message;
+        }
+        finally
+        {
+            MeaningBusy = false;
+        }
+    }
+
+    partial void OnSelectedMeaningChanged(Core.Workflow.MeaningHit? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+        if (_workspace() is TenetWorkspace ws && ws.Details(value.Name) is not null)
+        {
+            Query = value.Name;
+            _ = ShowAsync(value.Name);
+        }
+        else
+        {
+            OpenUrlRequested?.Invoke(new Uri(Core.Workflow.DocLinks.For(value.Module, value.Name)));
+        }
+    }
+
     // ---- Loogle: search all of Mathlib online, by name or by the shape of a type ----
 
     public ObservableList<Core.Workflow.LoogleHit> LoogleResults { get; } = new();
