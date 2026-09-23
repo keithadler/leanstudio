@@ -207,4 +207,4 @@ Lean Studio is at **0.1**, the first release. The whole workflow works end to en
 
 ## License
 
-A license hasn't been chosen yet. Tenet, included as a submodule, is MIT OR Apache-2.0.
+[MIT](LICENSE). Tenet, included as a submodule, is MIT OR Apache-2.0.

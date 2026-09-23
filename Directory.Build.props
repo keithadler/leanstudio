@@ -10,6 +10,7 @@
     <Authors>Keith Adler</Authors>
     <Product>Lean Studio</Product>
     <Copyright>Copyright (c) 2026 Keith Adler</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <VersionPrefix>0.1.0</VersionPrefix>
   </PropertyGroup>
   <PropertyGroup>
