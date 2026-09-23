@@ -133,7 +133,7 @@ internal static class Scenario
         {
             ["method"] = "show", ["path"] = doc.Path, ["line"] = 5, ["column"] = 3,
         });
-        Check(shown?["ok"]?.GetValue<bool>() == true && doc.CaretLine == 4, "an assistant can move the person's cursor to a line");
+        Check(shown?["ok"]?.GetValue<bool>() == true && await WaitFor(() => doc.CaretLine == 4, 5), "an assistant can move the person's cursor to a line");
 
         Console.WriteLine("a file changed on disk by an assistant reloads");
         string original = doc.SavedText;
