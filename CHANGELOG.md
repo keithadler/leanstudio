@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 **Four more features**:
 - **Counterexamples**: when no tactic closes a goal, Prove It looks for values that make it false.
@@ -16,6 +16,9 @@ MCP tools: `extract_lemma` and `project_map`, and `prove` now reports counterexa
 - Panel buttons are consistent chips.
 - Empty panels say what will appear in them.
 - The welcome screen is redesigned, and the light theme is fixed throughout.
+- Dialogs have themed backgrounds and wrapping prompts, and the Preferences buttons stay in view.
+
+**Fixes**: when Lean was asked whether a file was done, it could answer with an early batch of messages; it now waits until they stop arriving.
 
 ## 0.4.0
 
