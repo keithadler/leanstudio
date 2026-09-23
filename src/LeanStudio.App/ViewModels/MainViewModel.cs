@@ -49,6 +49,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Info.NavigateRequested += (line, col) => ActiveDocument?.Reveal(line, col);
         Navigator = new NavigatorViewModel(() => _tenet);
         Navigator.OpenSourceRequested += (file, line, col) => _ = OpenFileAsync(file, line - 1, col);
+        Navigator.OpenUrlRequested += uri => _ = _dialogs.LaunchAsync(uri);
         Toolchains = new ToolchainsViewModel(() => Project, Log, RestartServerAsync);
         Verification = new VerificationViewModel();
         InitFeatures();
@@ -158,9 +159,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (Settings.LastProject is string last && Directory.Exists(last))
         {
             await OpenProjectAsync(last);
-            foreach (string f in Settings.LastOpenFiles.Where(File.Exists))
+            string? active = Settings.LastActiveFile;
+            foreach (string f in Settings.LastOpenFiles.Where(File.Exists).ToList())
             {
                 await OpenFileAsync(f);
+            }
+            if (active is not null && Documents.FirstOrDefault(d => d.Path == active) is DocumentViewModel a)
+            {
+                ActiveDocument = a;
             }
         }
     }
@@ -204,7 +210,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Files.Reset(root.Children);
         Log($"Opened {project.Root}" + (project.IsLakeProject ? " (Lake project)" : "") + (project.Toolchain is string tc ? $", toolchain {tc}" : ""));
         WatchDisk(project.Root);
+        _buildMessages = [];
         await SourceControl.OpenAsync(project.Root);
+        _ = RefreshMarkersAsync();
         await StartServerAsync();
         await Toolchains.RefreshAsync();
         await ReopenTenetAsync();
@@ -338,6 +346,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         RefreshFiles();
         ScheduleGitRefresh();
+        _ = RefreshMarkersAsync();
     }
 
     // ---- the AI assistant bridge ----
@@ -466,6 +475,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (!d.IsProcessing)
         {
             Learn.FileChecked(d);
+            _ = AutoFixAsync(d);
         }
     }
 
@@ -481,7 +491,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (wasProcessing && !d.IsProcessing)
         {
             // Diagnostics for the finished text trail the progress report slightly.
-            DispatcherTimer.RunOnce(() => Learn.FileChecked(d), TimeSpan.FromMilliseconds(400));
+            DispatcherTimer.RunOnce(() =>
+            {
+                Learn.FileChecked(d);
+                _ = AutoFixAsync(d);
+            }, TimeSpan.FromMilliseconds(400));
         }
         if (d == ActiveDocument && wasProcessing && !d.IsProcessing)
         {
@@ -495,6 +509,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void UpdateProblems()
     {
         var items = Documents.SelectMany(d => d.Diagnostics.Where(x => x.Severity <= DiagnosticSeverity.Warning).Select(x => new ProblemItem(d, x)))
+            .Concat(BuildProblems())
             .OrderBy(p => p.Severity).ThenBy(p => p.File, StringComparer.Ordinal).ThenBy(p => p.Diagnostic.Range.Start)
             .ToList();
         Problems.Reset(items);
@@ -535,6 +550,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await OpenProjectAsync(Path.GetDirectoryName(path)!);
             }
             doc = new DocumentViewModel(path, await File.ReadAllTextAsync(path));
+            if (line is null)
+            {
+                RestoreCaret(doc);
+            }
             doc.TextChanged += OnDocumentEdited;
             Documents.Add(doc);
             if (doc.IsLean && _server is { State: LeanServerState.Running } s)
@@ -573,6 +592,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void OnDocumentEdited(DocumentViewModel doc)
     {
+        ScheduleAutoSave(doc);
         if (!doc.IsLean || _server is not { State: LeanServerState.Running } server)
         {
             return;
@@ -610,6 +630,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
         CaretLabel = $"Ln {line + 1}, Col {column + 1}";
+        RememberCaret(doc);
+        ScheduleBlame(doc, line);
+        ScheduleC(doc);
         _caretCts?.Cancel();
         var cts = new CancellationTokenSource();
         _caretCts = cts;
@@ -699,7 +722,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await s.SaveAsync(d.Uri, d.Document.Text);
             }
+            RecordHistory(d);
             ScheduleGitRefresh();
+            _ = RefreshMarkersAsync();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -750,6 +775,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void RememberOpenFiles()
     {
         Settings.LastOpenFiles = Documents.Where(d => !d.IsVirtual).Select(d => d.Path).ToList();
+        Settings.LastActiveFile = ActiveDocument is { IsVirtual: false } a ? a.Path : null;
         Settings.Save();
     }
 
@@ -819,12 +845,20 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     [RelayCommand]
-    private void OpenProblem(ProblemItem? p)
+    private async Task OpenProblemAsync(ProblemItem? p)
     {
-        if (p is not null)
+        if (p is null)
         {
-            ActiveDocument = p.Document;
-            p.Document.Reveal(p.Diagnostic.Range.Start.Line, p.Diagnostic.Range.Start.Character);
+            return;
+        }
+        if (p.Document is DocumentViewModel d && Documents.Contains(d))
+        {
+            ActiveDocument = d;
+            d.Reveal(p.Diagnostic.Range.Start.Line, p.Diagnostic.Range.Start.Character);
+        }
+        else
+        {
+            await OpenFileAsync(p.Path, p.Diagnostic.Range.Start.Line, p.Diagnostic.Range.Start.Character);
         }
     }
 
@@ -842,6 +876,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             BottomTab = 1;
             var r = await Lake.BuildAsync(Project!, onLine: Log, ct: ct);
             ok = r.Success;
+            TakeBuildOutput(r.Output);
             Log(r.Success ? "Build succeeded." : $"Build failed (exit {r.ExitCode}).");
         });
         await ReopenTenetAsync();

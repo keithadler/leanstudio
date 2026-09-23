@@ -171,8 +171,7 @@ internal static class Scenario
         editor.TextArea.PerformTextInput(" ");
         string tail = editor.Document.Text[^12..];
         Check(tail.Contains("α → ℕ", StringComparison.Ordinal), $"\\alpha \\to \\N became α → ℕ (got '{tail.Trim()}')");
-        doc.Document.Text = doc.SavedText;
-        doc.Document.UndoStack.MarkAsOriginalFile();
+        doc.ReplaceAll(doc.SavedText);
 
         Console.WriteLine("editing: brackets and indentation");
         editor.CaretOffset = editor.Document.TextLength;
@@ -196,8 +195,7 @@ internal static class Scenario
         editor.TextArea.PerformTextInput(")");
         lastLine = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
         Check(lastLine.Contains("⟨()⟩", StringComparison.Ordinal) && !lastLine.Contains("))", StringComparison.Ordinal), "typing ) steps over the closer instead of doubling it");
-        doc.Document.Text = doc.SavedText;
-        doc.Document.UndoStack.MarkAsOriginalFile();
+        doc.ReplaceAll(doc.SavedText);
 
         Console.WriteLine("outline, references, find in files");
         vm.SidebarTab = MainViewModel.OutlineTab;
@@ -232,6 +230,7 @@ internal static class Scenario
             vm.Info.ApplySuggestionCommand.Execute(m.Suggestions[0]);
             Check(await WaitFor(() => !t.Document.Text.Contains("exact?", StringComparison.Ordinal), 10), "clicking it replaces exact? with the proof");
             Check(await WaitFor(() => t.Diagnostics.Count == 0 && !t.IsProcessing, 60), "and Lean accepts the result");
+            await t.SaveAsync(); // closing unsaved work would (rightly) ask first, and nobody is here to answer
             await vm.CloseDocumentCommand.ExecuteAsync(t);
         }
         finally
@@ -249,6 +248,127 @@ internal static class Scenario
         Check(vm.BranchLabel.StartsWith("⎇", StringComparison.Ordinal), "the status bar shows the branch");
         Check(vm.SourceControl.GitHubRepository == "keithadler/leanstudio" || vm.SourceControl.GitHubRepository is null, "and recognises a GitHub remote when there is one");
         Snap(window, outDir, "08-git");
+
+        Console.WriteLine("day-to-day workbench");
+        await vm.RefreshMarkersCommand.ExecuteAsync(null);
+        MarkerItem? unfinished = vm.Markers.FirstOrDefault(m => m.Declaration == "unfinished");
+        Check(unfinished is not null && vm.MarkersTitle.StartsWith("Sorries 1", StringComparison.Ordinal), $"the Sorries panel finds the sorry in unfinished ({vm.MarkersTitle})");
+        vm.BottomTab = MainViewModel.MarkersPanel;
+        await vm.OpenMarkerCommand.ExecuteAsync(unfinished);
+        Check(await WaitFor(() => vm.Info.Goals.Any(g => g.Target.Contains("a * b = b * a", StringComparison.Ordinal)), 20), "clicking it shows the goal left at that sorry");
+        vm.Info.PinCommand.Execute(null);
+        Check(vm.Info.HasPinned && vm.Info.Pinned[0].Text.Contains("a * b = b * a", StringComparison.Ordinal), "the goal can be pinned");
+        bool blamed = await WaitFor(() => vm.BlameText.Length > 0, 10);
+        Check(blamed, $"the status bar says who last changed the line ({vm.BlameText})");
+        Snap(window, outDir, "11-workbench");
+        vm.Info.UnpinCommand.Execute(vm.Info.Pinned[0]);
+
+        string savedBasic = doc.SavedText;
+        vm.Settings.AutoSave = true;
+        doc.Document.Insert(doc.Document.TextLength, "-- autosaved\n");
+        bool autosaved = await WaitFor(() => !doc.IsDirty && File.ReadAllText(doc.Path).Contains("-- autosaved", StringComparison.Ordinal), 10);
+        Check(autosaved, "auto-save writes the file a moment after typing stops");
+        doc.Document.Text = savedBasic;
+        Check(await WaitFor(() => !doc.IsDirty && File.ReadAllText(doc.Path) == savedBasic, 10), "and again after the change is undone");
+        vm.Settings.AutoSave = false;
+        var versions = vm.VersionsOfActive();
+        Check(versions.Count >= 2 && File.ReadAllText(versions[1].SnapshotFile).Contains("-- autosaved", StringComparison.Ordinal), $"local history kept both versions ({versions.Count})");
+        vm.RestoreVersion(versions[1]);
+        Check(doc.Document.Text.Contains("-- autosaved", StringComparison.Ordinal) && doc.IsDirty, "an earlier version can be brought back");
+        window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!.TextEditor.Undo();
+        Check(doc.Document.Text == savedBasic && !doc.IsDirty, "and the restore undone with ⌘Z");
+        doc.Document.Text = savedBasic;
+        await doc.SaveAsync();
+
+        window.ToggleSidebar();
+        window.TogglePanel();
+        Check(window.FindControl<Grid>("MainGrid")!.ColumnDefinitions[0].Width.Value == 0 && window.FindControl<Grid>("CenterGrid")!.RowDefinitions[3].Height.Value == 0, "the sidebar and the bottom panel can be hidden");
+        Snap(window, outDir, "12-zen");
+        window.ToggleSidebar();
+        window.TogglePanel();
+        Check(window.FindControl<Grid>("MainGrid")!.ColumnDefinitions[0].Width.Value > 0, "and brought back");
+
+        doc.Reveal(14, 7);
+        await Task.Delay(200);
+        await vm.CloseDocumentCommand.ExecuteAsync(doc);
+        doc = (await vm.OpenFileAsync(Path.Combine(repo, "samples", "Proofs", "Proofs", "Basic.lean")))!;
+        bool restored = await WaitFor(() => doc.CaretLine == 14 && doc.CaretColumn == 7, 5);
+        Check(restored, "a reopened file puts the cursor back where it was");
+        DocumentViewModel other = (await vm.OpenFileAsync(Path.Combine(repo, "samples", "Proofs", "Proofs.lean")))!;
+        vm.ActiveDocument = doc;
+        Check(await WaitFor(() => doc.CaretLine == 14 && doc.CaretColumn == 7, 5), "switching tabs keeps each file's cursor");
+        await vm.CloseDocumentCommand.ExecuteAsync(other);
+
+        Check(vm.Tasks().Any(t => t.Title == "lake build") && vm.Tasks().Any(t => t.Title == "lake test"), "the project's tasks are offered");
+        await vm.RunTaskAsync(LeanStudio.Core.Workflow.ProjectTasks.Shell("echo workbench-task-ran"));
+        Check(vm.Output.Text.Contains("workbench-task-ran", StringComparison.Ordinal), "a shell command runs in the project, output in Output");
+
+        Console.WriteLine("power tools");
+        vm.ActiveDocument = doc;
+        vm.RightTab = MainViewModel.CodeTab;
+        doc.Reveal(1, 5); // on `def double`
+        Check(await WaitFor(() => vm.CCode.Contains("l_double", StringComparison.Ordinal), 60), $"the Compiled C tab shows double's C function ({vm.CStatus})");
+        Snap(window, outDir, "13-compiled-c");
+        doc.Reveal(3, 10); // a theorem
+        Check(await WaitFor(() => vm.CStatus.Contains("proofs are erased", StringComparison.Ordinal), 10), "and says a theorem has no code");
+        vm.RightTab = MainViewModel.GoalsTab;
+
+        doc.Reveal(16, 14);
+        Check(await WaitFor(() => vm.Info.Goals.Count > 0 && vm.Info.Goals[0].TargetTagged is not null, 20), "goals carry Lean's subterm structure");
+        LeanStudio.Lsp.TaggedString target = vm.Info.Goals[0].TargetTagged!;
+        LeanStudio.Lsp.TaggedSpan whole = target.Spans.MaxBy(sp => sp.Length)!;
+        LeanStudio.Lsp.SubtermInfo? info = await vm.Info.InspectAsync(whole.Reference!);
+        Check(info?.Type == "Prop", $"hovering a subterm of the goal gives its type ({info?.Type})");
+
+        string proofs = Path.Combine(repo, "samples", "Proofs", "Proofs");
+        string fixes = Path.Combine(proofs, "Fixes.lean"), auto = Path.Combine(proofs, "AutoFix.lean");
+        string rep1 = Path.Combine(proofs, "Rep1.lean"), rep2 = Path.Combine(proofs, "Rep2.lean");
+        string modA = Path.Combine(proofs, "ModA.lean"), modB = Path.Combine(proofs, "ModB.lean"), modC = Path.Combine(proofs, "ModC.lean");
+        try
+        {
+            await File.WriteAllTextAsync(fixes, "theorem f1 (xs : List Nat) : (xs ++ []).length = xs.length := by\n  simp?\n\ntheorem f2 (n : Nat) : n + 0 = n := by\n  simp?\n");
+            DocumentViewModel f = (await vm.OpenFileAsync(fixes))!;
+            Check(await WaitFor(() => f.Diagnostics.Count(d => d.Message.StartsWith("Try this", StringComparison.Ordinal)) == 2 && !f.IsProcessing, 90), "two simp? calls each offer a Try this");
+            Check((await vm.CodeActionsAtLineAsync(1)).Count > 0, "the lightbulb line has fixes");
+            Snap(window, outDir, "14-lightbulbs");
+            await vm.FixAllInFileCommand.ExecuteAsync(null);
+            Check(!f.Document.Text.Contains("simp?", StringComparison.Ordinal) && f.Document.Text.Split("simp only").Length == 3, "Fix All in File applies both");
+            Check(await WaitFor(() => f.Diagnostics.Count == 0 && !f.IsProcessing, 60), "and Lean accepts the result");
+            await f.SaveAsync();
+            await vm.CloseDocumentCommand.ExecuteAsync(f);
+
+            vm.Settings.AutoApplyFixes = true;
+            await File.WriteAllTextAsync(auto, "theorem a1 (n : Nat) : 0 + n = n := by\n  simp?\n");
+            DocumentViewModel af = (await vm.OpenFileAsync(auto))!;
+            Check(await WaitFor(() => !af.Document.Text.Contains("simp?", StringComparison.Ordinal), 90), "with automatic fixes on, a lone Try this is applied by itself");
+            vm.Settings.AutoApplyFixes = false;
+            await af.SaveAsync();
+            await vm.CloseDocumentCommand.ExecuteAsync(af);
+
+            await File.WriteAllTextAsync(rep1, "def zzOld := 1\n#eval zzOld\n");
+            await File.WriteAllTextAsync(rep2, "-- zzOld is referred to here\n");
+            vm.SearchQuery = "zzOld";
+            vm.ReplaceWith = "zzNew";
+            var (matches, files) = await vm.ReplaceInFilesAsync((_, _) => Task.FromResult(true));
+            Check(matches == 3 && files == 2 && File.ReadAllText(rep1).Contains("#eval zzNew", StringComparison.Ordinal), $"replace in files changes every match ({matches} in {files})");
+
+            await File.WriteAllTextAsync(modA, "def modA := 1\n");
+            await File.WriteAllTextAsync(modB, "import Proofs.ModA\n#eval modA\n");
+            await vm.OpenFileAsync(modA);
+            string? problem = await vm.RenameModuleAsync("Proofs.ModC");
+            Check(problem is null && File.Exists(modC) && !File.Exists(modA) && File.ReadAllText(modB).StartsWith("import Proofs.ModC", StringComparison.Ordinal),
+                "renaming a module moves the file and rewrites its imports");
+            Check(vm.ActiveDocument?.Path == modC, "and the renamed file stays open");
+            await vm.CloseDocumentCommand.ExecuteAsync(vm.ActiveDocument);
+        }
+        finally
+        {
+            foreach (string temp in new[] { fixes, auto, rep1, rep2, modA, modB, modC })
+            {
+                File.Delete(temp);
+            }
+        }
+        vm.ActiveDocument = doc;
 
         Console.WriteLine("for newcomers");
         vm.ActiveDocument = doc;

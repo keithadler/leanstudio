@@ -27,6 +27,17 @@ public sealed class Settings
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Save a file a moment after you stop typing, and everything when the window loses focus.</summary>
+    public bool AutoSave { get; set; }
+    /// <summary>Who last changed the current line, in the status bar.</summary>
+    public bool ShowBlame { get; set; } = true;
+    /// <summary>When exact?, simp? and the like find exactly one answer, put it in the proof.</summary>
+    public bool AutoApplyFixes { get; set; }
+    public bool WordWrap { get; set; }
+    public string? LastActiveFile { get; set; }
+    public string? LastShellCommand { get; set; }
+    /// <summary>Where the cursor was in each file, restored when it is opened again.</summary>
+    public Dictionary<string, int[]> CaretPositions { get; set; } = [];
     public DateTime? LastUpdateCheck { get; set; }
     public string? SkippedVersion { get; set; }
 

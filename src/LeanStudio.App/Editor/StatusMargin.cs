@@ -25,6 +25,18 @@ public sealed class StatusMargin : AbstractMargin
     public static readonly IBrush RejectedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
 
     private IReadOnlyList<Core.Git.LineChange> _changes = [];
+    private HashSet<int> _bulbs = [];
+    private static readonly IBrush BulbBrush = new SolidColorBrush(Color.FromRgb(0xF2, 0xC9, 0x4C));
+    private static readonly IBrush BulbBase = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9A));
+
+    /// <summary>Lines (1-based) where Lean offers a fix: a lightbulb is drawn there.</summary>
+    public void SetBulbs(IEnumerable<int> oneBasedLines)
+    {
+        _bulbs = [.. oneBasedLines];
+        InvalidateVisual();
+    }
+
+    public bool HasBulb(int oneBasedLine) => _bulbs.Contains(oneBasedLine);
     private static readonly IBrush AddedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
     private static readonly IBrush ModifiedBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x8E, 0xEA));
     private static readonly IBrush DeletedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
@@ -90,6 +102,14 @@ public sealed class StatusMargin : AbstractMargin
                 {
                     context.FillRectangle(c.Kind == Core.Git.LineChangeKind.Added ? AddedBrush : ModifiedBrush, new Rect(0, top, 2.5, height));
                 }
+            }
+
+            if (_bulbs.Contains(line))
+            {
+                double cx = 10, cy = top + height / 2 - 1.5, r = Math.Min(4.5, height / 3.2);
+                context.DrawEllipse(BulbBrush, null, new Point(cx, cy), r, r);
+                context.FillRectangle(BulbBase, new Rect(cx - r / 2, cy + r - 0.5, r, 2.5));
+                continue;
             }
 
             if (_verdicts.TryGetValue(line, out DeclarationVerdict? v))

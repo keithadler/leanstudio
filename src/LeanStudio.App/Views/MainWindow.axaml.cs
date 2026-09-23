@@ -26,10 +26,12 @@ public sealed partial class MainWindow : Window, IDialogs
 
     public MainWindow(Settings settings)
     {
-        AvaloniaXamlLoader.Load(this);
+        InitializeComponent(); // also fills in the fields for named controls (MainGrid, CenterGrid…)
         _vm = new MainViewModel(this, settings);
         DataContext = _vm;
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
+        this.FindControl<CodeView>("CView")!.DataContext = _vm;
+        EditorControl.QuickFixAtLineRequested += line => _ = QuickFixAtLineAsync(line);
         EditorControl.ApplySettings(settings);
         _vm.SelectionProvider = () => EditorControl.TextEditor.SelectedText;
         _vm.InsertRequested += text => EditorControl.InsertAtCaret(text);
@@ -61,6 +63,7 @@ public sealed partial class MainWindow : Window, IDialogs
         };
         Closing += OnClosing;
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
     }
 
     /// <summary>A folder or file given on the command line, opened instead of the last session.</summary>
@@ -144,7 +147,14 @@ public sealed partial class MainWindow : Window, IDialogs
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
             (Key.T, true, false) => () => _ = GoToSymbolAsync(),
             (Key.F, true, true) => () => ShowFindInFiles(),
+            (Key.OemPeriod, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.FixAllInFileCommand.Execute(null),
             (Key.OemPeriod, true, false) => () => _ = QuickFixAsync(),
+            (Key.B, true, true) => () => _ = RunTaskAsync(),
+            (Key.J, true, false) => () => TogglePanel(),
+            (Key.B, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleSidebar(),
+            (Key.I, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleInfo(),
+            (Key.Z, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => Zen(),
+            (Key.Z, false, false) when e.KeyModifiers == KeyModifiers.Alt => () => { _vm.Settings.WordWrap = !_vm.Settings.WordWrap; ApplySettings(); },
             _ => null,
         };
         if (action is not null)
@@ -155,11 +165,162 @@ public sealed partial class MainWindow : Window, IDialogs
     }
 
     private void OnCommandPalette(object? sender, RoutedEventArgs e) => _ = CommandPaletteAsync();
+    private void OnRunTask(object? sender, RoutedEventArgs e) => _ = RunTaskAsync();
+    private void OnRunShell(object? sender, RoutedEventArgs e) => _ = RunShellAsync();
+    private void OnLocalHistory(object? sender, RoutedEventArgs e) => _ = LocalHistoryAsync();
+    private void OnToggleSidebar(object? sender, RoutedEventArgs e) => ToggleSidebar();
+    private void OnTogglePanel(object? sender, RoutedEventArgs e) => TogglePanel();
+    private void OnToggleInfo(object? sender, RoutedEventArgs e) => ToggleInfo();
+    private void OnZen(object? sender, RoutedEventArgs e) => Zen();
+
+    private void OnMarkerTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: MarkerItem m })
+        {
+            _vm.OpenMarkerCommand.Execute(m);
+        }
+    }
+
+    // ---- layout ----
+
+    private GridLength _sidebarWidth = new(300), _infoWidth = new(420), _panelHeight = new(220);
+
+    private static bool Hidden(GridLength g) => g.IsAbsolute && g.Value == 0;
+
+    public void ToggleSidebar() => Toggle(MainGrid.ColumnDefinitions[0], MainGrid.ColumnDefinitions[1], ref _sidebarWidth);
+
+    public void ToggleInfo() => Toggle(MainGrid.ColumnDefinitions[4], MainGrid.ColumnDefinitions[3], ref _infoWidth);
+
+    public void TogglePanel()
+    {
+        RowDefinition row = CenterGrid.RowDefinitions[3], splitter = CenterGrid.RowDefinitions[2];
+        if (Hidden(row.Height))
+        {
+            row.Height = _panelHeight;
+            splitter.Height = new GridLength(4);
+        }
+        else
+        {
+            _panelHeight = row.Height;
+            row.Height = new GridLength(0);
+            splitter.Height = new GridLength(0);
+        }
+    }
+
+    private static void Toggle(ColumnDefinition col, ColumnDefinition splitter, ref GridLength remembered)
+    {
+        if (Hidden(col.Width))
+        {
+            col.Width = remembered;
+            splitter.Width = new GridLength(4);
+        }
+        else
+        {
+            remembered = col.Width;
+            col.Width = new GridLength(0);
+            splitter.Width = new GridLength(0);
+        }
+    }
+
+    /// <summary>Zen mode: only the editor and the goals. Again to bring everything back.</summary>
+    public void Zen()
+    {
+        bool anyVisible = !Hidden(MainGrid.ColumnDefinitions[0].Width) || !Hidden(CenterGrid.RowDefinitions[3].Height);
+        if (anyVisible)
+        {
+            if (!Hidden(MainGrid.ColumnDefinitions[0].Width))
+            {
+                ToggleSidebar();
+            }
+            if (!Hidden(CenterGrid.RowDefinitions[3].Height))
+            {
+                TogglePanel();
+            }
+        }
+        else
+        {
+            ToggleSidebar();
+            TogglePanel();
+        }
+    }
+
+    // ---- tasks and history ----
+
+    private Task RunTaskAsync()
+    {
+        IReadOnlyList<Core.Workflow.ProjectTask> tasks = _vm.Tasks();
+        if (tasks.Count == 0)
+        {
+            _vm.Log("Tasks need a Lake project (a folder with a lakefile).");
+            return Task.CompletedTask;
+        }
+        return Picker.ShowAsync(this, "Run a task", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(tasks, q, t => t.Title).Select(t => new PickerItem(t.Title, t.Detail, () => _vm.RunTaskAsync(t))).ToList()));
+    }
+
+    private async Task RunShellAsync()
+    {
+        if (_vm.Project is null)
+        {
+            return;
+        }
+        string? command = await PromptAsync("Run a shell command", $"In {_vm.Project.Root}:", _vm.Settings.LastShellCommand ?? "");
+        if (!string.IsNullOrWhiteSpace(command))
+        {
+            _vm.Settings.LastShellCommand = command;
+            await _vm.RunTaskAsync(Core.Workflow.ProjectTasks.Shell(command));
+        }
+    }
+
+    private Task LocalHistoryAsync()
+    {
+        IReadOnlyList<Core.Workflow.HistoryEntry> versions = _vm.VersionsOfActive();
+        if (versions.Count == 0)
+        {
+            _vm.Log("No saved versions of this file yet: each save keeps one.");
+            return Task.CompletedTask;
+        }
+        return Picker.ShowAsync(this, "Bring back a saved version (undo with ⌘Z / Ctrl+Z)", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            versions.Where(v => v.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Select(v => new PickerItem(v.Label, $"{new FileInfo(v.SnapshotFile).Length:N0} bytes", () => { _vm.RestoreVersion(v); return Task.CompletedTask; }))
+                .ToList()));
+    }
     private void OnQuickOpen(object? sender, RoutedEventArgs e) => _ = QuickOpenAsync();
     private void OnGoToSymbol(object? sender, RoutedEventArgs e) => _ = GoToSymbolAsync();
     private void OnQuickFix(object? sender, RoutedEventArgs e) => _ = QuickFixAsync();
     private void OnFindInFiles(object? sender, RoutedEventArgs e) => ShowFindInFiles();
     private void OnShowGit(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.GitTab;
+    private void OnShowC(object? sender, RoutedEventArgs e) => _vm.RightTab = MainViewModel.CodeTab;
+
+    private async void OnRenameModule(object? sender, RoutedEventArgs e)
+    {
+        if (_vm.Project is null || _vm.ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string current = Core.Workflow.Refactor.ModuleOf(_vm.Project.Root, d.Path);
+        string? name = await PromptAsync("Rename module", $"New name for {current} (imports of it are updated):", current);
+        if (!string.IsNullOrWhiteSpace(name) && name.Trim() != current && await _vm.RenameModuleAsync(name) is string problem)
+        {
+            await Dialogs.InfoAsync(this, "Rename module", problem);
+        }
+    }
+
+    private async void OnReplaceAll(object? sender, RoutedEventArgs e) =>
+        await _vm.ReplaceInFilesAsync((matches, files) =>
+            ConfirmAsync("Replace in files", $"Replace {matches} match{(matches == 1 ? "" : "es")} of \"{_vm.SearchQuery}\" with \"{_vm.ReplaceWith}\" in {files} file{(files == 1 ? "" : "s")}?\n\nOpen files are changed in the editor, unsaved. Other files are written; File ▸ Local History keeps their previous version."));
+
+    /// <summary>The lightbulb: Lean's fixes for one line, as a menu.</summary>
+    private async Task QuickFixAtLineAsync(int line)
+    {
+        IReadOnlyList<Lsp.CodeAction> actions = await _vm.CodeActionsAtLineAsync(line);
+        if (actions.Count == 0)
+        {
+            return;
+        }
+        await Picker.ShowAsync(this, $"Fixes for line {line + 1}", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(actions, q, a => a.Title).Select(a => new PickerItem(a.Title, a.Kind, () => _vm.ApplyCodeActionAsync(a))).ToList()));
+    }
     private void OnShowLearn(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.LearnTab;
     private void OnInsertSnippet(object? sender, RoutedEventArgs e) => _ = InsertSnippetAsync();
 
@@ -244,6 +405,24 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Update Dependencies", "", Cmd(_vm.UpdateDependenciesCommand));
         yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
         yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
+        yield return ("Lean: Run Task…", m + "⇧B", RunTaskAsync);
+        yield return ("Lean: Fix All in File", m + "⌥.", Cmd(_vm.FixAllInFileCommand));
+        yield return ("Lean: Toggle Applying Suggestions Automatically", "", Act(() => { _vm.Settings.AutoApplyFixes = !_vm.Settings.AutoApplyFixes; ApplySettings(); _vm.Log("Apply suggestions automatically: " + (_vm.Settings.AutoApplyFixes ? "on" : "off")); }));
+        yield return ("Lean: Show Compiled C", "", Act(() => _vm.RightTab = MainViewModel.CodeTab));
+        yield return ("Refactor: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
+        yield return ("Refactor: Rename This Module…", "", Act(() => OnRenameModule(null, new RoutedEventArgs())));
+        yield return ("Refactor: Replace in Files…", "", Act(() => { _vm.ShowSearch(null); }));
+        yield return ("Lean: Run Shell Command…", "", RunShellAsync);
+        yield return ("File: Local History…", "", LocalHistoryAsync);
+        yield return ("File: Toggle Auto Save", "", Act(() => { _vm.Settings.AutoSave = !_vm.Settings.AutoSave; ApplySettings(); _vm.Log("Auto save " + (_vm.Settings.AutoSave ? "on" : "off")); }));
+        yield return ("View: Toggle Sidebar", m + "⌥B", Act(ToggleSidebar));
+        yield return ("View: Toggle Bottom Panel", m + "J", Act(TogglePanel));
+        yield return ("View: Toggle Tactic State", m + "⌥I", Act(ToggleInfo));
+        yield return ("View: Zen Mode", m + "⌥Z", Act(Zen));
+        yield return ("View: Toggle Word Wrap", "⌥Z", Act(() => { _vm.Settings.WordWrap = !_vm.Settings.WordWrap; ApplySettings(); }));
+        yield return ("View: Sorries & TODOs", "", Act(() => { _vm.BottomTab = MainViewModel.MarkersPanel; _ = _vm.RefreshMarkersAsync(); }));
+        yield return ("Library: Search Mathlib with Loogle", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
+        yield return ("Tactic State: Pin the Current Goals", "", Cmd(_vm.Info.PinCommand));
         yield return ("Learn: Start the Lean Tutorial", "", Cmd(_vm.Learn.StartTutorialCommand));
         yield return ("Learn: Open the Playground", "", Cmd(_vm.Learn.OpenPlaygroundCommand));
         yield return ("Learn: Famous Theorems and Symbols", "", Act(() => _vm.SidebarTab = MainViewModel.LearnTab));

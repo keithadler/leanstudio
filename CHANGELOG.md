@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+**Power tools**: the C Lean emits for the definition at the cursor, side by side; hover any subterm of a goal
+for its type, full form and docs; pin goals to compare; lightbulbs where Lean offers fixes, Fix All in File,
+and optional automatic application of a lone Try this.
+
+**Daily work**: a Sorries & TODOs panel for the whole project; build errors from every file in Problems;
+auto-save and local history; search and replace across files with regex groups; rename a module with its
+imports; Loogle search of all of Mathlib and documentation links; line blame in the status bar; tasks (lake
+test, lint, executables, scripts, shell commands); layout toggles, zen mode and word wrap; cursor and file
+restored between sessions.
+
+**Fixes**: the unsaved marker could be wrong after a whole-file change, which disabled blame and misled
+auto-save; restoring a version could not be undone; the release job attached screenshots to releases.
+
 ## 0.2.0
 
 **For newcomers**: a ten-lesson tutorial in the editor with progress; plain-English explanations of tactics,

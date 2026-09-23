@@ -146,3 +146,6 @@ public sealed record InteractiveGoals(IReadOnlyList<InteractiveGoal> Goals)
              .Select(s => s.Reference)
              .OfType<string>();
 }
+
+/// <summary>A subterm of a goal, as Lean describes it: written out in full, its type, and its documentation.</summary>
+public sealed record SubtermInfo(string? Explicit, string? Type, string? Doc);

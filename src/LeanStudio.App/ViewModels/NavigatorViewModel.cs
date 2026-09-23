@@ -42,6 +42,72 @@ public sealed partial class NavigatorViewModel : ObservableObject
     [ObservableProperty]
     private bool _searchEverywhere;
 
+    // ---- Loogle: search all of Mathlib online, by name or by the shape of a type ----
+
+    public ObservableList<Core.Workflow.LoogleHit> LoogleResults { get; } = new();
+
+    [ObservableProperty]
+    private string _loogleQuery = "";
+
+    [ObservableProperty]
+    private string _loogleStatus = "Search all of Mathlib by name, constant or type shape, e.g. Real.sqrt, \"prime\", or _ * (_ ^ _). Online, at loogle.lean-lang.org.";
+
+    [ObservableProperty]
+    private Core.Workflow.LoogleHit? _selectedLoogle;
+
+    /// <summary>Opens a web page (documentation, Loogle).</summary>
+    public event Action<Uri>? OpenUrlRequested;
+
+    [RelayCommand]
+    private async Task SearchLoogleAsync()
+    {
+        string q = LoogleQuery.Trim();
+        if (q.Length == 0)
+        {
+            return;
+        }
+        LoogleStatus = "Searching Loogle…";
+        try
+        {
+            var (hits, error, count) = await new Core.Workflow.Loogle().SearchAsync(q);
+            LoogleResults.Reset(hits);
+            LoogleStatus = error is not null ? "Loogle: " + error.Trim()
+                : hits.Count == 0 ? "No results."
+                : count > hits.Count ? $"Showing {hits.Count} of {count} results." : $"{count} result{(count == 1 ? "" : "s")}.";
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            LoogleStatus = "Could not reach Loogle: " + e.Message;
+        }
+    }
+
+    partial void OnSelectedLoogleChanged(Core.Workflow.LoogleHit? value)
+    {
+        if (value is null)
+        {
+            return;
+        }
+        // Show it here when the project can see it; otherwise its documentation page has everything.
+        if (_workspace() is TenetWorkspace ws && ws.Details(value.Name) is not null)
+        {
+            Query = value.Name;
+            _ = ShowAsync(value.Name);
+        }
+        else
+        {
+            OpenUrlRequested?.Invoke(new Uri(Core.Workflow.DocLinks.For(value.Module, value.Name)));
+        }
+    }
+
+    [RelayCommand]
+    private void OpenDocumentation()
+    {
+        if (Details is { Module.Length: > 0 } d)
+        {
+            OpenUrlRequested?.Invoke(new Uri(Core.Workflow.DocLinks.For(d.Module, d.Name)));
+        }
+    }
+
     /// <summary>Opens a source file at a 1-based line and 0-based column.</summary>
     public event Action<string, int, int>? OpenSourceRequested;
 

@@ -42,6 +42,7 @@ public sealed class LeanEditor : UserControl
     private readonly TextMate.Installation _textMate;
     private readonly Dictionary<DocumentViewModel, Vector> _scroll = new();
     private DocumentViewModel? _current;
+    private bool _switching;
     private int _abbrevStart = -1;
     private CompletionWindow? _completion;
     private CancellationTokenSource? _hoverCts;
@@ -99,12 +100,23 @@ public sealed class LeanEditor : UserControl
 
     public TextEditor TextEditor => _editor;
 
+    /// <summary>The lightbulb was clicked: show Lean's fixes for this (0-based) line.</summary>
+    public event Action<int>? QuickFixAtLineRequested;
+
+    /// <summary>Lines with a message Lean can fix: a "Try this", or a hint marked [apply].</summary>
+    private void UpdateBulbs() =>
+        _margin.SetBulbs(_current is { IsLean: true } d
+            ? d.Diagnostics.Where(x => x.Message.Contains("Try this", StringComparison.Ordinal) || x.Message.Contains("[apply]", StringComparison.Ordinal))
+                .Select(x => x.Range.Start.Line + 1)
+            : []);
+
     public void ApplySettings(Settings s)
     {
         _editor.FontSize = s.EditorFontSize;
         _editor.FontFamily = new FontFamily(s.EditorFontFamily);
         _editor.ShowLineNumbers = s.ShowLineNumbers;
         _inline.Enabled = s.InlineResults;
+        _editor.WordWrap = s.WordWrap;
         _editor.TextArea.TextView.InvalidateLayer(_inline.Layer);
         bool dark = s.Theme != "Light";
         if (dark != _dark)
@@ -184,7 +196,19 @@ public sealed class LeanEditor : UserControl
             return;
         }
         _editor.IsEnabled = true;
-        _editor.Document = doc.Document;
+        // Attaching a document moves the caret to its start; that is not the person moving it, and must not
+        // overwrite the position the document remembers, which is read back just below.
+        (int caretLine, int caretColumn) = (doc.CaretLine, doc.CaretColumn);
+        _switching = true;
+        try
+        {
+            _editor.Document = doc.Document;
+        }
+        finally
+        {
+            _switching = false;
+        }
+        (doc.CaretLine, doc.CaretColumn) = (caretLine, caretColumn);
         _folding = AvaloniaEdit.Folding.FoldingManager.Install(_editor.TextArea);
         try
         {
@@ -202,6 +226,7 @@ public sealed class LeanEditor : UserControl
         _diagnostics.Update(doc.Diagnostics);
         _inline.Update(doc.Diagnostics);
         _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
+        UpdateBulbs();
         _editor.IsReadOnly = doc.IsVirtual;
         ScheduleFolds();
         int offset = Math.Min(doc.Document.TextLength, SafeOffset(doc.Document, doc.CaretLine, doc.CaretColumn));
@@ -226,6 +251,7 @@ public sealed class LeanEditor : UserControl
             case nameof(DocumentViewModel.Diagnostics):
                 _diagnostics.Update(_current.Diagnostics);
                 _inline.Update(_current.Diagnostics);
+                UpdateBulbs();
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
                 break;
             case nameof(DocumentViewModel.Processing):
@@ -265,7 +291,7 @@ public sealed class LeanEditor : UserControl
 
     private void OnCaretMoved()
     {
-        if (_current is null || Main is null)
+        if (_current is null || Main is null || _switching)
         {
             return;
         }
@@ -634,6 +660,11 @@ public sealed class LeanEditor : UserControl
     private void OnMarginPressed(object? sender, PointerPressedEventArgs e)
     {
         TextViewPosition? pos = _editor.TextArea.TextView.GetPositionFloor(new Point(0, e.GetPosition(_editor.TextArea.TextView).Y) + _editor.TextArea.TextView.ScrollOffset);
+        if (pos is TextViewPosition bp && _margin.HasBulb(bp.Line))
+        {
+            QuickFixAtLineRequested?.Invoke(bp.Line - 1);
+            return;
+        }
         if (pos is TextViewPosition p && _margin.VerdictAtLine(p.Line) is DeclarationVerdict v && Main is not null)
         {
             Main.BottomTab = 2;

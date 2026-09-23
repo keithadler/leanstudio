@@ -42,6 +42,8 @@
         <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" />
         <MenuItem Header="Save As…" Command="{Binding SaveAsCommand}" />
         <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+S', macOS='Cmd+Shift+S'}" />
+        <MenuItem Header="Auto Save" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoSave}" Click="OnApplySettings" />
+        <MenuItem Header="Local History…" Click="OnLocalHistory" />
         <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
         <Separator />
         <MenuItem Header="Exit" Click="OnExit" />
@@ -65,6 +67,13 @@
         <MenuItem Header="Larger Font" Click="OnFontBigger" InputGesture="{OnPlatform Default='Ctrl+OemPlus', macOS='Cmd+OemPlus'}" />
         <MenuItem Header="Smaller Font" Click="OnFontSmaller" InputGesture="{OnPlatform Default='Ctrl+OemMinus', macOS='Cmd+OemMinus'}" />
         <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
+        <MenuItem Header="Word Wrap" ToggleType="CheckBox" IsChecked="{Binding Settings.WordWrap}" Click="OnApplySettings" InputGesture="Alt+Z" />
+        <MenuItem Header="Show Who Changed the Current Line" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowBlame}" Click="OnApplySettings" />
+        <Separator />
+        <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
+        <MenuItem Header="Toggle Bottom Panel" Click="OnTogglePanel" InputGesture="{OnPlatform Default='Ctrl+J', macOS='Cmd+J'}" />
+        <MenuItem Header="Toggle Tactic State" Click="OnToggleInfo" InputGesture="{OnPlatform Default='Ctrl+Alt+I', macOS='Cmd+Alt+I'}" />
+        <MenuItem Header="Zen Mode (just the editor and the goals)" Click="OnZen" InputGesture="{OnPlatform Default='Ctrl+Alt+Z', macOS='Cmd+Alt+Z'}" />
       </MenuItem>
       <MenuItem Header="_Go">
         <MenuItem Header="Go to File…" Click="OnQuickOpen" InputGesture="{OnPlatform Default='Ctrl+P', macOS='Cmd+P'}" />
@@ -78,11 +87,17 @@
       <MenuItem Header="_Lean">
         <MenuItem Header="Quick Fix / Try This…" Click="OnQuickFix" InputGesture="{OnPlatform Default='Ctrl+OemPeriod', macOS='Cmd+OemPeriod'}" />
         <MenuItem Header="Rename Symbol…" Command="{Binding RenameSymbolCommand}" InputGesture="F2" />
+        <MenuItem Header="Rename This Module…" Click="OnRenameModule" />
+        <MenuItem Header="Fix All in File" Command="{Binding FixAllInFileCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+OemPeriod', macOS='Cmd+Alt+OemPeriod'}" />
+        <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
+        <MenuItem Header="Show Compiled C" Click="OnShowC" />
         <Separator />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
         <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
         <Separator />
         <MenuItem Header="Build Project" Command="{Binding BuildCommand}" InputGesture="{OnPlatform Default='Ctrl+B', macOS='Cmd+B'}" />
+        <MenuItem Header="Run Task…" Click="OnRunTask" InputGesture="{OnPlatform Default='Ctrl+Shift+B', macOS='Cmd+Shift+B'}" />
+        <MenuItem Header="Run Shell Command…" Click="OnRunShell" />
         <MenuItem Header="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
         <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
         <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
@@ -139,7 +154,11 @@
           <ProgressBar IsIndeterminate="True" Width="80" MinWidth="80" Height="4" VerticalAlignment="Center" />
           <TextBlock Text="{Binding BusyText}" Foreground="White" FontSize="12" />
         </StackPanel>
-        <TextBlock Grid.Column="3" Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        <StackPanel Grid.Column="3" Orientation="Horizontal">
+          <TextBlock Text="{Binding BlameText}" Foreground="White" Opacity="0.75" FontSize="12" Margin="16,0,0,0" MaxWidth="420" TextTrimming="CharacterEllipsis"
+                     ToolTip.Tip="{Binding BlameText}" />
+          <TextBlock Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        </StackPanel>
         <TextBlock Grid.Column="4" Text="⏳ elaborating" Foreground="White" FontSize="12" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}" />
         <StackPanel Grid.Column="5" Orientation="Horizontal">
           <TextBlock Text="{Binding BranchLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" Cursor="Hand" PointerPressed="OnBranchClicked" />
@@ -183,7 +202,7 @@
       </Grid>
     </Border>
 
-    <Grid ColumnDefinitions="300,4,*,4,420">
+    <Grid x:Name="MainGrid" ColumnDefinitions="300,4,*,4,420">
       <!-- Sidebar -->
       <TabControl Grid.Column="0" Classes="panel" SelectedIndex="{Binding SidebarTab}" Padding="0" Background="{DynamicResource PanelBackground}">
         <TabItem Header="Files">
@@ -240,7 +259,7 @@
       <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
 
       <!-- Editor and bottom panel -->
-      <Grid Grid.Column="2" RowDefinitions="Auto,*,4,220">
+      <Grid x:Name="CenterGrid" Grid.Column="2" RowDefinitions="Auto,*,4,220">
         <TabStrip x:Name="DocTabs" Grid.Row="0" Classes="docs" ItemsSource="{Binding Documents}" SelectedItem="{Binding ActiveDocument}">
           <TabStrip.ItemTemplate>
             <DataTemplate x:DataType="vm:DocumentViewModel">
@@ -294,6 +313,28 @@
               </ListBox.ItemTemplate>
             </ListBox>
           </TabItem>
+          <TabItem Header="{Binding MarkersTitle}">
+            <DockPanel Margin="8,4">
+              <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="Every sorry, admit and TODO in the project. Click one: the cursor lands on it and the Tactic State shows what is left to prove."
+                           Classes="dim" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" />
+                <Button Content="Refresh" Command="{Binding RefreshMarkersCommand}" FontSize="11" Padding="8,2" />
+              </StackPanel>
+              <ListBox ItemsSource="{Binding Markers}" Background="Transparent" Margin="0,4,0,0" Tapped="OnMarkerTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:MarkerItem">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Kind}" FontSize="11" Width="42" Classes.warn="{Binding IsSorry}" Classes.dim="{Binding !IsSorry}" />
+                      <TextBlock Text="{Binding File}" FontWeight="SemiBold" FontSize="12" />
+                      <TextBlock Text="{Binding Where}" Classes="dim" FontSize="12" />
+                      <TextBlock Text="{Binding Declaration}" Classes="mono" FontSize="12" Foreground="{DynamicResource GoalAccent}" />
+                      <TextBlock Text="{Binding Text}" Classes="mono dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
+          </TabItem>
           <TabItem Header="Search">
             <DockPanel Margin="8,4">
               <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto">
@@ -301,6 +342,11 @@
                 <CheckBox Grid.Column="1" Content="Aa" IsChecked="{Binding SearchCaseSensitive}" ToolTip.Tip="Match case" Margin="8,0,0,0" />
                 <CheckBox Grid.Column="2" Content=".*" IsChecked="{Binding SearchRegex}" ToolTip.Tip="Regular expression" Margin="4,0,0,0" />
                 <Button Grid.Column="3" Content="Search" Command="{Binding SearchInFilesCommand}" FontSize="12" Padding="10,3" Margin="6,0,0,0" />
+              </Grid>
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                <TextBox Text="{Binding ReplaceWith}" PlaceholderText="Replace with ($1, $2… for regex groups)" FontSize="12" />
+                <Button Grid.Column="1" Content="Replace All…" Click="OnReplaceAll" FontSize="12" Padding="10,3" Margin="6,0,0,0"
+                        ToolTip.Tip="Replace every match in the project; open files are edited in place, unsaved" />
               </Grid>
               <TextBlock DockPanel.Dock="Top" Text="{Binding SearchStatus}" Classes="dim" FontSize="11" Margin="2,4" />
               <ListBox ItemsSource="{Binding SearchResults}" Background="Transparent" DoubleTapped="OnLocationDoubleTapped">
@@ -321,8 +367,18 @@
 
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="Transparent" />
 
-      <!-- Infoview -->
-      <v:InfoView Grid.Column="4" DataContext="{Binding Info}" Background="{DynamicResource PanelBackground}" />
+      <!-- Right column: the goals, or the compiled C of the definition at the cursor -->
+      <TabControl Grid.Column="4" Classes="panel" SelectedIndex="{Binding RightTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+        <TabItem Header="Goals">
+          <v:InfoView DataContext="{Binding Info}" Background="{DynamicResource PanelBackground}" />
+        </TabItem>
+        <TabItem Header="Compiled C" ToolTip.Tip="The C that Lean's compiler emits for the definition at the cursor">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding CStatus}" TextWrapping="Wrap" FontSize="12" Margin="10,8" Classes="dim" />
+            <ed:CodeView x:Name="CView" />
+          </DockPanel>
+        </TabItem>
+      </TabControl>
     </Grid>
   </DockPanel>
 </Window>

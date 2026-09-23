@@ -38,7 +38,7 @@ public sealed record LocationItem(string Path, int Line, int Column, string Prev
 public sealed partial class MainViewModel
 {
     public const int FilesTab = 0, OutlineTab = 1, LibraryTab = 2, GitTab = 3, ToolchainsTab = 4;
-    public const int ProblemsPanel = 0, OutputPanel = 1, TenetPanel = 2, ReferencesPanel = 3, SearchPanel = 4;
+    public const int ProblemsPanel = 0, OutputPanel = 1, TenetPanel = 2, ReferencesPanel = 3, SearchPanel = 5;
 
     public ObservableList<OutlineItem> Outline { get; } = new();
     public ObservableList<LocationItem> References { get; } = new();

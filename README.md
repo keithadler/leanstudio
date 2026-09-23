@@ -109,6 +109,36 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 - **Open on GitHub:** jumps to the current file and line on github.com.
 - **Add Lean CI Workflow:** writes the standard `leanprover/lean-action` workflow, so every push is built.
 
+### See the C, look inside goals
+
+![The Compiled C tab: the C function Lean emits for the definition at the cursor](docs/images/compiled-c.png)
+
+- **Compiled C, side by side.** The Compiled C tab, beside the editor, shows the C that Lean's compiler emits for the definition under the cursor: its function (`Foo.bar` becomes `l_Foo_bar`), its boxed wrapper and any helpers split off it. It follows the cursor, and compiles the text as it is in the editor, saved or not. Theorems say they have no code, since proofs are erased.
+- **Subterms you can inspect.** Move the pointer over a goal and the smallest subterm under it lights up. Rest there, and Lean says what it is: its type, the term written out in full, and its documentation.
+- **Pinned goals.** 📌 keeps a goal state on screen while you work elsewhere, so you can compare.
+
+### Fixes, one at a time or all at once
+
+![Lightbulbs in the gutter where Lean offers fixes](docs/images/lightbulbs.png)
+
+- **Lightbulbs.** A bulb marks each line where Lean offers a fix: a "Try this", or a hint marked [apply], such as an unused `simp` argument. Click it for the fixes.
+- **Fix All in File** (⌘⌥. / Ctrl+Alt+.) applies one fix for every message that has one, as a single undoable edit.
+- **Automatic fixes** (Lean ▸ Apply Lean's Suggestions Automatically) is off by default. When on, it puts the answer in as soon as an `exact?`, `simp?` or `apply?` you wrote finds exactly one.
+
+### Built for daily work
+
+![The Sorries panel, a pinned goal, and who last changed the line](docs/images/workbench.png)
+
+- **Sorries & TODOs.** A panel lists every `sorry`, `admit` and TODO in the project, with its declaration, including files you haven't opened. Click one: the cursor lands on it, and the tactic state shows what's left to prove there.
+- **Whole-project problems.** After a build, errors and warnings from every file appear in Problems, not just from open files.
+- **Auto-save and local history.** With File ▸ Auto Save on, files save a moment after you stop typing and when the window loses focus. Every save keeps a version (the last 40 per file), and File ▸ Local History brings one back as an edit you can undo.
+- **Search and replace across files,** with regex groups (`$1`). Open files are changed in the editor, unsaved, for review; other files keep their previous version in local history.
+- **Refactoring.** Rename a symbol across the project (F2, through Lean). Rename a module, which moves the file and rewrites every `import` of it.
+- **Loogle.** Search all of Mathlib by name or by the shape of a type (`_ * (_ ^ _)`, `|- tsum _ = _`) from the Library tab. The Library also links any declaration to its documentation page.
+- **Blame.** The status bar says who last changed the current line, when, and in which commit.
+- **Tasks.** ⌘⇧B / Ctrl+Shift+B runs `lake build`, `lake test`, `lake lint`, any executable or Lake script; Lean ▸ Run Shell Command runs anything else in the project.
+- **Your layout.** Hide the sidebar (⌘⌥B), the bottom panel (⌘J) or the goals (⌘⌥I), or use zen mode (⌘⌥Z) for just the editor and the goals. There's also word wrap (⌥Z). Each file reopens with the cursor where you left it, and the file you were on comes back when the app starts.
+
 ### Everything else a Lean IDE needs
 
 - **Lean-aware editor**:
@@ -302,6 +332,10 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | Quick fix / Try this | ⌘. | Ctrl+. |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
+| Fix all in file | ⌘⌥. | Ctrl+Alt+. |
+| Run a task | ⌘⇧B | Ctrl+Shift+B |
+| Toggle sidebar / panel / goals | ⌘⌥B / ⌘J / ⌘⌥I | Ctrl+Alt+B / Ctrl+J / Ctrl+Alt+I |
+| Zen mode / word wrap | ⌘⌥Z / ⌥Z | Ctrl+Alt+Z / Alt+Z |
 | Completion | Ctrl+Space | Ctrl+Space |
 | Toggle comment | ⌘/ | Ctrl+/ |
 | Restart Lean | ⌘⇧R | Ctrl+Shift+R |

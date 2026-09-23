@@ -102,6 +102,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: leanstudio-*   # the builds only, not the UI run's screenshots
           merge-multiple: true
       - name: Create the GitHub release
         env:

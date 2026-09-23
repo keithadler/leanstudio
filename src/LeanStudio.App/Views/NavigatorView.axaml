@@ -2,10 +2,29 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LeanStudio.App.ViewModels"
              xmlns:ver="using:LeanStudio.Core.Verification"
+             xmlns:wf="using:LeanStudio.Core.Workflow"
              x:Class="LeanStudio.App.Views.NavigatorView"
              x:DataType="vm:NavigatorViewModel">
   <Grid RowDefinitions="Auto,Auto,*,4,*" Margin="8,6">
-    <TextBox Grid.Row="0" Text="{Binding Query}" PlaceholderText="Search declarations (e.g. Nat.add_comm)" />
+    <StackPanel Grid.Row="0" Spacing="4">
+      <TextBox Text="{Binding Query}" PlaceholderText="Search declarations (e.g. Nat.add_comm)" />
+      <Expander Header="Search all of Mathlib (Loogle)" FontSize="11" Padding="4">
+        <StackPanel Spacing="4">
+          <TextBox Text="{Binding LoogleQuery}" PlaceholderText="Real.sqrt, &quot;prime&quot;, _ * (_ ^ _)" FontSize="12" KeyDown="OnLoogleKey" />
+          <TextBlock Text="{Binding LoogleStatus}" FontSize="10" Classes="dim" TextWrapping="Wrap" />
+          <ListBox ItemsSource="{Binding LoogleResults}" SelectedItem="{Binding SelectedLoogle}" MaxHeight="220" Background="Transparent">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="wf:LoogleHit">
+                <StackPanel ToolTip.Tip="{Binding Type}">
+                  <TextBlock Text="{Binding Name}" Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Type}" Classes="dim mono" FontSize="10" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Expander>
+    </StackPanel>
     <TextBlock Grid.Row="1" Text="{Binding Status}" Classes="dim" FontSize="11" TextWrapping="Wrap" Margin="2,4" />
     <ListBox Grid.Row="2" ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}" Background="Transparent">
       <ListBox.ItemTemplate>
@@ -28,8 +47,12 @@
         </StackPanel>
         <TextBlock Text="{Binding Details.Deprecation, FallbackValue=''}" Foreground="#E59E2C" FontSize="12" TextWrapping="Wrap"
                    IsVisible="{Binding Details.Deprecation, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
-        <Button Content="Open source" Command="{Binding OpenSourceCommand}" FontSize="11" Padding="8,2" Margin="0,4"
-                IsVisible="{Binding Details.SourceFile, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
+        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4">
+          <Button Content="Open source" Command="{Binding OpenSourceCommand}" FontSize="11" Padding="8,2"
+                  IsVisible="{Binding Details.SourceFile, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
+          <Button Content="Documentation" Command="{Binding OpenDocumentationCommand}" FontSize="11" Padding="8,2"
+                  ToolTip.Tip="Its page on the Mathlib documentation site (which covers Lean core and Std too)" />
+        </StackPanel>
 
         <TextBlock Text="TYPE" Classes="panelTitle" />
         <Border Classes="card">

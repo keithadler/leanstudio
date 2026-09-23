@@ -15,12 +15,12 @@ public sealed partial class DocumentViewModel : ObservableObject
         Uri = LeanServer.UriOf(Path);
         Document = new TextDocument(text) { FileName = Path };
         SavedText = text;
-        Document.UndoStack.MarkAsOriginalFile();
-        // The undo stack knows whether the text is back at the saved version, without comparing the whole
-        // file on every keystroke.
+        // Unsaved means "differs from what is on disk". Comparing lengths first makes that nearly free while
+        // typing; the text is compared only when the lengths match. (The undo stack's own notion of this is lost
+        // whenever a document's text is replaced wholesale, so it cannot be relied on.)
         Document.TextChanged += (_, _) =>
         {
-            IsDirty = !Document.UndoStack.IsOriginalFile;
+            IsDirty = Document.TextLength != SavedText.Length || Document.Text != SavedText;
             TextChanged?.Invoke(this);
         };
     }
@@ -94,27 +94,34 @@ public sealed partial class DocumentViewModel : ObservableObject
         string text = Document.Text;
         await File.WriteAllTextAsync(Path, text);
         SavedText = text;
-        Document.UndoStack.MarkAsOriginalFile();
         IsDirty = false;
         OnPropertyChanged(nameof(Title));
     }
 
-    /// <summary>Take text that changed on disk as the new saved version.</summary>
+    /// <summary>Take text that changed on disk as the new saved version, as one undoable edit.</summary>
     public void ReloadFrom(string text)
     {
         SavedText = text;
-        Document.Text = text;
-        Document.UndoStack.MarkAsOriginalFile();
+        ReplaceAll(text);
         IsDirty = false;
         OnPropertyChanged(nameof(Title));
     }
+
+    /// <summary>Replace the whole text as a single edit, so undo brings the old text back.</summary>
+    public void ReplaceAll(string text) => Document.Replace(0, Document.TextLength, text);
 
     public string[] Lines() => Document.Text.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
 }
 
-public sealed record ProblemItem(DocumentViewModel Document, Diagnostic Diagnostic)
+/// <summary>A problem in the list: from Lean's live diagnostics for an open file, or from the last build for any file.</summary>
+public sealed record ProblemItem(DocumentViewModel? Document, string Path, Diagnostic Diagnostic)
 {
-    public string File => System.IO.Path.GetFileName(Document.Path);
+    public ProblemItem(DocumentViewModel document, Diagnostic diagnostic)
+        : this(document, document.Path, diagnostic)
+    {
+    }
+
+    public string File => System.IO.Path.GetFileName(Path);
     public string Location => $"{Diagnostic.Range.Start.Line + 1}:{Diagnostic.Range.Start.Character + 1}";
     public string Message => Diagnostic.Message.Split('\n')[0];
     public string FullMessage => Diagnostic.Message;

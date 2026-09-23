@@ -7,12 +7,18 @@ namespace LeanStudio.App.ViewModels;
 
 public sealed record HypothesisView(string Names, string Type, string? Value, bool IsInserted, bool IsRemoved, bool IsInstance)
 {
+    /// <summary>The type with Lean's subterm structure, for hovering into it.</summary>
+    public TaggedString? Tagged { get; init; }
+
     public string Text => Value is null ? $"{Names} : {Type}" : $"{Names} : {Type} := {Value}";
     public string Marker => IsInserted ? "+" : IsRemoved ? "−" : " ";
 }
 
 public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hypotheses, string Prefix, string Target, bool IsInserted, bool IsRemoved)
 {
+    /// <summary>The target with Lean's subterm structure, for hovering into it.</summary>
+    public TaggedString? TargetTagged { get; init; }
+
     public bool HasCase => CaseName is not null;
     public string CaseLabel => "case " + CaseName;
     public string TargetText => Prefix + Target;
@@ -22,11 +28,12 @@ public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hy
 
     public static GoalView From(InteractiveGoal g) => new(
         g.UserName,
-        g.Hypotheses.Select(h => new HypothesisView(string.Join(' ', h.Names), h.Type.Text, h.Value?.Text, h.IsInserted, h.IsRemoved, h.IsInstance)).ToList(),
+        g.Hypotheses.Select(h => new HypothesisView(string.Join(' ', h.Names), h.Type.Text, h.Value?.Text, h.IsInserted, h.IsRemoved, h.IsInstance) { Tagged = h.Type }).ToList(),
         g.GoalPrefix,
         g.Type.Text,
         g.IsInserted,
-        g.IsRemoved);
+        g.IsRemoved)
+    { TargetTagged = g.Type };
 }
 
 /// <summary>A message at the cursor, with Lean's suggestions ("Try this: …") as actions that can be applied.</summary>
@@ -53,6 +60,9 @@ public sealed partial class MessageView : ObservableObject
     [ObservableProperty]
     private bool _hasSuggestions;
 }
+
+/// <summary>A goal state kept on screen while you work elsewhere, to compare against.</summary>
+public sealed record PinnedGoal(string Where, string Text);
 
 public sealed partial class ProofStepView : ObservableObject
 {
@@ -102,11 +112,65 @@ public sealed partial class ProofStepView : ObservableObject
 public sealed partial class InfoViewModel : ObservableObject
 {
     private CancellationTokenSource? _goalsCts;
+    private (LeanServer Server, string Uri, Position Pos, List<string> Refs)? _held;
+
+    /// <summary>What Lean says about a subterm of the goals on screen (its type, written out, and its docs).</summary>
+    public async Task<SubtermInfo?> InspectAsync(string reference, CancellationToken ct = default)
+    {
+        if (_held is not { } h)
+        {
+            return null;
+        }
+        try
+        {
+            return await h.Server.InspectAsync(h.Uri, h.Pos, reference, ct);
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Hand the previous goals' subterm references back to Lean, as they are no longer shown.</summary>
+    private void ReleaseHeld()
+    {
+        if (_held is { } h && h.Refs.Count > 0)
+        {
+            _ = h.Server.ReleaseAsync(h.Uri, h.Refs);
+        }
+        _held = null;
+    }
     private CancellationTokenSource? _stepsCts;
     private string? _stepsKey;
 
     public ObservableList<GoalView> Goals { get; } = new();
     public ObservableList<MessageView> Messages { get; } = new();
+
+    public ObservableList<PinnedGoal> Pinned { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasPinned;
+
+    /// <summary>Keep the current goals on screen, to compare with the goals after a change.</summary>
+    [RelayCommand]
+    private void Pin()
+    {
+        if (PlainGoals.Length > 0)
+        {
+            Pinned.Add(new PinnedGoal(Position, PlainGoals));
+            HasPinned = true;
+        }
+    }
+
+    [RelayCommand]
+    private void Unpin(PinnedGoal? g)
+    {
+        if (g is not null)
+        {
+            Pinned.Remove(g);
+            HasPinned = Pinned.Count > 0;
+        }
+    }
 
     /// <summary>Raised when the person clicks a suggestion, for the window to apply its edit.</summary>
     public event Action<CodeAction>? ApplyRequested;
@@ -214,13 +278,16 @@ public sealed partial class InfoViewModel : ObservableObject
         Status = doc.IsProcessing ? "Lean is elaborating…" : "";
         try
         {
-            Task<InteractiveGoals> goalsTask = server.InteractiveGoalsAsync(doc.Uri, pos, cts.Token);
+            Task<InteractiveGoals> goalsTask = server.InteractiveGoalsAsync(doc.Uri, pos, cts.Token, keepReferences: true);
             Task<InteractiveGoals> termTask = server.InteractiveTermGoalAsync(doc.Uri, pos, cts.Token);
             InteractiveGoals goals = await goalsTask;
             if (cts.IsCancellationRequested)
             {
+                _ = server.ReleaseAsync(doc.Uri, goals.References().ToList());
                 return;
             }
+            ReleaseHeld();
+            _held = (server, doc.Uri, pos, goals.References().ToList());
             Goals.Reset(goals.Goals.Select(GoalView.From));
             HasGoals = goals.Goals.Count > 0;
             PlainGoals = string.Join("\n\n", goals.Goals.Select(g => g.Render()));

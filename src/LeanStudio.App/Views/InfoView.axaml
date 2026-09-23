@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LeanStudio.App.ViewModels"
              xmlns:lsp="using:LeanStudio.Lsp"
+             xmlns:v="using:LeanStudio.App.Views"
              x:Class="LeanStudio.App.Views.InfoView"
              x:DataType="vm:InfoViewModel">
   <Grid RowDefinitions="Auto,*,4,Auto">
@@ -13,6 +14,8 @@
           <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Content="📌 Pin" Command="{Binding PinCommand}" FontSize="11" Padding="8,2"
+                  ToolTip.Tip="Keep these goals on screen to compare with later ones" />
           <ToggleButton Content="English" IsChecked="{Binding ShowEnglish}" FontSize="11" Padding="8,2"
                         ToolTip.Tip="Read each goal aloud in English under it" />
           <ToggleButton Content="Plain" IsChecked="{Binding PlainText}" FontSize="11" Padding="8,2"
@@ -24,6 +27,24 @@
     <!-- Goals -->
     <ScrollViewer Grid.Row="1" Padding="12,4,12,8">
       <StackPanel>
+        <!-- Pinned goals -->
+        <ItemsControl ItemsSource="{Binding Pinned}" IsVisible="{Binding HasPinned}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:PinnedGoal">
+              <Border Classes="card" BorderThickness="3,0,0,0" BorderBrush="#B48EAD">
+                <StackPanel Spacing="4">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding Where, StringFormat='📌 pinned at {0}'}" FontSize="11" Classes="dim" />
+                    <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Unpin"
+                            Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).UnpinCommand}" CommandParameter="{Binding}" />
+                  </Grid>
+                  <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" FontSize="12" />
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
         <TextBlock Text="{Binding Status}" Classes="dim" Margin="0,6,0,6" TextWrapping="Wrap" />
 
         <!-- Structured goals -->
@@ -44,15 +65,21 @@
                                 Classes.inserted="{Binding IsInserted}" Classes.removed="{Binding IsRemoved}">
                           <Grid ColumnDefinitions="14,*">
                             <TextBlock Text="{Binding Marker}" Classes="mono dim" />
-                            <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" Classes="mono" TextWrapping="Wrap"
-                                                 Classes.struck="{Binding IsRemoved}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                              <TextBlock Text="{Binding Names, StringFormat='{}{0} : '}" Classes="mono" Classes.struck="{Binding IsRemoved}" />
+                              <v:SubtermText Tagged="{Binding Tagged}" Classes="mono" TextWrapping="Wrap" Classes.struck="{Binding IsRemoved}" />
+                            </StackPanel>
                           </Grid>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
                   <Border Padding="4,3,4,1" Margin="0,4,0,0" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-                    <SelectableTextBlock Text="{Binding TargetText}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Text="{Binding Prefix}" Classes="mono" FontWeight="SemiBold" />
+                      <v:SubtermText Tagged="{Binding TargetTagged}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap"
+                                     ToolTip.ShowDelay="0" />
+                    </StackPanel>
                   </Border>
                   <TextBlock Text="{Binding English}" Classes="dim" FontSize="12" FontStyle="Italic" TextWrapping="Wrap" Margin="4,2,4,0"
                              IsVisible="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ShowEnglish}" />
@@ -152,6 +179,10 @@
     </Style>
     <Style Selector="Border.current">
       <Setter Property="Background" Value="{DynamicResource CurrentStepBackground}" />
+    </Style>
+    <Style Selector="TextBlock.struck">
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+      <Setter Property="Opacity" Value="0.7" />
     </Style>
     <Style Selector="SelectableTextBlock.struck">
       <Setter Property="TextDecorations" Value="Strikethrough" />

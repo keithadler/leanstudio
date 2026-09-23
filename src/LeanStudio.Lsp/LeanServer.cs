@@ -580,13 +580,47 @@ public sealed class LeanServer : IAsyncDisposable
         }
     }
 
-    public async Task<InteractiveGoals> InteractiveGoalsAsync(string uri, Position pos, CancellationToken ct = default)
+    /// <summary>
+    /// The goals at a position. With <paramref name="keepReferences"/>, the subterm references in them stay valid
+    /// for <see cref="InspectAsync"/> until handed back with <see cref="ReleaseAsync"/>.
+    /// </summary>
+    public async Task<InteractiveGoals> InteractiveGoalsAsync(string uri, Position pos, CancellationToken ct = default, bool keepReferences = false)
     {
         var p = At(uri, pos);
         JsonElement r = await RpcCallAsync(uri, pos, "Lean.Widget.getInteractiveGoals", p, ct).ConfigureAwait(false);
         InteractiveGoals goals = InteractiveGoals.Parse(r);
-        await ReleaseAsync(uri, goals.References().ToList()).ConfigureAwait(false);
+        if (!keepReferences)
+        {
+            await ReleaseAsync(uri, goals.References().ToList()).ConfigureAwait(false);
+        }
         return goals;
+    }
+
+    /// <summary>
+    /// What Lean knows about a subterm of a goal (from its reference): the term written out in full, its type,
+    /// and the documentation of its head constant.
+    /// </summary>
+    public async Task<SubtermInfo?> InspectAsync(string uri, Position pos, string reference, CancellationToken ct = default)
+    {
+        JsonElement r = await RpcCallAsync(uri, pos, "Lean.Widget.InteractiveDiagnostics.infoToInteractive", new JsonObject { ["p"] = reference }, ct).ConfigureAwait(false);
+        if (r.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        var info = new SubtermInfo(
+            r.TryGetProperty("exprExplicit", out JsonElement e) ? TaggedString.Parse(e).Text : null,
+            r.TryGetProperty("type", out JsonElement t) ? TaggedString.Parse(t).Text : null,
+            r.TryGetProperty("doc", out JsonElement d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null);
+        var refs = new List<string>();
+        foreach (string name in new[] { "exprExplicit", "type" })
+        {
+            if (r.TryGetProperty(name, out JsonElement x))
+            {
+                refs.AddRange(TaggedString.Parse(x).Spans.Select(s => s.Reference).OfType<string>());
+            }
+        }
+        await ReleaseAsync(uri, refs).ConfigureAwait(false);
+        return info;
     }
 
     public async Task<InteractiveGoals> InteractiveTermGoalAsync(string uri, Position pos, CancellationToken ct = default)
@@ -604,7 +638,7 @@ public sealed class LeanServer : IAsyncDisposable
         return goals;
     }
 
-    private async Task ReleaseAsync(string uri, List<string> refs)
+    public async Task ReleaseAsync(string uri, List<string> refs)
     {
         if (refs.Count == 0 || !_sessions.TryGetValue(uri, out Task<string>? s) || !s.IsCompletedSuccessfully)
         {
