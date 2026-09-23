@@ -109,7 +109,20 @@
       <MenuItem Header="_AI">
         <MenuItem Header="Connect an AI Assistant…" Click="OnConnectAssistant" />
       </MenuItem>
+      <MenuItem Header="L_earn">
+        <MenuItem Header="Start the Lean Tutorial" Command="{Binding Learn.StartTutorialCommand}" />
+        <MenuItem Header="Open the Playground" Command="{Binding Learn.OpenPlaygroundCommand}" />
+        <MenuItem Header="Famous Theorems and Symbols" Click="OnShowLearn" />
+        <MenuItem Header="Insert a Snippet…" Click="OnInsertSnippet" />
+        <Separator />
+        <MenuItem Header="Show Goals in Plain English" ToggleType="CheckBox" IsChecked="{Binding Info.ShowEnglish}" />
+        <MenuItem Header="Explain Lean's Messages" ToggleType="CheckBox" IsChecked="{Binding Settings.ExplainErrors}" Click="OnApplySettings" />
+        <MenuItem Header="Show #eval Results at the End of the Line" ToggleType="CheckBox" IsChecked="{Binding Settings.InlineResults}" Click="OnApplySettings" />
+      </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="Check for Updates…" Command="{Binding CheckForUpdatesNowCommand}" />
+        <MenuItem Header="Check for Updates Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.CheckForUpdates}" Click="OnApplySettings" />
+        <Separator />
         <MenuItem Header="Keyboard Shortcuts" Click="OnShortcuts" />
         <MenuItem Header="Keith Adler (@keithadler) on X" Click="OnAuthor" />
         <Separator />
@@ -143,12 +156,31 @@
         <Button Classes="tool" Content="Open Folder" Command="{Binding OpenFolderCommand}" />
         <Button Classes="tool" Content="Save" Command="{Binding SaveCommand}" />
         <Separator Width="1" Height="18" Margin="4,0" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-        <Button Classes="tool" Content="▶ Build" Command="{Binding BuildCommand}" ToolTip.Tip="lake build" />
+        <Button Classes="tool" Content="▶ Run" Command="{Binding RunProgramCommand}" IsVisible="{Binding CanRun}"
+                ToolTip.Tip="Run this file's main function; the output appears in Output" />
+        <Button Classes="tool" Content="⚙ Build" Command="{Binding BuildCommand}" ToolTip.Tip="lake build" />
         <Button Classes="tool" Content="✓ Verify with Tenet" Command="{Binding VerifyCommand}" ToolTip.Tip="Re-check every declaration Lean built with Tenet's independent kernel" />
         <Button Classes="tool" Content="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
         <Button Classes="tool" Content="⟳ Restart Lean" Command="{Binding RestartServerCommand}" />
         <Button Classes="tool" Content="■ Cancel" Command="{Binding CancelTaskCommand}" IsVisible="{Binding IsBusy}" />
       </StackPanel>
+    </Border>
+
+    <!-- Update available -->
+    <Border DockPanel.Dock="Top" IsVisible="{Binding HasUpdate}" Background="{DynamicResource CurrentStepBackground}" Padding="12,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <TextBlock Text="⬆" FontSize="14" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding UpdateText}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          <ProgressBar Value="{Binding UpdateProgress}" Maximum="100" Width="120" MinWidth="120" IsVisible="{Binding IsDownloadingUpdate}" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+          <Button Content="Download" Classes="accent" Command="{Binding DownloadUpdateCommand}" FontSize="12" Padding="10,3" />
+          <Button Content="What's new" Command="{Binding OpenReleaseNotesCommand}" FontSize="12" Padding="10,3" />
+          <Button Content="Skip this version" Command="{Binding SkipUpdateCommand}" FontSize="12" Padding="10,3" />
+          <Button Classes="flat" Content="×" Command="{Binding DismissUpdateCommand}" FontSize="14" />
+        </StackPanel>
+      </Grid>
     </Border>
 
     <Grid ColumnDefinitions="300,4,*,4,420">
@@ -184,6 +216,8 @@
                   <TextBlock Text="{Binding Icon}" Width="16" FontSize="12" Foreground="{DynamicResource GoalAccent}" />
                   <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Kind}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Status}" FontSize="12" Classes.ok="{Binding IsProved}" Classes.warn="{Binding IsIncomplete}" Classes.bad="{Binding IsBroken}"
+                             ToolTip.Tip="✓ Lean accepts it   ◐ uses sorry   ✗ has an error" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -197,6 +231,9 @@
         </TabItem>
         <TabItem Header="Lean" ToolTip.Tip="Lean toolchains">
           <v:ToolchainsView DataContext="{Binding Toolchains}" />
+        </TabItem>
+        <TabItem Header="Learn" ToolTip.Tip="Tutorial, playground, famous theorems and symbols">
+          <v:LearnView DataContext="{Binding Learn}" />
         </TabItem>
       </TabControl>
 

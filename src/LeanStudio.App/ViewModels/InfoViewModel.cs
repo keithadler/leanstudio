@@ -17,6 +17,9 @@ public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hy
     public string CaseLabel => "case " + CaseName;
     public string TargetText => Prefix + Target;
 
+    /// <summary>The goal read aloud, for someone who does not read Lean yet.</summary>
+    public string English => "In words: " + Core.Learn.PlainEnglish.Read(Target);
+
     public static GoalView From(InteractiveGoal g) => new(
         g.UserName,
         g.Hypotheses.Select(h => new HypothesisView(string.Join(' ', h.Names), h.Type.Text, h.Value?.Text, h.IsInserted, h.IsRemoved, h.IsInstance)).ToList(),
@@ -42,6 +45,11 @@ public sealed partial class MessageView : ObservableObject
 
     public ObservableList<CodeAction> Suggestions { get; } = new();
 
+    /// <summary>What the message means, in plain words, when there is a known explanation.</summary>
+    public string? Explanation { get; init; }
+
+    public bool HasExplanation => Explanation is not null;
+
     [ObservableProperty]
     private bool _hasSuggestions;
 }
@@ -59,6 +67,11 @@ public sealed partial class ProofStepView : ObservableObject
     public string Number => (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
     public string Text => Step.Text;
     public int Line => Step.Line;
+
+    /// <summary>What the step's tactic does, for the tooltip.</summary>
+    public string? Explanation => Core.Learn.TacticGuide.TacticOf(Step.Text) is string t && Core.Learn.TacticGuide.Explain(t) is { } e
+        ? $"{e.Name}: {e.Explanation}"
+        : null;
 
     [ObservableProperty]
     private string _summary = "…";
@@ -142,6 +155,13 @@ public sealed partial class InfoViewModel : ObservableObject
     [ObservableProperty]
     private string _plainGoals = "";
 
+    /// <summary>Show each goal read aloud in English under it.</summary>
+    [ObservableProperty]
+    private bool _showEnglish = true;
+
+    /// <summary>Explain messages in plain words.</summary>
+    public bool ExplainErrors { get; set; } = true;
+
     public event Action<int, int>? NavigateRequested;
 
     [RelayCommand]
@@ -180,7 +200,7 @@ public sealed partial class InfoViewModel : ObservableObject
         // Messages on this line need no round trip.
         var msgs = doc.Diagnostics
             .Where(d => d.Extent.Start.Line <= pos.Line && pos.Line <= d.Extent.End.Line)
-            .Select(d => new MessageView(d))
+            .Select(d => new MessageView(d) { Explanation = ExplainErrors ? Core.Learn.ErrorGuide.Explain(d.Message) : null })
             .ToList();
         Messages.Reset(msgs);
         HasMessages = msgs.Count > 0;

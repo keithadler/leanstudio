@@ -20,7 +20,14 @@ public sealed class OutputView : UserControl
     };
     private MainViewModel? _vm;
 
-    public OutputView() => Content = _editor;
+    public OutputView()
+    {
+        // Follow the app's theme: the editor's own default is black text, unreadable on the dark theme.
+        _editor.Bind(TextEditor.ForegroundProperty, _editor.GetResourceObservable("SystemControlForegroundBaseHighBrush"));
+        _editor.Background = Brushes.Transparent;
+        _editor.Options.AllowScrollBelowDocument = false;
+        Content = _editor;
+    }
 
     protected override void OnDataContextChanged(EventArgs e)
     {
@@ -37,5 +44,7 @@ public sealed class OutputView : UserControl
         }
     }
 
-    private void ScrollToEnd() => _editor.ScrollToEnd();
+    /// <summary>Keep the newest output in view: the last line at the bottom, after layout has caught up.</summary>
+    private void ScrollToEnd() =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => _editor.ScrollToLine(Math.Max(1, _editor.Document.LineCount - 1)), Avalonia.Threading.DispatcherPriority.Background);
 }

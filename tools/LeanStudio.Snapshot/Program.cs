@@ -20,6 +20,8 @@ string settingsDir = Path.Combine(Path.GetTempPath(), "leanstudio-snapshot-" + E
 Environment.SetEnvironmentVariable("LEANSTUDIO_SETTINGS_DIR", settingsDir);
 // Its own bridge pipe, so a Lean Studio the person has open is left alone.
 Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", "leanstudio-snapshot-" + Environment.ProcessId);
+// The tutorial and playground go in a temporary folder, not the person's Documents.
+Environment.SetEnvironmentVariable("LEANSTUDIO_HOME", Path.Combine(settingsDir, "home"));
 
 AppBuilder.Configure<App>()
     .UseSkia()
@@ -247,6 +249,50 @@ internal static class Scenario
         Check(vm.BranchLabel.StartsWith("⎇", StringComparison.Ordinal), "the status bar shows the branch");
         Check(vm.SourceControl.GitHubRepository == "keithadler/leanstudio" || vm.SourceControl.GitHubRepository is null, "and recognises a GitHub remote when there is one");
         Snap(window, outDir, "08-git");
+
+        Console.WriteLine("for newcomers");
+        vm.ActiveDocument = doc;
+        Check(await WaitFor(() => vm.Outline.Any(o => o.Name == "and_swap" && o.Status == "✓") && vm.Outline.Any(o => o.Name == "unfinished" && o.Status == "◐"), 20),
+            "the outline marks proved theorems ✓ and unfinished ones ◐");
+        doc.Reveal(8, 2); // inside and_swap
+        Check(await WaitFor(() => vm.Info.Goals.Any(g => g.English.StartsWith("In words:", StringComparison.Ordinal)), 20), "goals are read in plain English");
+        Console.WriteLine("    " + vm.Info.Goals.First().English);
+
+        vm.SidebarTab = MainViewModel.LearnTab;
+        await vm.Learn.StartTutorialCommand.ExecuteAsync(null);
+        DocumentViewModel? lesson = vm.ActiveDocument;
+        Check(lesson?.Path.EndsWith("01_Hello.lean", StringComparison.Ordinal) == true, "the tutorial opens lesson 1");
+        Check(await WaitFor(() => lesson!.Diagnostics.Any(d => d.Message.Contains("sorry", StringComparison.Ordinal)) && !lesson.IsProcessing, 90), "the lesson's exercises show as unfinished");
+        Check(lesson!.Diagnostics.Any(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Information && d.Message.Trim() == "4"), "#eval 2 + 2 gives 4 (shown at the end of its line)");
+        MessageView? explained = null;
+        lesson.Reveal(lesson.Document.Text.Split('\n').ToList().FindIndex(l => l.StartsWith("def addOne", StringComparison.Ordinal)), 5);
+        Check(await WaitFor(() => (explained = vm.Info.Messages.FirstOrDefault(m => m.HasExplanation)) is not null, 20), "the sorry warning is explained in plain words");
+        Snap(window, outDir, "09-tutorial");
+        lesson.Document.Text = LeanStudio.Core.Learn.Tutorial.Solved(LeanStudio.Core.Learn.Tutorial.Lessons[0]);
+        Check(await WaitFor(() => vm.Learn.Lessons[0].Done, 90), "solving it ticks lesson 1 off");
+        Check(vm.Learn.Progress.StartsWith("1 of 10", StringComparison.Ordinal), $"and the progress says so ({vm.Learn.Progress})");
+        await lesson.SaveAsync();
+
+        await vm.Learn.OpenPlaygroundCommand.ExecuteAsync(null);
+        DocumentViewModel? play = vm.ActiveDocument;
+        Check(play?.Path.EndsWith("Playground.lean", StringComparison.Ordinal) == true, "the playground opens");
+        vm.Learn.InsertSymbolCommand.Execute(vm.Learn.SymbolGroups[0].Symbols[0]);
+        Check(play!.Document.Text.Contains('∀', StringComparison.Ordinal), "a click in the symbol palette inserts ∀");
+        play.Document.Text = play.Document.Text.Replace("∀", "", StringComparison.Ordinal);
+        window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!.InsertSnippet(LeanStudio.Core.Learn.Snippets.All.Single(s => s.Name == "Program with main"));
+        await play.SaveAsync();
+        Check(await WaitFor(() => vm.CanRun, 10), "a file with main gets a Run button");
+        await vm.RunProgramCommand.ExecuteAsync(null);
+        Check(vm.Output.Text.Contains("Hello from Lean!", StringComparison.Ordinal), "▶ Run shows the program's output");
+        vm.Learn.SelectedTheorem = vm.Learn.Theorems.First(t => t.LeanName == "Nat.add_comm");
+        await vm.Learn.TryTheoremCommand.ExecuteAsync(null);
+        Check(play.Document.Text.Contains("#print axioms Nat.add_comm", StringComparison.Ordinal), "a famous theorem lands in the open playground");
+        Check(await WaitFor(() => play.Diagnostics.Any(d => d.Message.Contains("'Nat.add_comm' depends on axioms", StringComparison.Ordinal)
+            || d.Message.Contains("'Nat.add_comm' does not depend on any axioms", StringComparison.Ordinal)), 60), "and Lean shows its statement and what it rests on");
+        vm.BottomTab = MainViewModel.OutputPanel;
+        await Task.Delay(300);
+        Check(((TextEditor)window.FindControl<LeanStudio.App.Editor.OutputView>("OutputView")!.Content!).TextArea.TextView.VisualLines.Count > 3, "the Output panel shows its latest lines");
+        Snap(window, outDir, "10-playground");
 
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();

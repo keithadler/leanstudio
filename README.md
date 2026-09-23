@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#new-to-lean">New to Lean?</a> ·
   <a href="#features">Features</a> ·
   <a href="#use-it-with-ai-assistants">AI assistants</a> ·
   <a href="#how-it-works">How it works</a> ·
@@ -22,6 +23,27 @@
 ![Lean Studio: the editor, the tactic state with the hypotheses in scope, and the proof's steps](docs/images/tactic-state.png)
 
 Lean Studio is a native desktop app built only for Lean. It is not a plugin or a web view inside another editor. The tactic state gets a full panel. Every tactic in a proof is listed with what it changed. Each declaration you build gets a second, independent check from [Tenet](https://github.com/keithadler/tenet), a separate implementation of Lean's kernel.
+
+## New to Lean?
+
+Lean Studio is built to be the place to start, whether you're curious about theorems or you write code:
+
+![Lesson 1 of the tutorial, with the sorry explained in plain words](docs/images/tutorial.png)
+
+1. **A tutorial inside the editor.** Ten short lessons, in Lean files, from `#eval 2 + 2` to proofs by induction and proving your own programs correct. Each ends in exercises (`sorry`s to replace), and the Learn tab ticks a lesson off when Lean accepts it. Every exercise is checked against real Lean by the tests, so none is impossible.
+2. **Every tactic and keyword explained.** Hover `intro`, `simp`, `omega` or `theorem` for what it does, in plain words, with an example. The Proof Steps list explains each step's tactic too.
+3. **Errors in plain words.** Under Lean's message, "What this means" gives the gist of "unsolved goals", "type mismatch", "unknown identifier" and more than twenty others, and what to try.
+4. **Goals read aloud.** Under each goal: "In words: For all propositions p and q: if p and q, then q and p."
+5. **A playground.** One click opens a Lean file to experiment in, with no project to set up.
+6. **Famous theorems.** Addition is commutative, reversing a list twice, the law of excluded middle, and, with Mathlib, infinitely many primes and √2 is irrational. Each comes with a plain English statement, and "Try it in Lean" shows its exact statement and the axioms it rests on.
+7. **Results inline.** `#eval`, `#check` and `#print` results appear at the end of their line, like a notebook.
+8. **▶ Run.** A file with a `main` gets a Run button; the program's output shows in Output.
+9. **Snippets.** Insert a function, a structure, a pattern match, a proof by induction, a `calc` chain or a program's `main`, indented and ready to fill in.
+10. **A symbol palette.** Click ∀ ∃ → ℕ ⟨⟩ and the rest to insert them, and see how to type each one. Hover any symbol in your code for the same.
+
+The Outline also shows, live, which theorems Lean accepts (✓), which still use `sorry` (◐) and which have errors (✗).
+
+![The playground: results at the end of each line, a program run, and a famous theorem added](docs/images/playground.png)
 
 ## Features
 
@@ -183,7 +205,7 @@ Download builds from the [Releases](../../releases) page:
 | Windows (x64 / ARM64) | `LeanStudio-<version>-win-x64.zip` / `-win-arm64.zip`: run `LeanStudio.exe` |
 | Linux (x64 / ARM64) | `LeanStudio-<version>-linux-x64.tar.gz` / `-linux-arm64.tar.gz`: run `LeanStudio` |
 
-The builds are self-contained, so nothing else needs installing. They aren't code-signed yet:
+The builds are self-contained, so nothing else needs installing. Lean Studio checks GitHub for a newer release once a day and offers to download it (Help ▸ Check for Updates…; you can turn the automatic check off there). They aren't code-signed yet:
 
 - **macOS**: right-click the app and choose **Open** the first time.
 - **Windows**: choose **More info → Run anyway** in SmartScreen.
@@ -279,6 +301,7 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | Find in files | ⌘⇧F | Ctrl+Shift+F |
 | Quick fix / Try this | ⌘. | Ctrl+. |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
+| Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
 | Completion | Ctrl+Space | Ctrl+Space |
 | Toggle comment | ⌘/ | Ctrl+/ |
 | Restart Lean | ⌘⇧R | Ctrl+Shift+R |
@@ -288,7 +311,7 @@ This drives the **whole app** without a display, against a live Lean server. It 
 
 ## Status
 
-Lean Studio is at **0.1**, the first release. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.2**. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - Goals are shown as text. You can't yet hover a subterm inside a goal to see its type.
 - ProofWidgets and other user widgets aren't rendered.

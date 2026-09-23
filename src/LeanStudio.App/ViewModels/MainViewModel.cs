@@ -22,6 +22,8 @@ public interface IDialogs
     Task<string?> PromptAsync(string title, string message, string initial);
     Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent);
     Task LaunchAsync(Uri uri);
+    /// <summary>Show a file in the system's file manager (or open it, where revealing is not possible).</summary>
+    Task RevealAsync(string path);
 }
 
 /// <summary>
@@ -50,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Toolchains = new ToolchainsViewModel(() => Project, Log, RestartServerAsync);
         Verification = new VerificationViewModel();
         InitFeatures();
+        InitLearn();
     }
 
     public Settings Settings { get; }
@@ -114,6 +117,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             CaretMoved(value, value.CaretLine, value.CaretColumn);
         }
         ScheduleOutline();
+        UpdateCanRun();
     }
 
     // ---- logging ----
@@ -459,6 +463,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         d.Diagnostics = diags;
         UpdateProblems();
+        if (!d.IsProcessing)
+        {
+            Learn.FileChecked(d);
+        }
     }
 
     private void OnProgress(string uri, IReadOnlyList<LeanFileProgressRange> ranges)
@@ -470,11 +478,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         bool wasProcessing = d.IsProcessing;
         d.Processing = ranges;
+        if (wasProcessing && !d.IsProcessing)
+        {
+            // Diagnostics for the finished text trail the progress report slightly.
+            DispatcherTimer.RunOnce(() => Learn.FileChecked(d), TimeSpan.FromMilliseconds(400));
+        }
         if (d == ActiveDocument && wasProcessing && !d.IsProcessing)
         {
             Info.InvalidateSteps();
             CaretMoved(d, d.CaretLine, d.CaretColumn);
             ScheduleOutline();
+            UpdateCanRun();
         }
     }
 

@@ -12,8 +12,12 @@
           <TextBlock Text="Tactic State" FontWeight="SemiBold" FontSize="14" />
           <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
         </StackPanel>
-        <ToggleButton Grid.Column="1" Content="Plain" IsChecked="{Binding PlainText}" FontSize="11" Padding="8,2" VerticalAlignment="Center"
-                      ToolTip.Tip="Show the goals as the plain text Lean prints" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <ToggleButton Content="English" IsChecked="{Binding ShowEnglish}" FontSize="11" Padding="8,2"
+                        ToolTip.Tip="Read each goal aloud in English under it" />
+          <ToggleButton Content="Plain" IsChecked="{Binding PlainText}" FontSize="11" Padding="8,2"
+                        ToolTip.Tip="Show the goals as the plain text Lean prints" />
+        </StackPanel>
       </Grid>
     </Border>
 
@@ -50,6 +54,8 @@
                   <Border Padding="4,3,4,1" Margin="0,4,0,0" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
                     <SelectableTextBlock Text="{Binding TargetText}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap" />
                   </Border>
+                  <TextBlock Text="{Binding English}" Classes="dim" FontSize="12" FontStyle="Italic" TextWrapping="Wrap" Margin="4,2,4,0"
+                             IsVisible="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ShowEnglish}" />
                 </StackPanel>
               </Border>
             </DataTemplate>
@@ -76,6 +82,8 @@
                 <Border Classes="card">
                   <StackPanel Spacing="6">
                     <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Explanation}" IsVisible="{Binding HasExplanation}" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource GoalAccent}" />
                     <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="lsp:CodeAction">
@@ -107,7 +115,7 @@
         <ListBox ItemsSource="{Binding Steps}" Background="Transparent" x:Name="StepList" SelectionMode="Single" Tapped="OnStepTapped">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:ProofStepView">
-              <Border Padding="4,2" CornerRadius="3" Classes.current="{Binding IsCurrent}">
+              <Border Padding="4,2" CornerRadius="3" Classes.current="{Binding IsCurrent}" ToolTip.Tip="{Binding Explanation}">
                 <Grid ColumnDefinitions="24,*,Auto" RowDefinitions="Auto,Auto">
                   <TextBlock Text="{Binding Number}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="mono" TextTrimming="CharacterEllipsis" />

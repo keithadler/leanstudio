@@ -10,6 +10,9 @@
     <Setter Property="FontFamily" Value="JuliaMono, Cascadia Code, SF Mono, Menlo, Consolas, DejaVu Sans Mono, Noto Sans Mono, monospace" />
     <Setter Property="FontSize" Value="13" />
   </Style>
+  <Style Selector="TextBlock.ok"><Setter Property="Foreground" Value="#3FB950" /></Style>
+  <Style Selector="TextBlock.warn"><Setter Property="Foreground" Value="#E59E2C" /></Style>
+  <Style Selector="TextBlock.bad"><Setter Property="Foreground" Value="#F14C4C" /></Style>
   <Style Selector="TextBlock.dim">
     <Setter Property="Opacity" Value="0.65" />
   </Style>
@@ -22,7 +25,7 @@
   <Style Selector="TabControl.panel TabItem">
     <Setter Property="FontSize" Value="12" />
     <Setter Property="MinHeight" Value="30" />
-    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Padding" Value="7,0" />
   </Style>
   <Style Selector="TabStrip.docs TabStripItem">
     <Setter Property="FontSize" Value="12" />

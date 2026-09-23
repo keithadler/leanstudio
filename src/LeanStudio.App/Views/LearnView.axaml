@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             xmlns:learn="using:LeanStudio.Core.Learn"
+             x:Class="LeanStudio.App.Views.LearnView"
+             x:DataType="vm:LearnViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="10,8" Spacing="6">
+      <!-- Start here -->
+      <Border Classes="card">
+        <StackPanel Spacing="6">
+          <TextBlock Text="New to Lean?" FontWeight="SemiBold" FontSize="14" />
+          <TextBlock Text="{Binding Progress}" FontSize="12" TextWrapping="Wrap" Classes="dim" />
+          <WrapPanel>
+            <Button Content="Start the tutorial" Command="{Binding StartTutorialCommand}" Classes="accent" FontSize="12" Padding="10,4" Margin="0,0,6,6" />
+            <Button Content="Open the playground" Command="{Binding OpenPlaygroundCommand}" FontSize="12" Padding="10,4" Margin="0,0,6,6"
+                    ToolTip.Tip="A Lean file to experiment in, no project needed" />
+          </WrapPanel>
+          <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource GoalAccent}"
+                     IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Lessons -->
+      <TextBlock Text="LESSONS" Classes="panelTitle" />
+      <ItemsControl ItemsSource="{Binding Lessons}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:LessonView">
+            <Grid ColumnDefinitions="20,*,Auto" Margin="0,2" ToolTip.Tip="{Binding Summary}">
+              <TextBlock Text="{Binding Mark}" FontSize="13" Classes.done="{Binding Done}" VerticalAlignment="Top" />
+              <Button Grid.Column="1" Classes="flat" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="0"
+                      Command="{Binding $parent[UserControl].((vm:LearnViewModel)DataContext).OpenLessonCommand}" CommandParameter="{Binding}">
+                <StackPanel>
+                  <TextBlock Text="{Binding Title}" FontSize="12" TextWrapping="Wrap" />
+                  <TextBlock Text="{Binding ExerciseLabel}" FontSize="10" Classes="dim" />
+                </StackPanel>
+              </Button>
+              <Button Grid.Column="2" Classes="flat" Content="↺" FontSize="11" ToolTip.Tip="Start this lesson over"
+                      Command="{Binding $parent[UserControl].((vm:LearnViewModel)DataContext).ResetLessonCommand}" CommandParameter="{Binding}" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <!-- Famous theorems -->
+      <TextBlock Text="FAMOUS THEOREMS" Classes="panelTitle" />
+      <ListBox ItemsSource="{Binding Theorems}" SelectedItem="{Binding SelectedTheorem}" Background="Transparent" MaxHeight="230">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="learn:FamousTheorem">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="{Binding Title}" FontSize="12" />
+              <TextBlock Text="Mathlib" FontSize="9" Classes="dim" VerticalAlignment="Center" IsVisible="{Binding NeedsMathlib}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <Border Classes="card" IsVisible="{Binding HasSelectedTheorem}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding SelectedTheorem.English, FallbackValue=''}" TextWrapping="Wrap" FontSize="12" />
+          <TextBlock Text="{Binding SelectedTheorem.Story, FallbackValue=''}" TextWrapping="Wrap" FontSize="11" Classes="dim"
+                     IsVisible="{Binding SelectedTheorem.Story, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
+          <SelectableTextBlock Text="{Binding SelectedTheorem.LeanName, FallbackValue=''}" Classes="mono" FontSize="11" />
+          <Button Content="Try it in Lean" Command="{Binding TryTheoremCommand}" FontSize="12" Padding="10,3" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <!-- Symbols -->
+      <TextBlock Text="SYMBOLS (click to insert)" Classes="panelTitle" />
+      <ItemsControl ItemsSource="{Binding SymbolGroups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:SymbolGroup">
+            <StackPanel Margin="0,0,0,4">
+              <TextBlock Text="{Binding Title}" FontSize="10" Classes="dim" />
+              <ItemsControl ItemsSource="{Binding Symbols}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SymbolButton">
+                    <Button MinWidth="30" Padding="4,2" Margin="0,0,3,3" FontSize="15" ToolTip.Tip="{Binding Tip}"
+                            Command="{Binding $parent[UserControl].((vm:LearnViewModel)DataContext).InsertSymbolCommand}" CommandParameter="{Binding}">
+                      <TextBlock Text="{Binding Symbol}" HorizontalAlignment="Center" />
+                    </Button>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Text="Hover a symbol for how to type it; you can also hover any symbol in your code." FontSize="10" Classes="dim" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+  <UserControl.Styles>
+    <Style Selector="TextBlock.done">
+      <Setter Property="Foreground" Value="#3FB950" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

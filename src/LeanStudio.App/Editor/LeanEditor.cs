@@ -36,6 +36,7 @@ public sealed class LeanEditor : UserControl
     private readonly DiagnosticRenderer _diagnostics = new();
     private readonly StatusMargin _margin = new();
     private readonly BracketHighlighter _brackets = new();
+    private readonly InlineResults _inline = new();
     private AvaloniaEdit.Folding.FoldingManager? _folding;
     private CancellationTokenSource? _foldCts;
     private readonly TextMate.Installation _textMate;
@@ -66,6 +67,7 @@ public sealed class LeanEditor : UserControl
         _editor.Options.AllowScrollBelowDocument = true;
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnostics);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_brackets);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_inline);
         _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
         _textMate = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
@@ -102,6 +104,8 @@ public sealed class LeanEditor : UserControl
         _editor.FontSize = s.EditorFontSize;
         _editor.FontFamily = new FontFamily(s.EditorFontFamily);
         _editor.ShowLineNumbers = s.ShowLineNumbers;
+        _inline.Enabled = s.InlineResults;
+        _editor.TextArea.TextView.InvalidateLayer(_inline.Layer);
         bool dark = s.Theme != "Light";
         if (dark != _dark)
         {
@@ -175,6 +179,7 @@ public sealed class LeanEditor : UserControl
             _editor.Document = new TextDocument();
             _editor.IsEnabled = false;
             _diagnostics.Update([]);
+            _inline.Update([]);
             _margin.Update([], new Dictionary<int, DeclarationVerdict>(), []);
             return;
         }
@@ -195,6 +200,7 @@ public sealed class LeanEditor : UserControl
         doc.PropertyChanged += OnDocumentPropertyChanged;
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
+        _inline.Update(doc.Diagnostics);
         _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
         _editor.IsReadOnly = doc.IsVirtual;
         ScheduleFolds();
@@ -219,6 +225,7 @@ public sealed class LeanEditor : UserControl
         {
             case nameof(DocumentViewModel.Diagnostics):
                 _diagnostics.Update(_current.Diagnostics);
+                _inline.Update(_current.Diagnostics);
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
                 break;
             case nameof(DocumentViewModel.Processing):
@@ -668,6 +675,24 @@ public sealed class LeanEditor : UserControl
                     _ => DiagnosticRenderer.InfoBrush,
                 },
             });
+            if (Main?.Settings.ExplainErrors != false && Core.Learn.ErrorGuide.Explain(d.Message) is string meaning)
+            {
+                panel.Children.Add(new TextBlock { Text = "What this means: " + meaning, TextWrapping = TextWrapping.Wrap, FontSize = _editor.FontSize - 2, Opacity = 0.85 });
+            }
+        }
+        // A tactic or keyword under the pointer: say what it does, for people new to Lean.
+        if (WordAt(doc.Document, doc.Document.GetOffset(p.Location)) is string word && Core.Learn.TacticGuide.Explain(word) is { } guide)
+        {
+            panel.Children.Add(new StackPanel
+            {
+                Spacing = 3,
+                Children =
+                {
+                    new TextBlock { Text = $"{guide.Name}  ({guide.Kind})", FontWeight = FontWeight.SemiBold, FontSize = _editor.FontSize - 1 },
+                    new TextBlock { Text = guide.Explanation, TextWrapping = TextWrapping.Wrap, FontSize = _editor.FontSize - 2 },
+                    new TextBlock { Text = guide.Example, FontFamily = _editor.FontFamily, FontSize = _editor.FontSize - 2, Opacity = 0.75 },
+                },
+            });
         }
         // How to type the symbol under the pointer, which Lean users constantly need to know.
         int off = doc.Document.GetOffset(p.Location);
@@ -715,6 +740,69 @@ public sealed class LeanEditor : UserControl
         ToolTip.SetTip(view, panel);
         ToolTip.SetPlacement(view, PlacementMode.Pointer);
         ToolTip.SetIsOpen(view, true);
+    }
+
+    /// <summary>The identifier (tactic name, keyword) touching an offset, including a trailing ? as in exact?.</summary>
+    private static string? WordAt(TextDocument doc, int offset)
+    {
+        if (offset < 0 || offset >= doc.TextLength)
+        {
+            return null;
+        }
+        static bool Part(char c) => char.IsLetterOrDigit(c) || c is '_' or '\'';
+        int s = offset, e = offset;
+        while (s > 0 && Part(doc.GetCharAt(s - 1)))
+        {
+            s--;
+        }
+        while (e < doc.TextLength && Part(doc.GetCharAt(e)))
+        {
+            e++;
+        }
+        if (e < doc.TextLength && doc.GetCharAt(e) == '?')
+        {
+            e++;
+        }
+        if (s > 0 && doc.GetCharAt(s - 1) == '.')
+        {
+            return null; // Nat.succ is a name, not the keyword
+        }
+        return e > s ? doc.GetText(s, e - s) : null;
+    }
+
+    /// <summary>Insert text at the caret (a symbol from the palette).</summary>
+    public void InsertAtCaret(string text)
+    {
+        if (_current is null || _current.IsVirtual)
+        {
+            return;
+        }
+        int caret = _editor.CaretOffset;
+        _current.Document.Insert(caret, text);
+        _editor.CaretOffset = caret + text.Length;
+        if (text.Length == 1 && LeanText.IsOpener(text[0]))
+        {
+            AutoClose(text[0]);
+        }
+        _editor.TextArea.Focus();
+    }
+
+    /// <summary>Insert a snippet at the caret, indented like the current line, with the caret at its $0.</summary>
+    public void InsertSnippet(Core.Learn.Snippet snippet)
+    {
+        if (_current is null || _current.IsVirtual)
+        {
+            return;
+        }
+        TextDocument doc = _current.Document;
+        DocumentLine line = doc.GetLineByOffset(_editor.CaretOffset);
+        string lineText = doc.GetText(line);
+        string indent = lineText[..(lineText.Length - lineText.TrimStart().Length)];
+        (string text, int cursor) = snippet.Expand(indent);
+        int at = _editor.CaretOffset;
+        doc.Insert(at, text);
+        _editor.CaretOffset = at + cursor;
+        _editor.TextArea.Focus();
     }
 
     private void CloseHover()

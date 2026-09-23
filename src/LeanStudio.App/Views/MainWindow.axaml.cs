@@ -32,9 +32,11 @@ public sealed partial class MainWindow : Window, IDialogs
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         EditorControl.ApplySettings(settings);
         _vm.SelectionProvider = () => EditorControl.TextEditor.SelectedText;
+        _vm.InsertRequested += text => EditorControl.InsertAtCaret(text);
         Opened += async (_, _) =>
         {
             BuildRecentMenu();
+            _vm.ScheduleUpdateCheck();
             if (StudioBridge.TryServe(HandleBridgeAsync, _bridgeCts.Token))
             {
                 _vm.Log("AI assistants connected through Lean Studio's MCP server can see this window (AI ▸ Connect an AI Assistant).");
@@ -158,6 +160,15 @@ public sealed partial class MainWindow : Window, IDialogs
     private void OnQuickFix(object? sender, RoutedEventArgs e) => _ = QuickFixAsync();
     private void OnFindInFiles(object? sender, RoutedEventArgs e) => ShowFindInFiles();
     private void OnShowGit(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.GitTab;
+    private void OnShowLearn(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.LearnTab;
+    private void OnInsertSnippet(object? sender, RoutedEventArgs e) => _ = InsertSnippetAsync();
+
+    /// <summary>Pick a snippet and insert it at the caret, indented to match, with the caret where it belongs.</summary>
+    private Task InsertSnippetAsync() =>
+        Picker.ShowAsync(this, "Insert a snippet", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(Core.Learn.Snippets.All, q, s => s.Name + " " + s.Description)
+                .Select(s => new PickerItem(s.Name, s.Description, () => { EditorControl.InsertSnippet(s); return Task.CompletedTask; }))
+                .ToList()));
     private void OnBranchClicked(object? sender, PointerPressedEventArgs e) => _vm.SidebarTab = MainViewModel.GitTab;
 
     private async void OnCommitAll(object? sender, RoutedEventArgs e)
@@ -233,6 +244,12 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Update Dependencies", "", Cmd(_vm.UpdateDependenciesCommand));
         yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
         yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
+        yield return ("Learn: Start the Lean Tutorial", "", Cmd(_vm.Learn.StartTutorialCommand));
+        yield return ("Learn: Open the Playground", "", Cmd(_vm.Learn.OpenPlaygroundCommand));
+        yield return ("Learn: Famous Theorems and Symbols", "", Act(() => _vm.SidebarTab = MainViewModel.LearnTab));
+        yield return ("Learn: Insert a Snippet…", "", InsertSnippetAsync);
+        yield return ("Run: Run This File's main", "", Cmd(_vm.RunProgramCommand));
+        yield return ("Help: Check for Updates…", "", Cmd(_vm.CheckForUpdatesNowCommand));
         yield return ("Git: Show Source Control", "", Act(() => _vm.SidebarTab = MainViewModel.GitTab));
         yield return ("Git: Commit All…", "", Act(() => OnCommitAll(null, new RoutedEventArgs())));
         yield return ("Git: Push", "", Cmd(_vm.SourceControl.PushCommand));
@@ -344,6 +361,28 @@ public sealed partial class MainWindow : Window, IDialogs
 
     public async Task LaunchAsync(Uri uri) => await Launcher.LaunchUriAsync(uri);
 
+    /// <summary>Show a file selected in Finder or Explorer; elsewhere open its folder.</summary>
+    public async Task RevealAsync(string path)
+    {
+        try
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                System.Diagnostics.Process.Start("open", ["-R", path])?.Dispose();
+                return;
+            }
+            if (OperatingSystem.IsWindows())
+            {
+                System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + path + "\"")?.Dispose();
+                return;
+            }
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+        }
+        await Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(Path.GetDirectoryName(path)!));
+    }
+
     public Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent) =>
         Dialogs.NewProjectAsync(this, toolchains, defaultParent, () => PickFolderAsync("Where to create the project"));
 
@@ -394,6 +433,7 @@ public sealed partial class MainWindow : Window, IDialogs
     private void ApplySettings()
     {
         EditorControl.ApplySettings(_vm.Settings);
+        _vm.Info.ExplainErrors = _vm.Settings.ExplainErrors;
         _vm.Settings.Save();
     }
 

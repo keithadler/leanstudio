@@ -96,7 +96,7 @@ public sealed class McpTests
         string dir = Directory.CreateTempSubdirectory("leanstudio-suggest").FullName;
         File.WriteAllText(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n");
         string file = Path.Combine(dir, "S.lean");
-        File.WriteAllText(file, "theorem two : 1 + 1 = 2 := by\n  exact?\n");
+        File.WriteAllText(file, "theorem len (xs : List Nat) : (xs ++ []).length = xs.length := by\n  simp?\n");
         await using var bench = new Workbench(dir);
         McpServer server = LeanTools.Create(bench, "test");
         var (list, _) = await CallAsync(server, "suggestions", new JsonObject { ["path"] = "S.lean", ["line"] = 2 });
@@ -104,7 +104,7 @@ public sealed class McpTests
         var (applied, err) = await CallAsync(server, "suggestions", new JsonObject { ["path"] = "S.lean", ["line"] = 2, ["apply"] = 1 });
         Assert.False(err, applied);
         Assert.Contains("Lean accepts the file", applied, StringComparison.Ordinal);
-        Assert.DoesNotContain("exact?", File.ReadAllText(file), StringComparison.Ordinal);
+        Assert.DoesNotContain("simp?", File.ReadAllText(file), StringComparison.Ordinal);
     }
 
     [Fact]

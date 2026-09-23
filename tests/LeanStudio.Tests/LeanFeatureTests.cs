@@ -5,13 +5,16 @@ namespace LeanStudio.Tests;
 [Collection(Lean.Collection)]
 public sealed class LeanFeatureTests
 {
+    // `simp?` rather than `exact?` for the Try this: a library search can take minutes on a cold CI machine.
     private const string Source = """
         def foo (n : Nat) : Nat := n + 1
 
-        theorem t1 : foo 1 = 2 := by
-          exact?
+        theorem t1 (xs : List Nat) : (xs ++ []).length = xs.length := by
+          simp?
 
         theorem t2 : foo 2 = 3 := rfl
+
+        theorem t3 : foo 1 = 2 := rfl
         """;
 
     private static async Task<(LeanServer Server, string Uri)> OpenAsync()
@@ -40,8 +43,8 @@ public sealed class LeanFeatureTests
         a = await server.ResolveAsync(a, TestContext.Current.CancellationToken);
         Assert.NotNull(a.Edit);
         string after = WorkspaceEdit.Apply(Source, a.Edit.Changes[uri]);
-        Assert.DoesNotContain("exact?", after, StringComparison.Ordinal);
-        Assert.Contains("exact ", after, StringComparison.Ordinal);
+        Assert.DoesNotContain("simp?", after, StringComparison.Ordinal);
+        Assert.Contains("simp only", after, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -52,7 +55,7 @@ public sealed class LeanFeatureTests
         await using var _s = server;
         var ct = TestContext.Current.CancellationToken;
         var foo = new Position(0, 5);
-        Assert.Equal(3, (await server.ReferencesAsync(uri, foo, ct: ct)).Count);
+        Assert.Equal(3, (await server.ReferencesAsync(uri, foo, ct: ct)).Count); // def, t2, t3
         Assert.NotNull(await server.PrepareRenameAsync(uri, foo, ct));
         WorkspaceEdit rename = await server.RenameAsync(uri, foo, "bar", ct);
         string renamed = WorkspaceEdit.Apply(Source, rename.Changes[uri]);

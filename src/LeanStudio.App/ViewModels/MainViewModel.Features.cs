@@ -9,8 +9,13 @@ using Range = LeanStudio.Lsp.Range;
 
 namespace LeanStudio.App.ViewModels;
 
-public sealed record OutlineItem(string Name, string Kind, int Depth, Range Range, Range SelectionRange)
+public sealed record OutlineItem(string Name, string Kind, int Depth, Range Range, Range SelectionRange, string Status = "")
 {
+    /// <summary>For theorems: ✓ Lean accepts it, ◐ it uses sorry, ✗ it has an error. Live, without building.</summary>
+    public bool IsProved => Status == "✓";
+    public bool IsIncomplete => Status == "◐";
+    public bool IsBroken => Status == "✗";
+
     public string Indent => new(' ', Depth * 3);
     public string Icon => Kind switch
     {
@@ -282,7 +287,8 @@ public sealed partial class MainViewModel
             {
                 foreach (DocumentSymbol sym in list.OrderBy(x => x.Range.Start))
                 {
-                    items.Add(new OutlineItem(sym.Name, KindOf(sym, lines), depth, sym.Range, sym.SelectionRange));
+                    string kind = KindOf(sym, lines);
+                    items.Add(new OutlineItem(sym.Name, kind, depth, sym.Range, sym.SelectionRange, StatusOf(d, sym, kind)));
                     Walk(sym.Children, depth + 1);
                 }
             }
@@ -292,6 +298,20 @@ public sealed partial class MainViewModel
         catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException)
         {
         }
+    }
+
+    private static string StatusOf(DocumentViewModel d, DocumentSymbol s, string kind)
+    {
+        var inside = d.Diagnostics.Where(x => s.Range.Start.Line <= x.Range.Start.Line && x.Range.Start.Line <= s.Range.End.Line).ToList();
+        if (inside.Any(x => x.Severity == DiagnosticSeverity.Error))
+        {
+            return "✗";
+        }
+        if (inside.Any(x => x.Message.Contains("sorry", StringComparison.Ordinal)))
+        {
+            return "◐";
+        }
+        return kind is "theorem" or "example" && !d.IsProcessing ? "✓" : "";
     }
 
     /// <summary>Lean reports every declaration with one LSP kind; read the keyword from the source instead.</summary>

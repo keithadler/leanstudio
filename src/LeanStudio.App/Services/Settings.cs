@@ -18,6 +18,17 @@ public sealed class Settings
     public List<string> RecentProjects { get; set; } = [];
     public string? LastProject { get; set; }
     public List<string> LastOpenFiles { get; set; } = [];
+    /// <summary>Tutorial lessons solved, by file name.</summary>
+    public HashSet<string> CompletedLessons { get; set; } = [];
+    /// <summary>Show each goal read aloud in English under it, for newcomers.</summary>
+    public bool ShowGoalsInEnglish { get; set; } = true;
+    /// <summary>Show #eval and #check results at the end of their line.</summary>
+    public bool InlineResults { get; set; } = true;
+    /// <summary>Explain Lean's error messages in plain words.</summary>
+    public bool ExplainErrors { get; set; } = true;
+    public bool CheckForUpdates { get; set; } = true;
+    public DateTime? LastUpdateCheck { get; set; }
+    public string? SkippedVersion { get; set; }
 
     [JsonIgnore]
     public static string Directory =>
