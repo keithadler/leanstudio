@@ -54,6 +54,13 @@
                   <StackPanel Spacing="2" Margin="0,4,0,0">
                     <TextBlock Text="{Binding Title}" Classes="mono" FontSize="12" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding Verdict}" FontSize="11" Classes="dim" TextWrapping="Wrap" />
+                    <Border IsVisible="{Binding HasCounterexample}" Background="{DynamicResource RemovedBackground}" CornerRadius="4" Padding="8,4" Margin="0,2,0,0"
+                            ToolTip.Tip="These values satisfy every hypothesis and make the goal false, so no proof exists: fix the statement">
+                      <TextBlock Text="{Binding Counterexample}" Classes="mono" FontSize="12" TextWrapping="Wrap" />
+                    </Border>
+                    <Button Classes="chip" Content="Extract as a lemma…" IsVisible="{Binding CanExtract}" HorizontalAlignment="Left" Margin="0,2,0,0"
+                            ToolTip.Tip="Set this goal aside as a lemma of its own, above the declaration, and use it here"
+                            Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).Search.ExtractAsLemmaCommand}" CommandParameter="{Binding}" />
                     <ItemsControl ItemsSource="{Binding Shown}" IsVisible="{Binding !IsApplied}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>

@@ -42,6 +42,40 @@ public sealed record VerificationProgress(string Module, int ModuleIndex, int Mo
 
 public sealed record DeclarationSummary(string Name, string Module);
 
+public enum MapStatus
+{
+    /// <summary>Rests on nothing beyond Lean's standard axioms.</summary>
+    Proved,
+    /// <summary>Uses sorry, itself or through something it uses.</summary>
+    RestsOnSorry,
+    /// <summary>Uses an axiom the project introduces (and no sorry).</summary>
+    RestsOnAxiom,
+    /// <summary>An axiom the project introduces.</summary>
+    Axiom,
+}
+
+/// <summary>A declaration of the project on the project map.</summary>
+public sealed record MapNode(string Name, string Module, string Kind, int? Line, string? SourceFile)
+{
+    public MapStatus Status { get; set; }
+
+    /// <summary>It uses sorry (or a project axiom) itself, rather than through a lemma.</summary>
+    public bool IsSource { get; set; }
+
+    /// <summary>How many of the project's declarations rest on this one, directly or not.</summary>
+    public int UsedBy { get; set; }
+
+    /// <summary>0 for declarations that use nothing else in the project; one more than the highest thing used, otherwise.</summary>
+    public int Level { get; set; }
+}
+
+/// <summary>The project's own declarations and which uses which (From uses To, as indices into Nodes).</summary>
+public sealed record ProjectMap(IReadOnlyList<MapNode> Nodes, IReadOnlyList<(int From, int To)> Edges)
+{
+    /// <summary>The sorries and axioms worth fixing first: those that the most declarations rest on.</summary>
+    public IEnumerable<MapNode> Blockers => Nodes.Where(n => n.IsSource).OrderByDescending(n => n.UsedBy).ThenBy(n => n.Name, StringComparer.Ordinal);
+}
+
 /// <summary>One declaration on the way from a theorem down to what it rests on.</summary>
 public sealed record TrailLink(string Name, string Module, string? SourceFile, int? Line)
 {
@@ -386,6 +420,160 @@ public sealed class TenetWorkspace : IDisposable
                 trails.Add(new AssumptionTrail(ax.ToString(), links));
             }
             return trails.OrderBy(t => t.IsSorry ? 0 : 1).ThenBy(t => t.Path.Count).ToList();
+        }
+    }
+
+    private static readonly HashSet<string> MapKinds = new(StringComparer.Ordinal) { "theorem", "def", "axiom", "opaque", "inductive", "mutual def" };
+
+    /// <summary>
+    /// The project map: every declaration in the project's own modules, what it uses among them, and whether it
+    /// rests on sorry or a project axiom (propagated along uses; Lean's library is taken as sound). Names Lean
+    /// generates are folded into the declaration they belong to.
+    /// </summary>
+    public ProjectMap Map(CancellationToken ct = default)
+    {
+        TenetName sorry = TenetName.Of("sorryAx");
+        lock (_lock)
+        {
+            var index = new Dictionary<string, int>(StringComparer.Ordinal);
+            var nodes = new List<MapNode>();
+            var uses = new List<HashSet<int>>();
+            var direct = new List<(bool Sorry, bool Axiom)>();
+            var constants = new List<(TenetName Module, OleanModule File, ConstantInfo Info)>();
+            foreach (TenetName m in OwnModules.Where(_checker.Modules.ContainsKey))
+            {
+                OleanModule om = _checker.Modules[m];
+                foreach (TenetName cn in om.ConstantNames)
+                {
+                    if (_checker.Resolve(cn) is ConstantInfo ci)
+                    {
+                        constants.Add((m, om, ci));
+                    }
+                }
+            }
+            var sources = new Dictionary<TenetName, string[]>();
+            string[] SourceLines(TenetName m)
+            {
+                if (!sources.TryGetValue(m, out string[]? lines))
+                {
+                    string? f = SourceFileOf(m.ToString());
+                    sources[m] = lines = f is null ? [] : File.ReadAllLines(f);
+                }
+                return lines;
+            }
+            foreach ((TenetName module, OleanModule file, ConstantInfo ci) in constants)
+            {
+                string name = ci.Name.ToString();
+                if (!IsUserFacing(name) || !MapKinds.Contains(ci.KindName) || index.ContainsKey(name))
+                {
+                    continue;
+                }
+                int? line = file.SourceRangeOf(ci.Name)?.Line is int l ? Proofs.ProofSteps.DeclarationLine(SourceLines(module), l) : null;
+                index[name] = nodes.Count;
+                nodes.Add(new MapNode(name, module.ToString(), ci.KindName, line, SourceFileOf(module.ToString())));
+                uses.Add([]);
+                direct.Add((false, ci is AxiomInfo && !StandardAxioms.Contains(ci.Name)));
+            }
+            // Edges, and direct uses of sorry and axioms; generated names count for their owner.
+            foreach ((_, _, ConstantInfo ci) in constants)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!index.TryGetValue(UserFacingOwner(ci.Name.ToString()), out int from))
+                {
+                    continue;
+                }
+                foreach (TenetName u in Replay.UsedConstants(ci))
+                {
+                    if (u == sorry)
+                    {
+                        direct[from] = (true, direct[from].Axiom);
+                    }
+                    else if (!StandardAxioms.Contains(u) && _checker.Resolve(u) is AxiomInfo && !index.ContainsKey(u.ToString()))
+                    {
+                        direct[from] = (direct[from].Sorry, true);
+                    }
+                    if (index.TryGetValue(UserFacingOwner(u.ToString()), out int to) && to != from)
+                    {
+                        uses[from].Add(to);
+                        if (nodes[to].Kind == "axiom" && direct[to].Axiom)
+                        {
+                            direct[from] = (direct[from].Sorry, true);
+                        }
+                    }
+                }
+            }
+            // Status and level by walking uses (memoised; a cycle, which Lean does not allow, would stop at 0).
+            var sorryIn = new bool?[nodes.Count];
+            var axiomIn = new bool?[nodes.Count];
+            var level = new int?[nodes.Count];
+            (bool, bool, int) Walk(int i, HashSet<int> path)
+            {
+                if (sorryIn[i] is bool s0 && axiomIn[i] is bool a0 && level[i] is int l0)
+                {
+                    return (s0, a0, l0);
+                }
+                if (!path.Add(i))
+                {
+                    return (false, false, 0);
+                }
+                bool s = direct[i].Sorry, a = direct[i].Axiom;
+                int lv = 0;
+                foreach (int j in uses[i])
+                {
+                    (bool sj, bool aj, int lj) = Walk(j, path);
+                    s |= sj;
+                    a |= aj;
+                    lv = Math.Max(lv, lj + 1);
+                }
+                path.Remove(i);
+                (sorryIn[i], axiomIn[i], level[i]) = (s, a, lv);
+                return (s, a, lv);
+            }
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                (bool s, bool a, int lv) = Walk(i, []);
+                MapNode n = nodes[i];
+                n.Level = lv;
+                n.Status = n.Kind == "axiom" ? MapStatus.Axiom : s ? MapStatus.RestsOnSorry : a ? MapStatus.RestsOnAxiom : MapStatus.Proved;
+                // Where to fix things: the declarations that use sorry themselves, and the project's axioms.
+                n.IsSource = direct[i].Sorry || n.Kind == "axiom";
+            }
+            // How many declarations rest on each one: reverse reachability.
+            var usedBy = new List<int>[nodes.Count];
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                usedBy[i] = [];
+            }
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                foreach (int j in uses[i])
+                {
+                    usedBy[j].Add(i);
+                }
+            }
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                var seen = new HashSet<int>();
+                var stack = new Stack<int>(usedBy[i]);
+                while (stack.Count > 0)
+                {
+                    int k = stack.Pop();
+                    if (seen.Add(k))
+                    {
+                        foreach (int m in usedBy[k])
+                        {
+                            stack.Push(m);
+                        }
+                    }
+                }
+                nodes[i].UsedBy = seen.Count;
+            }
+            var edges = new List<(int, int)>();
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                edges.AddRange(uses[i].Select(j => (i, j)));
+            }
+            return new ProjectMap(nodes, edges);
         }
     }
 

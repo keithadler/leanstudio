@@ -68,6 +68,30 @@ The Outline also shows, live, which theorems Lean accepts (✓), which still use
 
 AI assistants get all five too: the `prove`, `why_not_proved`, `profile`, `export_walkthrough` and `search_mathlib` tools.
 
+### And four more for real proof work
+
+1. **"Is this even true?"** When no tactic closes a goal, Prove It looks for a counterexample. It tries small values of the goal's `Nat`, `Int` and `Bool` variables (and runs [Plausible](https://github.com/leanprover-community/plausible) where the project has it). If it finds values that satisfy every hypothesis and make the goal false, it says so ("✗ False when n = 4"). You find out the statement is wrong before spending an afternoon trying to prove it.
+
+   ![Prove It finds that n * n < 10 is false when n = 4](docs/images/counterexample.png)
+
+2. **Extract Goal as Lemma** (Lean ▸ Extract Goal as Lemma…, or from Prove It). Put the cursor on a `sorry` and its goal becomes a lemma of its own above the declaration, and the `sorry` becomes a use of it. Lean works out which hypotheses the goal needs, and prints the signature the way a person would write it:
+
+   ```lean
+   theorem key_step {a b : Nat} (h1 : a > 2) (h2 : b = a + 1) : a + b > 4 := by
+     sorry
+   ```
+
+   It's the way to break up a long proof, or to set a hard step aside and come back to it. One undo takes it back.
+3. **A REPL** (⌘⌥R / Ctrl+Alt+R). Type an expression or a command and Lean evaluates it in the file at the cursor, with everything above it in scope: your definitions, imports, namespaces and variables. Bare expressions are `#eval`ed, and ↑ / ↓ recall earlier inputs. It keeps one document open in Lean, so only the new input is checked each time.
+
+   ![The REPL: double 21 is 42, and #check and_swap](docs/images/repl.png)
+
+4. **Project Map** (Tenet ▸ Project Map…). The whole project as a graph: every declaration, what it uses, and whether it's fully proved (green), rests on `sorry` (amber), or rests on an axiom (purple). Columns run from foundations on the left to what builds on them. **Fix these first** lists the sorries and axioms that the most declarations depend on. Hover shows details, and a click opens the declaration.
+
+   ![The project map](docs/images/project-map.png)
+
+Assistants get these through the `extract_lemma` and `project_map` tools, and through `prove`, which now reports counterexamples.
+
 ### A tactic state that follows every step
 
 The panel on the right always shows the goals at the cursor, **with Lean's own diff of the tactic you're on**:
@@ -243,11 +267,13 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
-| `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. |
+| `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. When nothing works, it looks for a counterexample. |
 | `why_not_proved` | For a theorem that rests on `sorry` or an axiom, the chain of lemmas down to it, with file and line. |
 | `profile` | How long each declaration takes Lean, slowest first, with the costliest step in each. |
 | `search_mathlib` | Finds Mathlib results from a plain-English description (LeanSearch). |
 | `export_walkthrough` | Writes a step-by-step proof walkthrough web page, and returns a Lean 4 web editor link. |
+| `extract_lemma` | Turns the goal at a `sorry` into a lemma of its own, with the hypotheses it needs, and uses it there. |
+| `project_map` | The project's proof state, and the sorries and axioms the most declarations depend on. |
 | `project_info`, `toolchains` | The project's layout, toolchain and build state. |
 | `studio_context` | What *you* are looking at in Lean Studio: file, cursor, selection, goals, messages. |
 | `studio_show` | Opens a file at a line in your Lean Studio window, so you can review what it did. |
@@ -364,6 +390,7 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | Find in files | ⌘⇧F | Ctrl+Shift+F |
 | Quick fix / Try this | ⌘. | Ctrl+. |
 | Prove It (tactics on the sorry at the cursor) | ⌘⌥P | Ctrl+Alt+P |
+| REPL at the cursor | ⌘⌥R | Ctrl+Alt+R |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
 | Fix all in file | ⌘⌥. | Ctrl+Alt+. |

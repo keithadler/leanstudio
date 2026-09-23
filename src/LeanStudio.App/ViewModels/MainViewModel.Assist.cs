@@ -20,6 +20,9 @@ public sealed record TimingItem(DeclarationTiming Timing, double Slowest, Docume
     public double BarWidth => Math.Max(2, 120 * Timing.Seconds / Math.Max(Slowest, 1e-9));
 }
 
+/// <summary>One REPL input and its result.</summary>
+public sealed record ReplEntry(string Input, string Output, bool IsError, string Where);
+
 /// <summary>
 /// Five things no other Lean editor does out of the box: Prove It (a portfolio of tactics raced against every
 /// sorry), why a theorem is not fully proved (the chain down to the sorry, from Tenet), a performance heat map,
@@ -28,7 +31,7 @@ public sealed record TimingItem(DeclarationTiming Timing, double Slowest, Docume
 /// </summary>
 public sealed partial class MainViewModel
 {
-    public const int TimingPanel = 6;
+    public const int TimingPanel = 6, ReplPanel = 7;
 
     private CancellationTokenSource? _proveCts;
     private DocumentViewModel? _proveDoc;
@@ -38,6 +41,7 @@ public sealed partial class MainViewModel
         Info.Search.Run = ProveAsync;
         Info.Search.ApplyTrial = ApplyTrial;
         Info.Search.Cancel = () => _proveCts?.Cancel();
+        Info.Search.Extract = r => _ = ExtractFromSearchAsync(r);
         Verification.Explain = WhyNotProvedAsync;
         Verification.OpenRequested += (file, line) => _ = OpenFileAsync(file, line - 1, 0);
     }
@@ -121,6 +125,22 @@ public sealed partial class MainViewModel
         }
     }
 
+    private async Task ExtractFromSearchAsync(SearchResultView r)
+    {
+        if (_proveDoc is not DocumentViewModel d || !Documents.Contains(d))
+        {
+            return;
+        }
+        ActiveDocument = d;
+        SorrySite now = r.Result.Site with { Offset = r.Offset };
+        if (await ExtractLemmaAtAsync(null, now) is null)
+        {
+            // The lemma moved everything below it; the other results' places are stale.
+            Info.Search.Results.Reset([]);
+            Info.Search.Status = "Extracted the goal as a lemma above the declaration. Run Prove It again for the other sorries.";
+        }
+    }
+
     /// <summary>Put a tactic that works in place of its sorry, as an ordinary (undoable) edit.</summary>
     private void ApplyTrial(SearchResultView r, TacticTrial t)
     {
@@ -154,6 +174,149 @@ public sealed partial class MainViewModel
         r.IsApplied = true;
         ps.UpdateCanFillAll();
         Log($"Prove It: {r.Result.Site.Where} of {Path.GetFileName(d.Path)} is now proved by {fill}");
+    }
+
+    // ---- the REPL: Lean in the context of the file at the cursor ----
+
+    private readonly LeanRepl _repl = new();
+    private readonly List<string> _replHistory = [];
+    private int _replHistoryAt;
+
+    public ObservableList<ReplEntry> ReplEntries { get; } = new();
+
+    [ObservableProperty]
+    private string _replInput = "";
+
+    [ObservableProperty]
+    private bool _replBusy;
+
+    [RelayCommand]
+    public async Task RunReplAsync()
+    {
+        string input = ReplInput.Trim();
+        if (input.Length == 0 || ReplBusy)
+        {
+            return;
+        }
+        if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } server)
+        {
+            ReplEntries.Add(new ReplEntry(input, "Open a Lean file: the REPL runs in its context, at the cursor.", true, ""));
+            return;
+        }
+        _replHistory.Remove(input);
+        _replHistory.Add(input);
+        _replHistoryAt = _replHistory.Count;
+        ReplInput = "";
+        ReplBusy = true;
+        string where = $"{Path.GetFileName(d.Path)}:{d.CaretLine + 1}";
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+            ReplResult r = await _repl.EvalAsync(server, d.Path, LeanRepl.Context(d.Document.Text, d.CaretLine), input, timeout.Token);
+            ReplEntries.Add(new ReplEntry(input, r.Output, r.IsError, where));
+        }
+        catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException)
+        {
+            ReplEntries.Add(new ReplEntry(input, "Lean did not answer: " + e.Message, true, where));
+        }
+        finally
+        {
+            ReplBusy = false;
+        }
+    }
+
+    /// <summary>Step through earlier inputs (-1 older, +1 newer), as a shell does with the arrow keys.</summary>
+    public void ReplHistory(int delta)
+    {
+        if (_replHistory.Count == 0)
+        {
+            return;
+        }
+        _replHistoryAt = Math.Clamp(_replHistoryAt + delta, 0, _replHistory.Count);
+        ReplInput = _replHistoryAt < _replHistory.Count ? _replHistory[_replHistoryAt] : "";
+    }
+
+    [RelayCommand]
+    private void ClearRepl() => ReplEntries.Reset([]);
+
+    // ---- extract a goal as a lemma ----
+
+    [RelayCommand]
+    private async Task ExtractLemmaAsync() => await ExtractLemmaAtAsync(null);
+
+    /// <summary>
+    /// Turn the goal at the sorry nearest the caret into a lemma above the declaration, and use it there. Asks
+    /// for the lemma's name unless one is given. Returns what went wrong, or null.
+    /// </summary>
+    public async Task<string?> ExtractLemmaAtAsync(string? name, SorrySite? at = null)
+    {
+        if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } server)
+        {
+            return "Open a Lean file first.";
+        }
+        string text = d.Document.Text;
+        SorrySite? site = at ?? ProofSearch.At(ProofSearch.Sites(text), d.CaretLine, d.CaretColumn);
+        if (site is null)
+        {
+            Log("Extract as lemma: put the cursor on a sorry. Its goal, with the hypotheses it needs, becomes a lemma of its own.");
+            return "There is no sorry here.";
+        }
+        string suggested = (site.Declaration is { Length: > 0 } decl && decl != "example" ? decl.Split('.')[^1] : "step") + "_aux";
+        name ??= await _dialogs.PromptAsync("Extract as lemma",
+            $"The goal at {site.Where}, with the hypotheses it needs, becomes a lemma above the declaration, and the sorry becomes a use of it. Name:",
+            suggested);
+        if (name is null)
+        {
+            return "Cancelled.";
+        }
+        name = name.Trim();
+        if (!ExtractLemma.IsValidName(name))
+        {
+            Log($"Extract as lemma: {name} is not a name Lean accepts.");
+            return "Not a valid name.";
+        }
+        IsBusy = true;
+        BusyText = "Asking Lean for the goal's lemma…";
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            ExtractedLemma? lemma = await ExtractLemma.RunAsync(server, d.Path, text, site, name, timeout.Token);
+            if (lemma is null)
+            {
+                Log($"Extract as lemma: Lean did not reach the sorry at {site.Where} (fix the errors before it first).");
+                return "Lean did not reach the sorry.";
+            }
+            if (d.Document.Text != text)
+            {
+                Log("Extract as lemma: the file changed meanwhile; try again.");
+                return "The file changed.";
+            }
+            // One edit, so one undo takes it all back: the use first (it is below), then the lemma.
+            AvaloniaEdit.Document.TextDocument doc = d.Document;
+            doc.BeginUpdate();
+            try
+            {
+                doc.Replace(site.Offset, site.Length, lemma.Call);
+                int insertAt = doc.GetLineByNumber(Math.Clamp(lemma.InsertLine + 1, 1, doc.LineCount)).Offset;
+                doc.Insert(insertAt, lemma.Text);
+            }
+            finally
+            {
+                doc.EndUpdate();
+            }
+            d.Reveal(lemma.InsertLine, 8);
+            Log($"Extracted {lemma.Name} above {site.Declaration ?? "the declaration"}; {site.Where} now uses it. Prove it there (⌘⌥P / Ctrl+Alt+P tries tactics).");
+            return null;
+        }
+        catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException)
+        {
+            Log("Extract as lemma: " + e.Message);
+            return e.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     // ---- why a theorem is not fully proved ----
@@ -201,6 +364,52 @@ public sealed partial class MainViewModel
         catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)
         {
             Verification.TrailTitle = "Tenet could not trace it: " + e.Message;
+        }
+    }
+
+    // ---- the project map ----
+
+    /// <summary>Raised with a computed map, for the window to show.</summary>
+    public event Action<ProjectMap>? ProjectMapReady;
+
+    [RelayCommand]
+    public async Task<ProjectMap?> ShowProjectMapAsync()
+    {
+        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        {
+            await ReopenTenetAsync();
+        }
+        if (_tenet is not TenetWorkspace ws || ws.OwnModules.Count == 0)
+        {
+            Log("Project map: build the project first (Lean ▸ Build Project). The map is read from what Lean built.");
+            return null;
+        }
+        IsBusy = true;
+        BusyText = "Mapping the project…";
+        try
+        {
+            ProjectMap map = await OnLargeStack(() => ws.Map());
+            Log($"Project map: {map.Nodes.Count} declarations, {map.Edges.Count} uses; {map.Nodes.Count(n => n.Status == MapStatus.RestsOnSorry)} rest on sorry.");
+            ProjectMapReady?.Invoke(map);
+            return map;
+        }
+        catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)
+        {
+            Log("Project map: " + e.Message);
+            return null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Open a declaration from the map in the editor.</summary>
+    public void OpenMapNode(MapNode n)
+    {
+        if (n.SourceFile is string f)
+        {
+            _ = OpenFileAsync(f, (n.Line ?? 1) - 1, 0);
         }
     }
 

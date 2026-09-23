@@ -133,6 +133,9 @@ public sealed class McpTests
         var (why, _) = await CallAsync(server, "why_not_proved", new JsonObject { ["name"] = "unfinished" });
         Assert.Contains("rests on sorry", why, StringComparison.Ordinal);
         Assert.Contains("→ fix unfinished", why, StringComparison.Ordinal);
+        var (map, _) = await CallAsync(server, "project_map", new JsonObject());
+        Assert.Contains("1 rest on sorry", map, StringComparison.Ordinal);
+        Assert.Contains("unfinished  (uses sorry;", map, StringComparison.Ordinal);
         var (proved, _) = await CallAsync(server, "why_not_proved", new JsonObject { ["name"] = "and_swap" });
         Assert.Contains("fully proved", proved, StringComparison.Ordinal);
     }
@@ -161,6 +164,13 @@ public sealed class McpTests
             Assert.False(perr, profile);
             Assert.Contains("line 1: ", profile, StringComparison.Ordinal);
             Assert.Contains("slowest part: omega", profile, StringComparison.Ordinal);
+
+            File.WriteAllText(file, "theorem u (a b : Nat) (h : a < b) : a + 1 ≤ b := by\n  sorry\n");
+            var (ext, eerr) = await CallAsync(server, "extract_lemma", new JsonObject { ["path"] = "P.lean", ["line"] = 2, ["name"] = "step" });
+            Assert.False(eerr, ext);
+            Assert.StartsWith("theorem step {a b : Nat} (h : a < b) : a + 1 ≤ b := by", File.ReadAllText(file), StringComparison.Ordinal);
+            Assert.Contains("exact step (by assumption)", File.ReadAllText(file), StringComparison.Ordinal);
+            File.WriteAllText(file, "theorem t (a b : Nat) : a + b = b + a := by\n  omega\n");
 
             var (walk, werr) = await CallAsync(server, "export_walkthrough", new JsonObject { ["path"] = "P.lean" });
             Assert.False(werr, walk);

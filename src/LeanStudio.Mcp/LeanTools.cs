@@ -377,8 +377,44 @@ public static class LeanTools
                 return Task.FromResult(sb.ToString().TrimEnd());
             }),
 
+        new("project_map",
+            "An overview of the project's proof state from the last build: how many declarations are fully proved, rest on sorry, or rest on a project axiom, and the sorries and axioms that the most declarations depend on (fix those first), with file and line. Run build first.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
+                if (ws.OwnModules.Count == 0)
+                {
+                    throw new ToolException("nothing built yet: call build first");
+                }
+                ProjectMap map = ws.Map(ct);
+                var sb = new StringBuilder(map.Nodes.Count.ToString(CultureInfo.InvariantCulture) + " declarations: ");
+                sb.Append(CultureInfo.InvariantCulture, $"{map.Nodes.Count(n => n.Status == MapStatus.Proved)} fully proved, ")
+                  .Append(CultureInfo.InvariantCulture, $"{map.Nodes.Count(n => n.Status == MapStatus.RestsOnSorry)} rest on sorry, ")
+                  .Append(CultureInfo.InvariantCulture, $"{map.Nodes.Count(n => n.Status is MapStatus.RestsOnAxiom or MapStatus.Axiom)} are or rest on a project axiom.\n");
+                var blockers = map.Blockers.Where(n => n.Status != MapStatus.Proved).ToList();
+                if (blockers.Count == 0)
+                {
+                    sb.Append("Everything is fully proved.");
+                }
+                else
+                {
+                    sb.Append("\nFix these first (most depended on first):\n");
+                    foreach (MapNode n in blockers.Take(30))
+                    {
+                        sb.Append(CultureInfo.InvariantCulture, $"  {n.Name}  ({(n.Kind == "axiom" ? "axiom" : "uses sorry")}; {n.UsedBy} declaration(s) rest on it)");
+                        if (n.SourceFile is not null && n.Line is int l)
+                        {
+                            sb.Append(CultureInfo.InvariantCulture, $"  {n.SourceFile}:{l}");
+                        }
+                        sb.Append('\n');
+                    }
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
+            }),
+
         new("prove",
-            "Try a portfolio of tactics (rfl, decide, simp, omega, norm_num, ring, linarith, aesop, grind, exact? and more) on the goal at each sorry in a file, independently, and report which close it and how long each took. Pass `line` to try only the sorry on that line, and `apply` true to write the first working tactic in place of each sorry.",
+            "Try a portfolio of tactics (rfl, decide, simp, omega, norm_num, ring, linarith, aesop, grind, exact? and more) on the goal at each sorry in a file, independently, and report which close it and how long each took. When none does, it searches for a counterexample (values that make the goal false). Pass `line` to try only the sorry on that line, and `apply` true to write the first working tactic in place of each sorry.",
             Schema(("path", "string", "The .lean file.", true),
                    ("line", "integer", "Optional 1-based line: only the sorry on (or nearest) this line.", false),
                    ("apply", "boolean", "Write the first tactic that works in place of each sorry it proves.", false)),
@@ -412,6 +448,10 @@ public static class LeanTools
                         sb.Append(CultureInfo.InvariantCulture, $"  {(t.Closes ? "closes" : "fails ")}  {(t.Closes ? t.Replacement : t.Tactic)}  ({t.Time})\n");
                     }
                     sb.Append(res.Best is TacticTrial b ? $"  best: {res.Fill(b)}\n" : "  none of the tactics closes this goal\n");
+                    if (res.Counterexample is string cex)
+                    {
+                        sb.Append("  FALSE as stated: counterexample ").Append(cex).Append(" (these values satisfy the hypotheses and make the goal false; fix the statement)\n");
+                    }
                 }
                 bool apply = a["apply"] is JsonValue v && v.TryGetValue(out bool ap) && ap;
                 if (apply && results.Any(x => x.Best is not null))
@@ -421,6 +461,35 @@ public static class LeanTools
                     sb.Append(CultureInfo.InvariantCulture, $"\nwrote {results.Count(x => x.Best is not null)} proof(s) into {path}; call check_file to confirm.");
                 }
                 return sb.ToString().TrimEnd();
+            }),
+
+        new("extract_lemma",
+            "Turn the goal at a sorry into a lemma of its own: Lean writes `theorem name <the hypotheses it needs> : <goal> := by sorry` above the declaration, and the sorry becomes a use of it. Use it to split a long proof, or to set a hard step aside. Writes the file unless `apply` is false.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("line", "integer", "1-based line of the sorry (the nearest one is used).", true),
+                   ("name", "string", "The new lemma's name.", true),
+                   ("apply", "boolean", "Write the change into the file (default true).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string name = Str(a, "name");
+                if (!ExtractLemma.IsValidName(name))
+                {
+                    throw new ToolException($"{name} is not a valid Lean name");
+                }
+                ProjectSession s = bench.Session(path);
+                FileReport r = await s.CheckAsync(path, null, ct);
+                SorrySite site = ProofSearch.At(ProofSearch.Sites(r.Text), Int(a, "line") - 1, 0)
+                    ?? throw new ToolException("there is no sorry in this file");
+                ExtractedLemma lemma = await ExtractLemma.RunAsync(await s.ServerAsync(ct), path, r.Text, site, name, ct)
+                    ?? throw new ToolException($"Lean did not reach the sorry at line {site.Line + 1} (an earlier error stops it)");
+                bool apply = a["apply"] is not JsonValue v || !v.TryGetValue(out bool ap) || ap;
+                if (apply)
+                {
+                    await File.WriteAllTextAsync(path, ExtractLemma.Apply(r.Text, site, lemma), ct);
+                }
+                return (apply ? $"wrote into {path}:\n\n" : "would add:\n\n") + lemma.Text.TrimEnd()
+                    + $"\n\nat line {lemma.InsertLine + 1}, and replace the sorry at line {site.Line + 1} with: {lemma.Call}";
             }),
 
         new("profile",

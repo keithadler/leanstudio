@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window, IDialogs
         InitializeComponent(); // also fills in the fields for named controls (MainGrid, CenterGrid…)
         _vm = new MainViewModel(this, settings);
         DataContext = _vm;
+        _vm.ProjectMapReady += map => ShowProjectMap(map);
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         this.FindControl<CodeView>("CView")!.DataContext = _vm;
         EditorControl.QuickFixAtLineRequested += line => _ = QuickFixAtLineAsync(line);
@@ -150,6 +151,7 @@ public sealed partial class MainWindow : Window, IDialogs
         {
             (Key.P, true, true) => () => _ = CommandPaletteAsync(),
             (Key.P, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ProveItCommand.Execute(null),
+            (Key.R, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => OnShowRepl(null, new RoutedEventArgs()),
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
             (Key.T, true, false) => () => _ = GoToSymbolAsync(),
             (Key.F, true, true) => () => ShowFindInFiles(),
@@ -183,6 +185,56 @@ public sealed partial class MainWindow : Window, IDialogs
     private void OnTogglePanel(object? sender, RoutedEventArgs e) => TogglePanel();
     private void OnToggleInfo(object? sender, RoutedEventArgs e) => ToggleInfo();
     private void OnZen(object? sender, RoutedEventArgs e) => Zen();
+
+    private ProjectMapWindow? _mapWindow;
+
+    /// <summary>The project map window, while one is open.</summary>
+    public ProjectMapWindow? MapWindow => _mapWindow;
+
+    /// <summary>Show a project map, replacing one that is open.</summary>
+    public ProjectMapWindow ShowProjectMap(Core.Verification.ProjectMap map)
+    {
+        _mapWindow?.Close();
+        _mapWindow = new ProjectMapWindow(map, _vm.ProjectName, n => { _vm.OpenMapNode(n); Activate(); });
+        _mapWindow.Closed += (_, _) => _mapWindow = null;
+        _mapWindow.Show(this);
+        return _mapWindow;
+    }
+
+    private void OnShowRepl(object? sender, RoutedEventArgs e)
+    {
+        _vm.BottomTab = MainViewModel.ReplPanel;
+        Dispatcher.UIThread.Post(() => this.FindControl<TextBox>("ReplBox")?.Focus(), DispatcherPriority.Background);
+    }
+
+    private void OnReplKey(object? sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                e.Handled = true;
+                _ = RunReplAsync();
+                break;
+            case Key.Up:
+                e.Handled = true;
+                _vm.ReplHistory(-1);
+                break;
+            case Key.Down:
+                e.Handled = true;
+                _vm.ReplHistory(1);
+                break;
+        }
+    }
+
+    private async Task RunReplAsync()
+    {
+        await _vm.RunReplCommand.ExecuteAsync(null);
+        if (this.FindControl<ListBox>("ReplList") is { } list && _vm.ReplEntries.Count > 0)
+        {
+            list.ScrollIntoView(_vm.ReplEntries[^1]);
+        }
+        this.FindControl<TextBox>("ReplBox")?.Focus();
+    }
 
     private void OnTimingTapped(object? sender, TappedEventArgs e)
     {
@@ -601,13 +653,16 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("View: Toolchains", "", Act(() => _vm.SidebarTab = MainViewModel.ToolchainsTab));
         yield return ("Lean: Prove It (try tactics on this sorry)", m + "⌥P", Cmd(_vm.ProveItCommand));
         yield return ("Lean: Prove Every Sorry in File", "", Cmd(_vm.ProveAllSorriesCommand));
+        yield return ("Refactor: Extract Goal as Lemma…", "", Cmd(_vm.ExtractLemmaCommand));
         yield return ("Lean: Profile File (where the time goes)", "", Cmd(_vm.ProfileFileCommand));
         yield return ("Tenet: Why Isn't This Proved?", "", Cmd(_vm.WhyNotProvedAtCaretCommand));
+        yield return ("Tenet: Project Map…", "", Cmd(_vm.ShowProjectMapCommand));
         yield return ("File: Export Proof Walkthrough…", "", Cmd(_vm.ExportWalkthroughCommand));
         yield return ("Share: Open in the Lean 4 Web Editor", "", Cmd(_vm.OpenInWebEditorCommand));
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
+        yield return ("View: REPL (evaluate Lean at the cursor)", "", Act(() => { _vm.BottomTab = MainViewModel.ReplPanel; this.FindControl<TextBox>("ReplBox")?.Focus(); }));
         yield return ("Help: Keyboard Shortcuts", "", Act(() => OnShortcuts(null, new RoutedEventArgs())));
         yield return ("Help: About Lean Studio", "", Act(() => OnAbout(null, new RoutedEventArgs())));
     }

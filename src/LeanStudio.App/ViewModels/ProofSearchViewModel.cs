@@ -38,14 +38,26 @@ public sealed partial class SearchResultView : ObservableObject
         IsApplied ? "✓ filled in"
         : !Result.Reached ? "not reached: an error earlier in the file stops Lean before it"
         : Result.Best is TacticTrial b ? $"{Result.Successes.Count()} of {Result.Trials.Count(t => t.Outcome != TrialOutcome.Unavailable)} tactics close it; the simplest is {b.Replacement}"
+        : Result.Counterexample is not null ? "no tactic closes it, and it cannot be proved as stated:"
         : "none of the tactics closes this goal: it needs a real idea (or a lemma)";
 
+    /// <summary>Values that make the goal false: the statement needs fixing, not the proof.</summary>
+    public string? Counterexample => IsApplied ? null : Result.Counterexample is string c ? "✗ False when " + c : null;
+
+    public bool HasCounterexample => Counterexample is not null;
+
     public bool CanApply => !IsApplied && Result.Best is not null;
+
+    /// <summary>Nothing closes it and it is not false: set it aside as a lemma of its own.</summary>
+    public bool CanExtract => !IsApplied && Result.Reached && Result.Best is null && Result.Counterexample is null;
 
     partial void OnIsAppliedChanged(bool value)
     {
         OnPropertyChanged(nameof(Verdict));
         OnPropertyChanged(nameof(CanApply));
+        OnPropertyChanged(nameof(Counterexample));
+        OnPropertyChanged(nameof(HasCounterexample));
+        OnPropertyChanged(nameof(CanExtract));
     }
 
     public void Show(bool failures) =>
@@ -70,6 +82,18 @@ public sealed partial class ProofSearchViewModel : ObservableObject
     public Action<SearchResultView, TacticTrial>? ApplyTrial { get; set; }
 
     public Action? Cancel { get; set; }
+
+    /// <summary>Set by the window's view model: extract a result's goal as a lemma.</summary>
+    public Action<SearchResultView>? Extract { get; set; }
+
+    [RelayCommand]
+    private void ExtractAsLemma(SearchResultView? r)
+    {
+        if (r is { CanExtract: true })
+        {
+            Extract?.Invoke(r);
+        }
+    }
 
     [ObservableProperty]
     private bool _isVisible;
@@ -103,9 +127,13 @@ public sealed partial class ProofSearchViewModel : ObservableObject
         }
         Results.Reset(views);
         int proved = results.Count(r => r.Best is not null);
+        int refuted = results.Count(r => r.Counterexample is not null);
         Status = results.Count == 1
-            ? proved == 1 ? "Found a proof. Click a tactic to use it." : "No tactic in the portfolio closes this goal."
-            : $"Found proofs for {proved} of {results.Count} sorries." + (proved > 0 ? " Click a tactic, or fill them all in." : "");
+            ? proved == 1 ? "Found a proof. Click a tactic to use it."
+            : refuted == 1 ? "This goal is false: check the statement or the hypotheses."
+            : "No tactic in the portfolio closes this goal."
+            : $"Found proofs for {proved} of {results.Count} sorries." + (proved > 0 ? " Click a tactic, or fill them all in." : "")
+              + (refuted > 0 ? $" {refuted} {(refuted == 1 ? "is" : "are")} false as stated." : "");
         UpdateCanFillAll();
     }
 

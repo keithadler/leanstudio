@@ -491,6 +491,63 @@ internal static class Scenario
         }
         vm.ActiveDocument = doc;
 
+        Console.WriteLine("counterexamples, extract as lemma, the REPL, the project map");
+        string falseFile = Path.Combine(proofsDir, "Falsehood.lean");
+        try
+        {
+            await File.WriteAllTextAsync(falseFile,
+                "theorem squares (n : Nat) (h : n > 2) : n * n < 10 := by\n  sorry\n\n"
+                + "theorem big (a b c : Nat) (h1 : a > 2) (h2 : b = a + 1) : a + b + c > 4 := by\n  have key : a + b > 4 := by sorry\n  omega\n");
+            DocumentViewModel fd = (await vm.OpenFileAsync(falseFile))!;
+            Check(await WaitFor(() => !fd.IsProcessing && fd.Diagnostics.Count > 0, 90), "a file with a false theorem opens");
+            fd.Reveal(1, 3);
+            await vm.ProveAsync(false);
+            SearchResultView? refuted = vm.Info.Search.Results.FirstOrDefault();
+            Check(refuted?.Counterexample == "✗ False when n = 4", $"Prove It says the goal is false, with a counterexample ({refuted?.Counterexample})");
+            Snap(window, outDir, "20-counterexample");
+            vm.Info.Search.CloseCommand.Execute(null);
+
+            fd.Reveal(5, 30);
+            string? problem = await vm.ExtractLemmaAtAsync("key_step");
+            Check(problem is null && fd.Document.Text.StartsWith("theorem squares", StringComparison.Ordinal)
+                && fd.Document.Text.Contains("theorem key_step {a b : Nat} (h1 : a > 2) (h2 : b = a + 1) : a + b > 4 := by", StringComparison.Ordinal)
+                && fd.Document.Text.Contains("have key : a + b > 4 := by exact key_step (by assumption) (by assumption)", StringComparison.Ordinal),
+                $"a goal is extracted as a lemma with just the hypotheses it needs ({problem})");
+            Check(await WaitFor(() => !fd.IsProcessing && fd.Diagnostics.Count(d => d.Message.Contains("sorry", StringComparison.Ordinal)) == 2
+                && !fd.Diagnostics.Any(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error), 60), "and Lean accepts the file, with the sorry now in the new lemma");
+            fd.Document.UndoStack.Undo();
+            Check(fd.Document.Text == fd.SavedText, "one undo takes the extraction back");
+            await vm.CloseDocumentCommand.ExecuteAsync(fd);
+        }
+        finally
+        {
+            File.Delete(falseFile);
+        }
+
+        vm.ActiveDocument = doc;
+        doc.Reveal(20, 2);
+        vm.BottomTab = MainViewModel.ReplPanel;
+        vm.ReplInput = "double 21";
+        await vm.RunReplCommand.ExecuteAsync(null);
+        vm.ReplInput = "#check and_swap";
+        await vm.RunReplCommand.ExecuteAsync(null);
+        Check(vm.ReplEntries.Count == 2 && vm.ReplEntries[0].Output == "42" && vm.ReplEntries[1].Output.Contains("and_swap", StringComparison.Ordinal),
+            $"the REPL evaluates in the file's context ({string.Join(" | ", vm.ReplEntries.Select(e => e.Output))})");
+        Snap(window, outDir, "21-repl");
+
+        LeanStudio.Core.Verification.ProjectMap? map = await vm.ShowProjectMapAsync();
+        Check(map is not null && map.Nodes.Any(n => n.Name == "unfinished" && n.IsSource) && map.Nodes.Any(n => n.Name == "not_not_elim" && n.Status == LeanStudio.Core.Verification.MapStatus.RestsOnAxiom),
+            "the project map shows each declaration and what it rests on");
+        Check(await WaitFor(() => window.MapWindow is not null, 5), "in a window of its own");
+        if (window.MapWindow is { } mw)
+        {
+            await Task.Delay(500);
+            mw.View.Select("not_not_elim");
+            Snap(mw, outDir, "22-project-map");
+            mw.Close();
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("for newcomers");
         vm.ActiveDocument = doc;
         Check(await WaitFor(() => vm.Outline.Any(o => o.Name == "and_swap" && o.Status == "✓") && vm.Outline.Any(o => o.Name == "unfinished" && o.Status == "◐"), 20),

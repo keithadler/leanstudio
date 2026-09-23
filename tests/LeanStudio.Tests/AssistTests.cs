@@ -37,7 +37,7 @@ public sealed class AssistTests
         string text = "/-! module doc -/\nimport Std\n-- note\nimport Lean.Elab\n\ntheorem t : True := sorry\n";
         IReadOnlyList<SorrySite> sites = ProofSearch.Sites(text);
         string inst = ProofSearch.Instrument(text, sites);
-        Assert.StartsWith("/-! module doc -/\nimport Std\n-- note\nimport Lean.Elab\nimport Lean\nopen Lean Elab", inst);
+        Assert.StartsWith("/-! module doc -/\nimport Std\n-- note\nimport Lean.Elab\nimport Lean\nopen Lean", inst);
         Assert.Contains("theorem t : True := leanstudio_try 0", inst);
         Assert.Contains("import Lean\n", ProofSearch.Instrument("theorem t : True := sorry", ProofSearch.Sites("theorem t : True := sorry")));
     }
@@ -95,6 +95,123 @@ public sealed class AssistTests
         Assert.DoesNotContain(diags, d => d.Severity == DiagnosticSeverity.Error);
         Diagnostic sorry = Assert.Single(diags, d => d.Message.Contains("sorry", StringComparison.Ordinal));
         Assert.Equal(10, sorry.Range.Start.Line);
+    }
+
+    [Fact]
+    public void ReadsCounterexamples()
+    {
+        IReadOnlyList<SorrySite> sites = ProofSearch.Sites("theorem w (n : Nat) : n < 3 := sorry");
+        var r = Assert.Single(ProofSearch.Parse(["⟪leanstudio⟫\t0\tterm\n0\tfail\t1\t\ncex\tn = 3"], sites, ["rfl"]));
+        Assert.Null(r.Best);
+        Assert.Equal("n = 3", r.Counterexample);
+    }
+
+    [Fact]
+    public async Task ProveItSaysWhenAGoalIsFalse()
+    {
+        Lean.RequireLean();
+        const string text = """
+            theorem wrong (n : Nat) (h : n > 2) : n * n < 10 := by
+              sorry
+
+            theorem wrongBool : ∀ a b : Bool, (a && b) = (a || b) := by
+              sorry
+
+            theorem right (x : Int) (h : x > 3) : 2 * x > 6 := by
+              sorry
+            """;
+        string dir = Lean.Sample("Demo");
+        await using LeanServer server = await StartAsync(dir);
+        IReadOnlyList<SearchResult> results = await ProofSearch.RunAsync(server, Path.Combine(dir, "Wrong.lean"), text, ProofSearch.Sites(text), TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Null(results[0].Best);
+        Assert.Equal("n = 4", results[0].Counterexample); // 3 * 3 = 9 is still below 10
+        Assert.Null(results[1].Best);
+        Assert.Equal("a = false, b = true", results[1].Counterexample);
+        Assert.Null(results[2].Counterexample); // true (and proved by omega)
+        Assert.NotNull(results[2].Best);
+    }
+
+    [Fact]
+    public async Task ExtractsAGoalAsALemmaThatLeanAccepts()
+    {
+        Lean.RequireLean();
+        const string text = """
+            /-- The main result. -/
+            theorem big (a b c : Nat) (f : Nat → Nat) (h1 : a > 2) (h2 : b = a + 1) : ∀ x : Nat, f x + a + b > 4 := by
+              intro x
+              have key : a + b > 4 := by sorry
+              omega
+
+            example {α : Type} [Inhabited α] (xs : List α) (h : xs ≠ []) : xs.length > 0 := by
+              cases xs with
+              | nil => contradiction
+              | cons y ys => exact sorry
+            """;
+        string dir = Lean.Sample("Demo");
+        string path = Path.Combine(dir, "Extract.lean");
+        await using LeanServer server = await StartAsync(dir);
+        IReadOnlyList<SorrySite> sites = ProofSearch.Sites(text);
+
+        ExtractedLemma? key = await ExtractLemma.RunAsync(server, path, text, sites[0], "key_step", TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.NotNull(key);
+        Assert.Equal("theorem key_step {a b : Nat} (h1 : a > 2) (h2 : b = a + 1) : a + b > 4 := by\n  sorry\n\n", key.Text);
+        Assert.Equal("exact key_step (by assumption) (by assumption)", key.Call);
+        Assert.Equal(0, key.InsertLine); // above the doc comment
+
+        ExtractedLemma? cons = await ExtractLemma.RunAsync(server, path, text, sites[1], "cons_case", TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.NotNull(cons);
+        Assert.StartsWith("theorem cons_case {α : Type} [Inhabited α] {y : α} {ys : List α} (h : y :: ys ≠ []) :", cons.Text, StringComparison.Ordinal);
+        Assert.Equal("(cons_case (by assumption))", cons.Call); // a term: `exact sorry`
+
+        // Both extractions applied: the file checks, with sorry only in the two new lemmas.
+        string once = ExtractLemma.Apply(text, sites[1], cons);
+        string twice = ExtractLemma.Apply(once, ProofSearch.Sites(once).First(s => s.Declaration == "big"), key);
+        IReadOnlyList<Diagnostic> diags = await Scratch.CheckAsync(server, path, "Extracted", twice, TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(diags, d => d.Severity == DiagnosticSeverity.Error);
+        string[] lines = twice.Split('\n');
+        Assert.Equal(["key_step", "cons_case"], diags.Where(d => d.Message.Contains("sorry", StringComparison.Ordinal))
+            .Select(d => lines[d.Range.Start.Line].Split(' ')[1]));
+    }
+
+    [Fact]
+    public void ReplReadsInputsAsCommandsOrExpressions()
+    {
+        Assert.Equal("#eval 2 + 2", LeanRepl.AsCommand(" 2 + 2 "));
+        Assert.Equal("#check Nat.add_comm", LeanRepl.AsCommand("#check Nat.add_comm"));
+        Assert.Equal("example : 1 = 1 := rfl", LeanRepl.AsCommand("example : 1 = 1 := rfl"));
+        Assert.Equal("open Nat", LeanRepl.AsCommand("open Nat"));
+        const string text = "def a := 1\n\ntheorem t : a = 1 := by\n  rfl\n\ndef b := 2\n";
+        Assert.Equal("def a := 1\n\ntheorem t : a = 1 := by\n  rfl\n", LeanRepl.Context(text, 3));
+    }
+
+    [Fact]
+    public async Task ReplEvaluatesInTheFilesContext()
+    {
+        Lean.RequireLean();
+        string dir = Lean.Sample("Demo");
+        const string text = "def double (n : Nat) : Nat := n + n\n\ntheorem later : 1 = 1 := rfl\n\ndef secret := 7\n";
+        await using LeanServer server = await StartAsync(dir);
+        var repl = new LeanRepl();
+        string context = LeanRepl.Context(text, 2);
+        string path = Path.Combine(dir, "Repl.lean");
+
+        ReplResult r = await repl.EvalAsync(server, path, context, "double 21", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.False(r.IsError, r.Output);
+        Assert.Equal("42", r.Output);
+
+        r = await repl.EvalAsync(server, path, context, "#check later", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Contains("later : 1 = 1", r.Output, StringComparison.Ordinal);
+
+        r = await repl.EvalAsync(server, path, context, "secret", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.True(r.IsError); // defined after the cursor, so not in scope
+
+        r = await repl.EvalAsync(server, path, context, "example : double 2 = 4 := rfl", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Equal("✓ accepted", r.Output);
+        await repl.CloseAsync(server);
     }
 
     [Fact]
@@ -243,6 +360,19 @@ public sealed class AssistTests
             Assert.Equal("magic", m.Assumption);
             Assert.Equal(["uses_magic", "magic"], m.Path.Select(l => l.Display));
             Assert.Empty(ws.WhyNotProved("fine", TestContext.Current.CancellationToken));
+
+            // The project map: status spreads along uses, and base blocks the most.
+            var map = ws.Map(TestContext.Current.CancellationToken);
+            Core.Verification.MapNode N(string n) => Assert.Single(map.Nodes, x => x.Name == n);
+            Assert.Equal(Core.Verification.MapStatus.RestsOnSorry, N("top").Status);
+            Assert.Equal(Core.Verification.MapStatus.Proved, N("fine").Status);
+            Assert.Equal(Core.Verification.MapStatus.Axiom, N("magic").Status);
+            Assert.Equal(Core.Verification.MapStatus.RestsOnAxiom, N("uses_magic").Status);
+            Assert.True(N("base").IsSource && !N("middle").IsSource);
+            Assert.Equal(2, N("base").UsedBy);
+            Assert.Equal((0, 1, 2), (N("base").Level, N("middle").Level, N("top").Level));
+            Assert.Equal("base", map.Blockers.First().Name);
+            Assert.Contains(map.Edges, e => map.Nodes[e.From].Name == "top" && map.Nodes[e.To].Name == "middle");
 
             Assert.Equal("foo", Core.Verification.TenetWorkspace.UserFacingOwner("foo._proof_1"));
             Assert.Equal("Bar.foo", Core.Verification.TenetWorkspace.UserFacingOwner("_private.Mod.A.0.Bar.foo.match_1"));

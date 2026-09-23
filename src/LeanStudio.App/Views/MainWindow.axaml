@@ -111,7 +111,9 @@
         <Separator />
         <MenuItem Header="Prove It (try tactics on this sorry)" Command="{Binding ProveItCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+P', macOS='Cmd+Alt+P'}" />
         <MenuItem Header="Prove Every Sorry in File" Command="{Binding ProveAllSorriesCommand}" />
+        <MenuItem Header="Extract Goal as Lemma…" Command="{Binding ExtractLemmaCommand}" />
         <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
+        <MenuItem Header="REPL (evaluate Lean at the cursor)" Click="OnShowRepl" InputGesture="{OnPlatform Default='Ctrl+Alt+R', macOS='Cmd+Alt+R'}" />
         <Separator />
         <MenuItem Header="Restart File (rebuild its imports)" Command="{Binding RestartFileCommand}" />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
@@ -143,6 +145,7 @@
         <MenuItem Header="Verify Project" Command="{Binding VerifyCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" />
         <MenuItem Header="Verify After Every Build" ToggleType="CheckBox" IsChecked="{Binding Settings.VerifyAfterBuild}" />
         <MenuItem Header="Why Isn't This Proved?" Command="{Binding WhyNotProvedAtCaretCommand}" />
+        <MenuItem Header="Project Map…" Command="{Binding ShowProjectMapCommand}" />
       </MenuItem>
       <MenuItem Header="_AI">
         <MenuItem Header="Connect an AI Assistant…" Click="OnConnectAssistant" />
@@ -475,6 +478,36 @@
                 </ListBox.ItemTemplate>
               </ListBox>
                 <TextBlock Classes="empty" Text="Profile a file to see how long Lean spends on each declaration." IsVisible="{Binding TimingItems.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+              </Panel>
+            </DockPanel>
+          </TabItem>
+          <TabItem Header="REPL" ToolTip.Tip="Evaluate Lean in the context of the file at the cursor">
+            <DockPanel Margin="8,4">
+              <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="0,4,0,2">
+                <TextBlock Text="›" Classes="mono" FontSize="15" VerticalAlignment="Center" Margin="2,0,6,0" Foreground="{DynamicResource GoalAccent}" />
+                <TextBox Grid.Column="1" x:Name="ReplBox" Text="{Binding ReplInput}" Classes="mono" FontSize="13" KeyDown="OnReplKey"
+                         PlaceholderText="An expression to evaluate, or a command (#check, example, def…). It runs in this file at the cursor. Enter runs; ↑ ↓ for history." />
+                <Button Grid.Column="2" Classes="chip" Content="Clear" Command="{Binding ClearReplCommand}" Margin="6,0,0,0" />
+              </Grid>
+              <ProgressBar DockPanel.Dock="Bottom" IsIndeterminate="True" Height="2" MinHeight="2" IsVisible="{Binding ReplBusy}" />
+              <Panel>
+                <ListBox x:Name="ReplList" ItemsSource="{Binding ReplEntries}" Background="Transparent">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ReplEntry">
+                      <StackPanel Spacing="2" Margin="0,2">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                          <TextBlock Text="›" Classes="mono dim" Margin="0,0,6,0" />
+                          <SelectableTextBlock Grid.Column="1" Text="{Binding Input}" Classes="mono" TextWrapping="Wrap" />
+                          <TextBlock Grid.Column="2" Text="{Binding Where}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                        </Grid>
+                        <SelectableTextBlock Text="{Binding Output}" Classes="mono" TextWrapping="Wrap" Margin="14,0,0,0"
+                                             Classes.error="{Binding IsError}" Opacity="0.9" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Classes="empty" IsVisible="{Binding ReplEntries.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                           Text="Try 2 ^ 64, #check Nat.add_comm, or a function from this file. Everything above the cursor is in scope." />
               </Panel>
             </DockPanel>
           </TabItem>

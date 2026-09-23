@@ -45,6 +45,12 @@ public enum TrialOutcome
 /// <summary>What proof search found for one <c>sorry</c>.</summary>
 public sealed record SearchResult(SorrySite Site, bool TermMode, IReadOnlyList<TacticTrial> Trials)
 {
+    /// <summary>
+    /// Values that satisfy the hypotheses and make the goal false, when no tactic closed it and some were found:
+    /// the goal cannot be proved as stated.
+    /// </summary>
+    public string? Counterexample { get; init; }
+
     /// <summary>Lean reached this sorry (an earlier error can stop it from getting there).</summary>
     public bool Reached => Trials.Count > 0;
 
@@ -195,12 +201,87 @@ public static partial class ProofSearch
     {
         string tactics = string.Join(", ", portfolio.Select(t => "\"" + t.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\""));
         return $$"""
+            open Lean Meta in
+            /-- Small values to try for a variable whose type can be enumerated. -/
+            private def leanstudioSamples (ty : Expr) : MetaM (Option (Array Expr)) := do
+              let ty ← whnfR ty
+              if ty.isConstOf ``Nat then return some ((List.range 11).toArray.map mkNatLit)
+              if ty.isConstOf ``Int then return some (#[0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5].map fun (i : Int) => toExpr i)
+              if ty.isConstOf ``Bool then return some #[toExpr false, toExpr true]
+              return none
+
+            open Lean Meta in
+            /-- Whether a closed proposition is true, by evaluating its `Decidable` instance; none if it cannot say. -/
+            private def leanstudioEval (p : Expr) : MetaM (Option Bool) := do
+              try
+                let r ← withAtLeastTransparency .default <| whnf (← mkDecide p)
+                if r.isConstOf ``true then return some true
+                if r.isConstOf ``false then return some false
+                return none
+              catch _ => return none
+
+            open Lean Meta in
+            private partial def leanstudioHunt (vars : Array Expr) (samples : Array (Array Expr)) (props : Array Expr) (goal : Expr)
+                (i : Nat) (acc : Array Expr) (budget : IO.Ref Nat) : MetaM (Option (Array Expr)) := do
+              if (← budget.get) == 0 then return none
+              if i == vars.size then
+                budget.modify (· - 1)
+                for h in props do
+                  if (← leanstudioEval (h.replaceFVars vars acc)) != some true then return none
+                if (← leanstudioEval (goal.replaceFVars vars acc)) == some false then return some acc
+                return none
+              for v in samples[i]! do
+                if let some r ← leanstudioHunt vars samples props goal (i+1) (acc.push v) budget then return some r
+              return none
+
+            open Lean Elab Tactic Meta in
+            /-- Plausible (in Mathlib projects) tests a goal with random values of many more types. -/
+            private def leanstudioPlausible : TacticM (Option String) := do
+              match Parser.runParserCategory (← getEnv) `tactic "plausible" with
+              | .error _ => return none
+              | .ok stx =>
+                try
+                  withoutRecover <| evalTactic stx
+                  return none
+                catch e =>
+                  let msg := (← e.toMessageData.toString)
+                  if msg.startsWith "Found a counter-example" || msg.startsWith "Found problems" then
+                    return some (msg.replace "\n" " ")
+                  return none
+
+            open Lean Elab Tactic Meta in
+            /-- A counterexample to the main goal: small values of its Nat, Int and Bool variables that satisfy every
+            hypothesis and make the goal false. Falls back to Plausible where the project has it. -/
+            private def leanstudioCounterexample : TacticM (Option String) := do
+              let s ← saveState
+              try
+                let (_, g) ← (← getMainGoal).intros
+                let found ← g.withContext do
+                  let mut vars := #[]; let mut samples := #[]; let mut props := #[]
+                  for d in (← getLCtx) do
+                    if d.isImplementationDetail then continue
+                    if ← isProp d.type then props := props.push d.type
+                    else if let some xs ← leanstudioSamples d.type then
+                      vars := vars.push d.toExpr; samples := samples.push xs
+                    else return none
+                  if vars.isEmpty then return none
+                  let budget ← IO.mkRef 3000
+                  let some vals ← leanstudioHunt vars samples props (← g.getType) 0 #[] budget | return none
+                  let parts ← (vars.zip vals).mapM fun (v, x) => do
+                    return s!"{(← v.fvarId!.getDecl).userName.eraseMacroScopes} = {← ppExpr x}"
+                  return some (", ".intercalate parts.toList)
+                if found.isSome then return found
+                leanstudioPlausible
+              catch _ => return none
+              finally s.restore
+
             open Lean Elab Tactic Meta in
             private def leanstudioTry (n : Nat) (mode : String) : TacticM Unit := do
               let tacs : Array String := #[{{tactics}}]
               let g ← getMainGoal
               let s ← saveState
               let mut out := s!"{{Marker}}\t{n}\t{mode}"
+              let mut closed := false
               for i in [0:tacs.size] do
                 s.restore
                 match Parser.runParserCategory (← getEnv) `tactic tacs[i]! with
@@ -214,10 +295,15 @@ public static partial class ProofSearch
                       return (← getUnsolvedGoals).isEmpty && !pf.hasSorry && !pf.hasSyntheticSorry)
                     (fun _ => pure false)
                   let ms := (← IO.monoMsNow) - t0
+                  closed := closed || ok
                   let term ← if ok && tacs[i]!.endsWith "?" then
                       (do pure ((toString (← ppExpr (← instantiateMVars (.mvar g)))).replace "\n" " "))
                     else pure ""
                   out := out ++ s!"\n{i}\t{if ok then "ok" else "fail"}\t{ms}\t{term}"
+              s.restore
+              if !closed then
+                if let some cex ← withCurrHeartbeats <| withTheReader Core.Context (fun c => { c with maxHeartbeats := {{HeartbeatsPerTactic}} * 1000 }) leanstudioCounterexample then
+                  out := out ++ s!"\ncex\t{cex}"
               s.restore
               admitGoal g
               logInfo out
@@ -248,8 +334,14 @@ public static partial class ProofSearch
                 continue;
             }
             var trials = new List<TacticTrial>();
+            string? counterexample = null;
             foreach (string l in lines.Skip(1))
             {
+                if (l.StartsWith("cex\t", StringComparison.Ordinal))
+                {
+                    counterexample = l[4..].Trim();
+                    continue;
+                }
                 string[] f = l.Split('\t');
                 if (f.Length < 3 || !int.TryParse(f[0], CultureInfo.InvariantCulture, out int i) || i < 0 || i >= portfolio.Count)
                 {
@@ -260,7 +352,7 @@ public static partial class ProofSearch
                 string? term = f.Length > 3 && f[3].Trim().Length > 0 ? Regex.Replace(f[3].Trim(), @"\s+", " ") : null;
                 trials.Add(new TacticTrial(portfolio[i], o, ms, term));
             }
-            found[n] = new SearchResult(sites[n], head[2] == "term", trials);
+            found[n] = new SearchResult(sites[n], head[2] == "term", trials) { Counterexample = counterexample };
         }
         return sites.Select((s, i) => found.TryGetValue(i, out SearchResult? r) ? r : new SearchResult(s, false, [])).ToList();
     }

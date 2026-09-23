@@ -114,6 +114,8 @@
     <Setter Property="Foreground" Value="{DynamicResource GoalAccent}" />
   </Style>
 
+  <Style Selector="SelectableTextBlock.error"><Setter Property="Foreground" Value="#F14C4C" /></Style>
+
   <!-- File tree icons follow the theme. -->
   <Style Selector="PathIcon.folder"><Setter Property="Foreground" Value="{DynamicResource FolderBrush}" /></Style>
   <Style Selector="PathIcon.lean"><Setter Property="Foreground" Value="{DynamicResource LeanFileBrush}" /></Style>

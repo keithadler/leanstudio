@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+**Four more features**:
+- **Counterexamples**: when no tactic closes a goal, Prove It looks for values that make it false.
+- **Extract Goal as Lemma**: Lean writes the lemma, with just the hypotheses the goal needs.
+- **A REPL** that runs in the file at the cursor.
+- **The Project Map**: a graph of the project's declarations, what rests on sorry, and what to fix first.
+
+MCP tools: `extract_lemma` and `project_map`, and `prove` now reports counterexamples.
+
 **Polish**:
 - The menu, toolbar and tab strips share one surface, and panels are divided by hairlines.
 - Vector icons are drawn for the toolbar, file tree and Tactic State.
