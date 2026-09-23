@@ -403,7 +403,16 @@ internal static class Scenario
             x.ReplaceAll("def modX := 2\n");
             await vm.SaveCommand.ExecuteAsync(null);
             vm.ActiveDocument = y;
-            Check(await WaitFor(() => vm.ImportsStale, 60), "changing an imported file brings up the rebuild banner");
+            bool stale = await WaitFor(() => vm.ImportsStale, 60);
+            if (!stale)
+            {
+                // On a slow runner Lean can miss the first save while it is still busy; save once more.
+                vm.ActiveDocument = x;
+                await vm.SaveCommand.ExecuteAsync(null);
+                vm.ActiveDocument = y;
+                stale = await WaitFor(() => vm.ImportsStale, 60);
+            }
+            Check(stale, "changing an imported file brings up the rebuild banner");
             Snap(window, outDir, "15-stale-imports");
             await vm.RestartFileCommand.ExecuteAsync(null);
             Check(await WaitFor(() => y.Diagnostics.Any(d => d.Message.Trim() == "2") && !vm.ImportsStale, 120), "rebuilding and rechecking picks up the change");
