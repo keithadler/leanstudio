@@ -309,6 +309,16 @@ public sealed class LeanServer : IAsyncDisposable
         {
             await Task.Delay(50, ct).ConfigureAwait(false);
         }
+        // It publishes as it goes, so a batch for this version can arrive before the last one: wait until they
+        // have been still for a moment.
+        _diagnostics.TryGetValue(uri, out var last);
+        for (int quiet = 0, i = 0; quiet < 3 && i < 40; i++)
+        {
+            await Task.Delay(50, ct).ConfigureAwait(false);
+            _diagnostics.TryGetValue(uri, out var now);
+            quiet = ReferenceEquals(now.Diagnostics, last.Diagnostics) ? quiet + 1 : 0;
+            last = now;
+        }
     }
 
     private void ReleaseWaiters(string uri)
