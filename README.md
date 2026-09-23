@@ -345,7 +345,7 @@ This drives the **whole app** without a display, against a live Lean server. It 
 
 ## Status
 
-Lean Studio is at **0.2**. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.3**. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - Goals are shown as text. You can't yet hover a subterm inside a goal to see its type.
 - ProofWidgets and other user widgets aren't rendered.
