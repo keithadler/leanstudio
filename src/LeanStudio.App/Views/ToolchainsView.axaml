@@ -30,17 +30,17 @@
         </ListBox.ItemTemplate>
       </ListBox>
       <WrapPanel>
-        <Button Content="Use for project" Command="{Binding UseForProjectCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6"
+        <Button Content="Use for project" Command="{Binding UseForProjectCommand}" Classes="chip" Margin="0,0,6,6"
                 ToolTip.Tip="Write it to lean-toolchain and restart Lean" />
-        <Button Content="Make default" Command="{Binding SetDefaultCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
-        <Button Content="Uninstall" Command="{Binding UninstallCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
-        <Button Content="Refresh" Command="{Binding RefreshCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
+        <Button Content="Make default" Command="{Binding SetDefaultCommand}" Classes="chip" Margin="0,0,6,6" />
+        <Button Content="Uninstall" Command="{Binding UninstallCommand}" Classes="chip" Margin="0,0,6,6" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="chip" Margin="0,0,6,6" />
       </WrapPanel>
 
       <TextBlock Text="INSTALL A TOOLCHAIN" Classes="panelTitle" />
       <TextBox Text="{Binding ToInstall}" Classes="mono" FontSize="12" PlaceholderText="leanprover/lean4:v4.34.0" />
       <TextBlock Text="stable, nightly, or a version such as leanprover/lean4:v4.34.0" Classes="dim" FontSize="11" TextWrapping="Wrap" />
-      <Button Content="Install" Command="{Binding InstallCommand}" FontSize="11" Padding="8,2" />
+      <Button Content="Install" Command="{Binding InstallCommand}" Classes="chip" />
       <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsBusy}">
         <ProgressBar IsIndeterminate="True" Width="120" MinWidth="120" />
       </StackPanel>

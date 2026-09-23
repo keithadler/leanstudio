@@ -12,7 +12,7 @@
         <StackPanel Spacing="4">
           <Grid ColumnDefinitions="*,Auto">
             <TextBox Text="{Binding MeaningQuery}" PlaceholderText="the square root of 2 is irrational" FontSize="12" KeyDown="OnMeaningKey" />
-            <Button Grid.Column="1" Content="Ask" Command="{Binding SearchMeaningCommand}" IsEnabled="{Binding !MeaningBusy}" FontSize="11" Padding="8,2" Margin="4,0,0,0" />
+            <Button Grid.Column="1" Content="Ask" Command="{Binding SearchMeaningCommand}" IsEnabled="{Binding !MeaningBusy}" Classes="chip" Margin="4,0,0,0" />
           </Grid>
           <TextBlock Text="{Binding MeaningStatus}" FontSize="10" Classes="dim" TextWrapping="Wrap" />
           <ListBox ItemsSource="{Binding MeaningResults}" SelectedItem="{Binding SelectedMeaning}" MaxHeight="260" Background="Transparent">
@@ -68,9 +68,9 @@
         <TextBlock Text="{Binding Details.Deprecation, FallbackValue=''}" Foreground="#E59E2C" FontSize="12" TextWrapping="Wrap"
                    IsVisible="{Binding Details.Deprecation, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4">
-          <Button Content="Open source" Command="{Binding OpenSourceCommand}" FontSize="11" Padding="8,2"
+          <Button Content="Open source" Command="{Binding OpenSourceCommand}" Classes="chip"
                   IsVisible="{Binding Details.SourceFile, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
-          <Button Content="Documentation" Command="{Binding OpenDocumentationCommand}" FontSize="11" Padding="8,2"
+          <Button Content="Documentation" Command="{Binding OpenDocumentationCommand}" Classes="chip"
                   ToolTip.Tip="Its page on the Mathlib documentation site (which covers Lean core and Std too)" />
         </StackPanel>
 
@@ -107,7 +107,7 @@
         </ItemsControl>
 
         <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-          <Button Content="Find what uses it" Command="{Binding FindUsedByCommand}" FontSize="11" Padding="8,2" />
+          <Button Content="Find what uses it" Command="{Binding FindUsedByCommand}" Classes="chip" />
           <CheckBox Content="everywhere" IsChecked="{Binding SearchEverywhere}" FontSize="11" ToolTip.Tip="Scan every open module, not just the project's own (slow in Mathlib)" />
         </StackPanel>
         <ItemsControl ItemsSource="{Binding UsedByList}">

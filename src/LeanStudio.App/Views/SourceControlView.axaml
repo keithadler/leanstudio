@@ -8,7 +8,7 @@
       <!-- Not a repository -->
       <StackPanel IsVisible="{Binding !IsRepository}" Spacing="6">
         <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" />
-        <Button Content="Initialize a Git repository" Click="OnInit" FontSize="12" Padding="10,3" IsVisible="{Binding GitInstalled}" />
+        <Button Content="Initialize a Git repository" Click="OnInit" Classes="chip" IsVisible="{Binding GitInstalled}" />
       </StackPanel>
 
       <StackPanel IsVisible="{Binding IsRepository}" Spacing="6">
@@ -16,7 +16,7 @@
         <Grid ColumnDefinitions="*,Auto">
           <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding Branch, Mode=OneWay}" FontSize="12" HorizontalAlignment="Stretch"
                     x:Name="BranchBox" SelectionChanged="OnBranchChosen" ToolTip.Tip="Switch branch" />
-          <Button Grid.Column="1" Content="+" Command="{Binding NewBranchCommand}" FontSize="12" Padding="8,2" Margin="4,0,0,0" ToolTip.Tip="New branch" />
+          <Button Grid.Column="1" Content="+" Command="{Binding NewBranchCommand}" Classes="chip" Margin="4,0,0,0" ToolTip.Tip="New branch" />
         </Grid>
         <TextBlock Text="{Binding BranchLabel}" Classes="dim" FontSize="11" />
 
@@ -25,10 +25,10 @@
         <WrapPanel>
           <Button Content="✓ Commit" Command="{Binding CommitCommand}" Classes="accent" FontSize="12" Padding="10,3" Margin="0,0,4,4"
                   ToolTip.Tip="Commit staged changes, or every change when nothing is staged" />
-          <Button Content="⟳ Sync" Command="{Binding SyncCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" ToolTip.Tip="Pull, then push" />
-          <Button Content="↑ Push" Command="{Binding PushCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
-          <Button Content="↓ Pull" Command="{Binding PullCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
-          <Button Content="Refresh" Command="{Binding RefreshCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" />
+          <Button Content="Sync" Command="{Binding SyncCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" ToolTip.Tip="Pull, then push" />
+          <Button Content="↑ Push" Command="{Binding PushCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
+          <Button Content="↓ Pull" Command="{Binding PullCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
+          <Button Content="Refresh" Command="{Binding RefreshCommand}" Classes="chip" Margin="0,0,4,4" />
         </WrapPanel>
         <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" MinHeight="3" />
         <TextBlock Text="{Binding Status}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
@@ -83,12 +83,12 @@
         <TextBlock Text="GITHUB" Classes="panelTitle" />
         <TextBlock Text="{Binding GitHubRepository}" Classes="mono" FontSize="12" IsVisible="{Binding IsOnGitHub}" />
         <WrapPanel>
-          <Button Content="Publish to GitHub…" Command="{Binding PublishToGitHubCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding CanPublish}"
+          <Button Content="Publish to GitHub…" Command="{Binding PublishToGitHubCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding CanPublish}"
                   ToolTip.Tip="Create a private GitHub repository and push this one (uses the GitHub CLI, gh)" />
-          <Button Content="Open on GitHub" Command="{Binding OpenOnGitHubCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}"
+          <Button Content="Open on GitHub" Command="{Binding OpenOnGitHubCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}"
                   ToolTip.Tip="The current file and line on github.com" />
-          <Button Content="Create Pull Request…" Command="{Binding CreatePullRequestCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}" />
-          <Button Content="Add Lean CI workflow" Command="{Binding AddCiWorkflowCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4"
+          <Button Content="Create Pull Request…" Command="{Binding CreatePullRequestCommand}" Classes="chip" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}" />
+          <Button Content="Add Lean CI workflow" Command="{Binding AddCiWorkflowCommand}" Classes="chip" Margin="0,0,4,4"
                   ToolTip.Tip="Add .github/workflows/lean_action_ci.yml, which builds the project on every push" />
         </WrapPanel>
         <Button Classes="flat" FontSize="11" IsVisible="{Binding PullRequest, Converter={x:Static ObjectConverters.IsNotNull}}"

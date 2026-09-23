@@ -243,8 +243,8 @@
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
           <Button Content="Download" Classes="accent" Command="{Binding DownloadUpdateCommand}" FontSize="12" Padding="10,3" />
-          <Button Content="What's new" Command="{Binding OpenReleaseNotesCommand}" FontSize="12" Padding="10,3" />
-          <Button Content="Skip this version" Command="{Binding SkipUpdateCommand}" FontSize="12" Padding="10,3" />
+          <Button Content="What's new" Command="{Binding OpenReleaseNotesCommand}" Classes="chip" />
+          <Button Content="Skip this version" Command="{Binding SkipUpdateCommand}" Classes="chip" />
           <Button Classes="flat" Content="×" Command="{Binding DismissUpdateCommand}" FontSize="14" />
         </StackPanel>
       </Grid>
@@ -401,7 +401,7 @@
               <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8">
                 <TextBlock Text="Every sorry, admit and TODO in the project. Click one: the cursor lands on it and the Tactic State shows what is left to prove."
                            Classes="dim" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" />
-                <Button Content="Refresh" Command="{Binding RefreshMarkersCommand}" FontSize="11" Padding="8,2" />
+                <Button Content="Refresh" Command="{Binding RefreshMarkersCommand}" Classes="chip" />
               </StackPanel>
               <Panel>
               <ListBox ItemsSource="{Binding Markers}" Background="Transparent" Margin="0,4,0,0" Tapped="OnMarkerTapped">
@@ -427,11 +427,11 @@
                 <TextBox x:Name="SearchBox" Text="{Binding SearchQuery}" PlaceholderText="Find in files (Enter to search)" FontSize="12" KeyDown="OnSearchKey" />
                 <CheckBox Grid.Column="1" Content="Aa" IsChecked="{Binding SearchCaseSensitive}" ToolTip.Tip="Match case" Margin="8,0,0,0" />
                 <CheckBox Grid.Column="2" Content=".*" IsChecked="{Binding SearchRegex}" ToolTip.Tip="Regular expression" Margin="4,0,0,0" />
-                <Button Grid.Column="3" Content="Search" Command="{Binding SearchInFilesCommand}" FontSize="12" Padding="10,3" Margin="6,0,0,0" />
+                <Button Grid.Column="3" Content="Search" Command="{Binding SearchInFilesCommand}" Classes="chip" Margin="6,0,0,0" />
               </Grid>
               <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                 <TextBox Text="{Binding ReplaceWith}" PlaceholderText="Replace with ($1, $2… for regex groups)" FontSize="12" />
-                <Button Grid.Column="1" Content="Replace All…" Click="OnReplaceAll" FontSize="12" Padding="10,3" Margin="6,0,0,0"
+                <Button Grid.Column="1" Content="Replace All…" Click="OnReplaceAll" Classes="chip" Margin="6,0,0,0"
                         ToolTip.Tip="Replace every match in the project; open files are edited in place, unsaved" />
               </Grid>
               <TextBlock DockPanel.Dock="Top" Text="{Binding SearchStatus}" Classes="dim" FontSize="11" Margin="2,4" />
@@ -455,7 +455,7 @@
             <DockPanel Margin="8,4">
               <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto">
                 <TextBlock Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" FontSize="11" Padding="8,2" Margin="8,0,0,0" />
+                <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" Classes="chip" Margin="8,0,0,0" />
               </Grid>
               <Panel>
               <ListBox ItemsSource="{Binding TimingItems}" Background="Transparent" Margin="0,4,0,0" x:Name="TimingList" Tapped="OnTimingTapped">

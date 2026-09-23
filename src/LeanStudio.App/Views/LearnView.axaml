@@ -13,7 +13,7 @@
           <TextBlock Text="{Binding Progress}" FontSize="12" TextWrapping="Wrap" Classes="dim" />
           <WrapPanel>
             <Button Content="Start the tutorial" Command="{Binding StartTutorialCommand}" Classes="accent" FontSize="12" Padding="10,4" Margin="0,0,6,6" />
-            <Button Content="Open the playground" Command="{Binding OpenPlaygroundCommand}" FontSize="12" Padding="10,4" Margin="0,0,6,6"
+            <Button Content="Open the playground" Command="{Binding OpenPlaygroundCommand}" Classes="chip" Margin="0,0,6,6"
                     ToolTip.Tip="A Lean file to experiment in, no project needed" />
           </WrapPanel>
           <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource GoalAccent}"
@@ -60,7 +60,7 @@
           <TextBlock Text="{Binding SelectedTheorem.Story, FallbackValue=''}" TextWrapping="Wrap" FontSize="11" Classes="dim"
                      IsVisible="{Binding SelectedTheorem.Story, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue=False}" />
           <SelectableTextBlock Text="{Binding SelectedTheorem.LeanName, FallbackValue=''}" Classes="mono" FontSize="11" />
-          <Button Content="Try it in Lean" Command="{Binding TryTheoremCommand}" FontSize="12" Padding="10,3" HorizontalAlignment="Left" />
+          <Button Content="Try it in Lean" Command="{Binding TryTheoremCommand}" Classes="chip" HorizontalAlignment="Left" />
         </StackPanel>
       </Border>
 
