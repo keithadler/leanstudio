@@ -1,0 +1,144 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             x:Class="LeanStudio.App.Views.InfoView"
+             x:DataType="vm:InfoViewModel">
+  <Grid RowDefinitions="Auto,*,4,Auto">
+    <!-- Header -->
+    <Border Grid.Row="0" Padding="12,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel>
+          <TextBlock Text="Tactic State" FontWeight="SemiBold" FontSize="14" />
+          <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
+        </StackPanel>
+        <ToggleButton Grid.Column="1" Content="Plain" IsChecked="{Binding PlainText}" FontSize="11" Padding="8,2" VerticalAlignment="Center"
+                      ToolTip.Tip="Show the goals as the plain text Lean prints" />
+      </Grid>
+    </Border>
+
+    <!-- Goals -->
+    <ScrollViewer Grid.Row="1" Padding="12,4,12,8">
+      <StackPanel>
+        <TextBlock Text="{Binding Status}" Classes="dim" Margin="0,6,0,6" TextWrapping="Wrap" />
+
+        <!-- Structured goals -->
+        <ItemsControl ItemsSource="{Binding Goals}" IsVisible="{Binding !PlainText}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:GoalView">
+              <Border Classes="card goal" Classes.closing="{Binding IsRemoved}" Classes.opened="{Binding IsInserted}">
+                <StackPanel Spacing="2">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding CaseLabel}" IsVisible="{Binding HasCase}" Classes="mono" FontWeight="SemiBold" Foreground="{DynamicResource GoalAccent}" Margin="0,0,0,4" />
+                    <TextBlock Grid.Column="1" Text="closed by this tactic" FontSize="11" Foreground="#3FB950" IsVisible="{Binding IsRemoved}" />
+                    <TextBlock Grid.Column="1" Text="new goal" FontSize="11" Foreground="{DynamicResource GoalAccent}" IsVisible="{Binding IsInserted}" />
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding Hypotheses}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:HypothesisView">
+                        <Border Padding="4,1" CornerRadius="3"
+                                Classes.inserted="{Binding IsInserted}" Classes.removed="{Binding IsRemoved}">
+                          <Grid ColumnDefinitions="14,*">
+                            <TextBlock Text="{Binding Marker}" Classes="mono dim" />
+                            <SelectableTextBlock Grid.Column="1" Text="{Binding Text}" Classes="mono" TextWrapping="Wrap"
+                                                 Classes.struck="{Binding IsRemoved}" />
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Border Padding="4,3,4,1" Margin="0,4,0,0" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                    <SelectableTextBlock Text="{Binding TargetText}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  </Border>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Plain goals -->
+        <SelectableTextBlock Text="{Binding PlainGoals}" Classes="mono" TextWrapping="Wrap" IsVisible="{Binding PlainText}" />
+
+        <!-- Expected type -->
+        <StackPanel IsVisible="{Binding HasExpectedType}">
+          <TextBlock Text="EXPECTED TYPE" Classes="panelTitle" />
+          <Border Classes="card">
+            <SelectableTextBlock Text="{Binding ExpectedType}" Classes="mono" TextWrapping="Wrap" />
+          </Border>
+        </StackPanel>
+
+        <!-- Messages -->
+        <StackPanel IsVisible="{Binding HasMessages}">
+          <TextBlock Text="MESSAGES" Classes="panelTitle" />
+          <ItemsControl ItemsSource="{Binding Messages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <Border Classes="card">
+                  <SelectableTextBlock Text="{Binding}" Classes="mono" TextWrapping="Wrap" />
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+
+    <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" IsVisible="{Binding HasSteps}" />
+
+    <!-- Proof steps -->
+    <Border Grid.Row="3" MaxHeight="340" IsVisible="{Binding HasSteps}" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="12,8,12,4">
+          <TextBlock Text="Proof Steps" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding ProofName}" Classes="mono dim" />
+        </StackPanel>
+        <ListBox ItemsSource="{Binding Steps}" Background="Transparent" x:Name="StepList" SelectionMode="Single" Tapped="OnStepTapped">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProofStepView">
+              <Border Padding="4,2" CornerRadius="3" Classes.current="{Binding IsCurrent}">
+                <Grid ColumnDefinitions="24,*,Auto" RowDefinitions="Auto,Auto">
+                  <TextBlock Text="{Binding Number}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="mono" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding GoalsLabel}" Classes="dim" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
+                             IsVisible="{Binding !ClosesAll}" />
+                  <TextBlock Grid.Column="2" Text="✓ done" Foreground="#3FB950" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" IsVisible="{Binding ClosesAll}" />
+                  <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Summary}" FontSize="11" Classes="dim mono"
+                             Classes.error="{Binding HasError}" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+  </Grid>
+
+  <UserControl.Styles>
+    <Style Selector="Border.inserted">
+      <Setter Property="Background" Value="{DynamicResource InsertedBackground}" />
+    </Style>
+    <Style Selector="Border.removed">
+      <Setter Property="Background" Value="{DynamicResource RemovedBackground}" />
+    </Style>
+    <Style Selector="Border.goal">
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.goal.closing">
+      <Setter Property="BorderBrush" Value="#3FB950" />
+    </Style>
+    <Style Selector="Border.goal.opened">
+      <Setter Property="BorderBrush" Value="{DynamicResource GoalAccent}" />
+    </Style>
+    <Style Selector="Border.current">
+      <Setter Property="Background" Value="{DynamicResource CurrentStepBackground}" />
+    </Style>
+    <Style Selector="SelectableTextBlock.struck">
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <Style Selector="TextBlock.error">
+      <Setter Property="Foreground" Value="#F14C4C" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+  </UserControl.Styles>
+</UserControl>

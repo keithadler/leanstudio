@@ -1,0 +1,79 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             xmlns:ver="using:LeanStudio.Core.Verification"
+             x:Class="LeanStudio.App.Views.NavigatorView"
+             x:DataType="vm:NavigatorViewModel">
+  <Grid RowDefinitions="Auto,Auto,*,4,*" Margin="8,6">
+    <TextBox Grid.Row="0" Text="{Binding Query}" PlaceholderText="Search declarations (e.g. Nat.add_comm)" />
+    <TextBlock Grid.Row="1" Text="{Binding Status}" Classes="dim" FontSize="11" TextWrapping="Wrap" Margin="2,4" />
+    <ListBox Grid.Row="2" ItemsSource="{Binding Results}" SelectedItem="{Binding Selected}" Background="Transparent">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="ver:DeclarationSummary">
+          <StackPanel ToolTip.Tip="{Binding Module}">
+            <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding Module}" Classes="dim" FontSize="10" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <GridSplitter Grid.Row="3" ResizeDirection="Rows" Background="Transparent" />
+    <ScrollViewer Grid.Row="4" IsVisible="{Binding HasDetails}">
+      <StackPanel Spacing="2" Margin="0,4,4,8">
+        <SelectableTextBlock Text="{Binding Details.Name, FallbackValue=''}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap" />
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="{Binding Details.Kind, FallbackValue=''}" Foreground="{DynamicResource GoalAccent}" FontSize="12" />
+          <TextBlock Text="in" Classes="dim" FontSize="12" />
+          <TextBlock Text="{Binding Details.Module, FallbackValue=''}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+        <TextBlock Text="{Binding Details.Deprecation, FallbackValue=''}" Foreground="#E59E2C" FontSize="12" TextWrapping="Wrap"
+                   IsVisible="{Binding Details.Deprecation, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
+        <Button Content="Open source" Command="{Binding OpenSourceCommand}" FontSize="11" Padding="8,2" Margin="0,4"
+                IsVisible="{Binding Details.SourceFile, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}" />
+
+        <TextBlock Text="TYPE" Classes="panelTitle" />
+        <Border Classes="card">
+          <SelectableTextBlock Text="{Binding Details.Type, FallbackValue=''}" Classes="mono" FontSize="12" TextWrapping="Wrap" />
+        </Border>
+
+        <StackPanel IsVisible="{Binding Details.DocString, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}">
+          <TextBlock Text="DOCUMENTATION" Classes="panelTitle" />
+          <SelectableTextBlock Text="{Binding Details.DocString, FallbackValue=''}" TextWrapping="Wrap" FontSize="12" />
+        </StackPanel>
+
+        <TextBlock Text="AXIOMS (computed by Tenet)" Classes="panelTitle" />
+        <TextBlock Text="{Binding AxiomSummary}" TextWrapping="Wrap" FontSize="12" />
+        <ItemsControl ItemsSource="{Binding Axioms}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Text="{Binding}" Classes="mono dim" FontSize="11" Margin="8,0,0,0" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Text="{Binding Uses.Count, StringFormat='USES ({0})'}" Classes="panelTitle" />
+        <ItemsControl ItemsSource="{Binding Uses}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <Button Classes="flat" Content="{Binding}" FontSize="11" HorizontalContentAlignment="Left"
+                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+          <Button Content="Find what uses it" Command="{Binding FindUsedByCommand}" FontSize="11" Padding="8,2" />
+          <CheckBox Content="everywhere" IsChecked="{Binding SearchEverywhere}" FontSize="11" ToolTip.Tip="Scan every open module, not just the project's own (slow in Mathlib)" />
+        </StackPanel>
+        <ItemsControl ItemsSource="{Binding UsedByList}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <Button Classes="flat" Content="{Binding}" FontSize="11" HorizontalContentAlignment="Left"
+                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

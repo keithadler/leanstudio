@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             xmlns:tc="using:LeanStudio.Core.Toolchains"
+             x:Class="LeanStudio.App.Views.ToolchainsView"
+             x:DataType="vm:ToolchainsViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="10,8" Spacing="6">
+      <Border Classes="card" IsVisible="{Binding !ElanInstalled}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="elan is not installed" FontWeight="SemiBold" />
+          <TextBlock Text="Lean Studio uses elan to install Lean and pick the version each project asks for. Install it, then press Refresh." TextWrapping="Wrap" FontSize="12" />
+          <SelectableTextBlock Text="{Binding ElanInstallUrl}" Classes="mono" FontSize="11" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Text="THIS PROJECT USES" Classes="panelTitle" />
+      <SelectableTextBlock Text="{Binding ProjectToolchain}" Classes="mono" FontSize="12" TextWrapping="Wrap" />
+
+      <TextBlock Text="INSTALLED" Classes="panelTitle" />
+      <ListBox ItemsSource="{Binding Installed}" SelectedItem="{Binding Selected}" MaxHeight="260" Background="Transparent">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="tc:Toolchain">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" />
+              <TextBlock Text="(default)" Classes="dim" FontSize="11" IsVisible="{Binding IsDefault}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <WrapPanel>
+        <Button Content="Use for project" Command="{Binding UseForProjectCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6"
+                ToolTip.Tip="Write it to lean-toolchain and restart Lean" />
+        <Button Content="Make default" Command="{Binding SetDefaultCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
+        <Button Content="Uninstall" Command="{Binding UninstallCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
+        <Button Content="Refresh" Command="{Binding RefreshCommand}" FontSize="11" Padding="8,2" Margin="0,0,6,6" />
+      </WrapPanel>
+
+      <TextBlock Text="INSTALL A TOOLCHAIN" Classes="panelTitle" />
+      <TextBox Text="{Binding ToInstall}" Classes="mono" FontSize="12" PlaceholderText="leanprover/lean4:v4.34.0" />
+      <TextBlock Text="stable, nightly, or a version such as leanprover/lean4:v4.34.0" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+      <Button Content="Install" Command="{Binding InstallCommand}" FontSize="11" Padding="8,2" />
+      <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsBusy}">
+        <ProgressBar IsIndeterminate="True" Width="120" MinWidth="120" />
+      </StackPanel>
+      <TextBlock Text="{Binding Status}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

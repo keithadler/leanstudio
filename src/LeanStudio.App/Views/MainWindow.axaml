@@ -1,0 +1,202 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LeanStudio.App.ViewModels"
+        xmlns:ed="using:LeanStudio.App.Editor"
+        xmlns:v="using:LeanStudio.App.Views"
+        xmlns:ver="using:LeanStudio.Core.Verification"
+        xmlns:tc="using:LeanStudio.Core.Toolchains"
+        x:Class="LeanStudio.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="{Binding WindowTitle}"
+        Width="1440" Height="900" MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterScreen">
+
+  <Window.KeyBindings>
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" Command="{Binding SaveCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+S', macOS='Cmd+Shift+S'}" Command="{Binding SaveAllCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+O', macOS='Cmd+O'}" Command="{Binding OpenFileDialogCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+N', macOS='Cmd+N'}" Command="{Binding NewFileCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" Command="{Binding CloseDocumentCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+B', macOS='Cmd+B'}" Command="{Binding BuildCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" Command="{Binding VerifyCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" Command="{Binding GoToLineCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" Command="{Binding ShowDeclarationAtCaretCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" Command="{Binding RestartServerCommand}" />
+  </Window.KeyBindings>
+
+  <DockPanel>
+    <!-- Menu -->
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="New Project…" Command="{Binding NewProjectCommand}" />
+        <MenuItem Header="New File…" Command="{Binding NewFileCommand}" InputGesture="{OnPlatform Default='Ctrl+N', macOS='Cmd+N'}" />
+        <Separator />
+        <MenuItem Header="Open Folder…" Command="{Binding OpenFolderCommand}" />
+        <MenuItem Header="Open File…" Command="{Binding OpenFileDialogCommand}" InputGesture="{OnPlatform Default='Ctrl+O', macOS='Cmd+O'}" />
+        <MenuItem x:Name="RecentMenu" Header="Open Recent" />
+        <Separator />
+        <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" />
+        <MenuItem Header="Save As…" Command="{Binding SaveAsCommand}" />
+        <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+S', macOS='Cmd+Shift+S'}" />
+        <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
+        <Separator />
+        <MenuItem Header="Exit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="Undo" Click="OnUndo" InputGesture="{OnPlatform Default='Ctrl+Z', macOS='Cmd+Z'}" />
+        <MenuItem Header="Redo" Click="OnRedo" InputGesture="{OnPlatform Default='Ctrl+Y', macOS='Cmd+Shift+Z'}" />
+        <Separator />
+        <MenuItem Header="Find…" Click="OnFind" InputGesture="{OnPlatform Default='Ctrl+F', macOS='Cmd+F'}" />
+        <MenuItem Header="Replace…" Click="OnReplace" InputGesture="{OnPlatform Default='Ctrl+H', macOS='Cmd+Alt+F'}" />
+        <MenuItem Header="Go to Line…" Command="{Binding GoToLineCommand}" InputGesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" />
+        <Separator />
+        <MenuItem Header="Unicode Input (\alpha → α)" ToggleType="CheckBox" IsChecked="{Binding Settings.UnicodeInput}" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Dark Theme" Click="OnDarkTheme" />
+        <MenuItem Header="Light Theme" Click="OnLightTheme" />
+        <Separator />
+        <MenuItem Header="Larger Font" Click="OnFontBigger" InputGesture="{OnPlatform Default='Ctrl+OemPlus', macOS='Cmd+OemPlus'}" />
+        <MenuItem Header="Smaller Font" Click="OnFontSmaller" InputGesture="{OnPlatform Default='Ctrl+OemMinus', macOS='Cmd+OemMinus'}" />
+        <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
+      </MenuItem>
+      <MenuItem Header="_Lean">
+        <MenuItem Header="Go to Definition" Command="{Binding GoToDefinitionCommand}" InputGesture="F12" />
+        <MenuItem Header="Show Declaration at Cursor" Command="{Binding ShowDeclarationAtCaretCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" />
+        <Separator />
+        <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
+        <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
+        <Separator />
+        <MenuItem Header="Build Project" Command="{Binding BuildCommand}" InputGesture="{OnPlatform Default='Ctrl+B', macOS='Cmd+B'}" />
+        <MenuItem Header="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
+        <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
+        <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
+        <MenuItem Header="Cancel Running Task" Command="{Binding CancelTaskCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Tenet">
+        <MenuItem Header="Verify Project" Command="{Binding VerifyCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" />
+        <MenuItem Header="Verify After Every Build" ToggleType="CheckBox" IsChecked="{Binding Settings.VerifyAfterBuild}" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="Keyboard Shortcuts" Click="OnShortcuts" />
+        <MenuItem Header="About Lean Studio" Click="OnAbout" />
+      </MenuItem>
+    </Menu>
+
+    <!-- Status bar -->
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource StatusBackground}" Padding="10,3">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Column="0" Text="{Binding ServerStatus}" Foreground="White" FontSize="12" Margin="0,0,16,0" />
+        <TextBlock Grid.Column="1" Text="{Binding ProblemSummary}" Foreground="White" FontSize="12" Margin="0,0,16,0" Cursor="Hand" PointerPressed="OnProblemsClicked" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+          <ProgressBar IsIndeterminate="True" Width="80" MinWidth="80" Height="4" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding BusyText}" Foreground="White" FontSize="12" />
+        </StackPanel>
+        <TextBlock Grid.Column="3" Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        <TextBlock Grid.Column="4" Text="⏳ elaborating" Foreground="White" FontSize="12" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}" />
+        <TextBlock Grid.Column="5" Text="{Binding ProjectName}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        <TextBlock Grid.Column="6" Text="{Binding ToolchainLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+      </Grid>
+    </Border>
+
+    <!-- Toolbar -->
+    <Border DockPanel.Dock="Top" Padding="8,4" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Classes="tool" Content="New Project" Command="{Binding NewProjectCommand}" />
+        <Button Classes="tool" Content="Open Folder" Command="{Binding OpenFolderCommand}" />
+        <Button Classes="tool" Content="Save" Command="{Binding SaveCommand}" />
+        <Separator Width="1" Height="18" Margin="4,0" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
+        <Button Classes="tool" Content="▶ Build" Command="{Binding BuildCommand}" ToolTip.Tip="lake build" />
+        <Button Classes="tool" Content="✓ Verify with Tenet" Command="{Binding VerifyCommand}" ToolTip.Tip="Re-check every declaration Lean built with Tenet's independent kernel" />
+        <Button Classes="tool" Content="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
+        <Button Classes="tool" Content="⟳ Restart Lean" Command="{Binding RestartServerCommand}" />
+        <Button Classes="tool" Content="■ Cancel" Command="{Binding CancelTaskCommand}" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <Grid ColumnDefinitions="280,4,*,4,420">
+      <!-- Sidebar -->
+      <TabControl Grid.Column="0" Classes="panel" SelectedIndex="{Binding SidebarTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+        <TabItem Header="Files">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Text="{Binding ProjectName}" FontWeight="SemiBold" Margin="10,6" />
+            <TreeView x:Name="FileTree" ItemsSource="{Binding Files}" DoubleTapped="OnFileDoubleTapped" SelectionChanged="OnFileSelected">
+              <TreeView.ItemContainerTheme>
+                <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}" x:DataType="vm:FileNode">
+                  <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                  <Setter Property="MinHeight" Value="24" />
+                </ControlTheme>
+              </TreeView.ItemContainerTheme>
+              <TreeView.ItemTemplate>
+                <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:FileNode">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Icon}" Width="16" FontSize="12" />
+                    <TextBlock Text="{Binding Name}" FontSize="13" />
+                  </StackPanel>
+                </TreeDataTemplate>
+              </TreeView.ItemTemplate>
+            </TreeView>
+          </DockPanel>
+        </TabItem>
+        <TabItem Header="Declarations">
+          <v:NavigatorView DataContext="{Binding Navigator}" />
+        </TabItem>
+        <TabItem Header="Toolchains">
+          <v:ToolchainsView DataContext="{Binding Toolchains}" />
+        </TabItem>
+      </TabControl>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+      <!-- Editor and bottom panel -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*,4,220">
+        <TabStrip x:Name="DocTabs" Grid.Row="0" Classes="docs" ItemsSource="{Binding Documents}" SelectedItem="{Binding ActiveDocument}">
+          <TabStrip.ItemTemplate>
+            <DataTemplate x:DataType="vm:DocumentViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding Path}">
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                <Button Classes="flat" Content="×" FontSize="13" Padding="4,0" VerticalAlignment="Center"
+                        Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseDocumentCommand}" CommandParameter="{Binding}" />
+              </StackPanel>
+            </DataTemplate>
+          </TabStrip.ItemTemplate>
+        </TabStrip>
+
+        <Grid Grid.Row="1">
+          <ed:LeanEditor x:Name="Editor" Document="{Binding ActiveDocument}" Main="{Binding}" />
+          <v:WelcomeView IsVisible="{Binding !HasDocument}" />
+        </Grid>
+
+        <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" />
+
+        <TabControl Grid.Row="3" Classes="panel" SelectedIndex="{Binding BottomTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+          <TabItem Header="{Binding ProblemSummary, StringFormat='Problems  {0}'}">
+            <ListBox ItemsSource="{Binding Problems}" DoubleTapped="OnProblemDoubleTapped" x:Name="ProblemList" Background="Transparent">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ProblemItem">
+                  <StackPanel Orientation="Horizontal" Spacing="8" ToolTip.Tip="{Binding FullMessage}">
+                    <TextBlock Text="{Binding Icon}" Width="18" />
+                    <TextBlock Text="{Binding File}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Location}" Classes="dim" />
+                    <TextBlock Text="{Binding Message}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+          <TabItem Header="Output">
+            <ed:OutputView x:Name="OutputView" />
+          </TabItem>
+          <TabItem Header="Tenet">
+            <v:VerificationView DataContext="{Binding Verification}" />
+          </TabItem>
+        </TabControl>
+      </Grid>
+
+      <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="Transparent" />
+
+      <!-- Infoview -->
+      <v:InfoView Grid.Column="4" DataContext="{Binding Info}" Background="{DynamicResource PanelBackground}" />
+    </Grid>
+  </DockPanel>
+</Window>

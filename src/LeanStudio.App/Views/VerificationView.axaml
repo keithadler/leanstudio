@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             x:Class="LeanStudio.App.Views.VerificationView"
+             x:DataType="vm:VerificationViewModel">
+  <DockPanel Margin="8,6">
+    <StackPanel DockPanel.Dock="Top" Spacing="4">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center" />
+        <ComboBox Grid.Column="1" SelectedIndex="{Binding Filter}" FontSize="11" MinWidth="150" Margin="8,0,0,0">
+          <ComboBoxItem Content="All declarations" />
+          <ComboBoxItem Content="Needs attention" />
+          <ComboBoxItem Content="Verified" />
+        </ComboBox>
+      </Grid>
+      <StackPanel IsVisible="{Binding IsRunning}" Spacing="2">
+        <ProgressBar Value="{Binding Progress}" Maximum="100" Height="4" MinHeight="4" />
+        <TextBlock Text="{Binding ProgressText}" Classes="dim mono" FontSize="11" />
+      </StackPanel>
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Items}" Background="Transparent" Margin="0,4,0,0" DoubleTapped="OnVerdictDoubleTapped">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:VerdictView">
+          <Grid ColumnDefinitions="20,Auto,*" ToolTip.Tip="{Binding Detail}">
+            <TextBlock Text="{Binding Icon}" Classes.ok="{Binding Status, Converter={x:Static vm:StatusConverters.IsVerified}}"
+                       Classes.warn="{Binding Status, Converter={x:Static vm:StatusConverters.IsConditional}}"
+                       Classes.bad="{Binding Status, Converter={x:Static vm:StatusConverters.IsRejected}}" />
+            <TextBlock Grid.Column="1" Text="{Binding Name}" Classes="mono" FontSize="12" Margin="0,0,12,0" />
+            <TextBlock Grid.Column="2" Text="{Binding Detail}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+  <UserControl.Styles>
+    <Style Selector="TextBlock.ok"><Setter Property="Foreground" Value="#3FB950" /></Style>
+    <Style Selector="TextBlock.warn"><Setter Property="Foreground" Value="#E59E2C" /></Style>
+    <Style Selector="TextBlock.bad"><Setter Property="Foreground" Value="#F14C4C" /></Style>
+  </UserControl.Styles>
+</UserControl>

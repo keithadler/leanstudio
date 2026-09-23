@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             x:Class="LeanStudio.App.Views.WelcomeView"
+             x:DataType="vm:MainViewModel"
+             Background="{DynamicResource PanelBackground}">
+  <ScrollViewer>
+    <StackPanel MaxWidth="620" Margin="40,48" Spacing="10">
+      <TextBlock Text="Lean Studio" FontSize="34" FontWeight="Light" />
+      <TextBlock Text="An IDE for Lean 4. Lean elaborates as you type; Tenet re-checks what it built with an independent kernel."
+                 TextWrapping="Wrap" Classes="dim" FontSize="14" />
+      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,16,0,0">
+        <Button Content="New Project…" Command="{Binding NewProjectCommand}" Classes="accent" Padding="16,8" />
+        <Button Content="Open Folder…" Command="{Binding OpenFolderCommand}" Padding="16,8" />
+        <Button Content="Open File…" Command="{Binding OpenFileDialogCommand}" Padding="16,8" />
+      </StackPanel>
+
+      <TextBlock Text="RECENT" Classes="panelTitle" Margin="0,24,0,4" />
+      <ItemsControl ItemsSource="{Binding RecentProjects}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Button Classes="flat" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}" CommandParameter="{Binding}">
+              <TextBlock Text="{Binding}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="WHILE YOU WORK" Classes="panelTitle" Margin="0,24,0,4" />
+      <TextBlock TextWrapping="Wrap" FontSize="13" LineHeight="22">
+        Type \alpha, \to, \forall or \N for α, →, ∀ and ℕ.
+        The panel on the right shows the goals at the cursor. Hypotheses a tactic added are green and ones it removed are struck out.
+        Under the goals, every step of the proof is listed with what it changed.
+        Build with ⌘B / Ctrl+B. After a build, Tenet marks each declaration in the gutter:
+        ✓ verified, ◐ rests on sorry or an axiom, ✗ rejected.
+      </TextBlock>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

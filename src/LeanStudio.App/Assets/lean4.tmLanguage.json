@@ -1,0 +1,139 @@
+{
+  "name": "Lean 4",
+  "scopeName": "source.lean4",
+  "fileTypes": ["lean"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#attributes" },
+    { "include": "#declaration" },
+    { "include": "#commands" },
+    { "include": "#strings" },
+    { "include": "#sorry" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#numbers" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.documentation.lean4",
+          "begin": "/-[-!]",
+          "end": "-/",
+          "patterns": [{ "include": "#blockCommentBody" }]
+        },
+        {
+          "name": "comment.block.lean4",
+          "begin": "/-",
+          "end": "-/",
+          "patterns": [{ "include": "#blockCommentBody" }]
+        },
+        {
+          "name": "comment.line.double-dash.lean4",
+          "match": "--.*$"
+        }
+      ]
+    },
+    "blockCommentBody": {
+      "patterns": [
+        { "begin": "/-", "end": "-/", "patterns": [{ "include": "#blockCommentBody" }] }
+      ]
+    },
+    "attributes": {
+      "name": "meta.attribute.lean4",
+      "begin": "@\\[",
+      "end": "\\]",
+      "beginCaptures": { "0": { "name": "punctuation.definition.attribute.lean4" } },
+      "endCaptures": { "0": { "name": "punctuation.definition.attribute.lean4" } },
+      "patterns": [
+        { "include": "#strings" },
+        { "name": "entity.other.attribute-name.lean4", "match": "[A-Za-z_][A-Za-z0-9_.!?']*" }
+      ]
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(theorem|lemma|def|abbrev|instance|structure|class|inductive|axiom|opaque|macro|syntax|elab|notation|coinductive)\\s+((?:«[^»]*»|[^\\s:({\\[⦃])+)",
+          "captures": {
+            "1": { "name": "storage.type.lean4" },
+            "2": { "name": "entity.name.function.lean4" }
+          }
+        },
+        {
+          "match": "\\b(example)\\b",
+          "name": "storage.type.lean4"
+        }
+      ]
+    },
+    "commands": {
+      "patterns": [
+        {
+          "name": "keyword.control.directive.lean4",
+          "match": "#(check|eval|print|reduce|synth|exit|guard_msgs|guard|help|lint|find|where|simp|norm_num|conv|time|check_failure|align|leansearch|loogle|moogle)\\b"
+        },
+        {
+          "name": "keyword.other.command.lean4",
+          "match": "\\b(import|open|namespace|section|end|variable|universe|set_option|attribute|export|mutual|noncomputable|private|protected|partial|unsafe|scoped|local|public|meta|module|deriving|extends|where|termination_by|decreasing_by|include|omit|in|macro_rules|infix|infixl|infixr|prefix|postfix|builtin_initialize|initialize|nonrec|irreducible_def)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.lean4",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.lean4", "match": "\\\\([\\\\\"'nrt]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4})" }]
+        },
+        {
+          "name": "string.quoted.single.lean4",
+          "match": "'(\\\\.|[^'\\\\])'"
+        },
+        {
+          "name": "constant.other.name.lean4",
+          "match": "``?[A-Za-z_][A-Za-z0-9_.']*"
+        }
+      ]
+    },
+    "sorry": {
+      "patterns": [
+        { "name": "invalid.illegal.sorry.lean4", "match": "\\b(sorry|admit)\\b" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.lean4",
+          "match": "\\b(fun|let|have|show|from|by|at|with|match|if|then|else|do|return|for|unless|try|catch|finally|mut|calc|suffices|using|this|Type|Sort|Prop|forall|exists)\\b|[λ∀∃Π∑]"
+        },
+        {
+          "name": "keyword.other.tactic.lean4",
+          "match": "(?<![A-Za-z0-9_.])(intro|intros|rintro|exact|exacts|apply|refine|refine'|rw|rwa|erw|simp|simp_all|simpa|dsimp|norm_num|ring|ring_nf|linarith|nlinarith|positivity|omega|decide|native_decide|aesop|tauto|constructor|cases|rcases|obtain|induction|use|exists|existsi|left|right|exfalso|contradiction|absurd|trivial|rfl|assumption|specialize|generalize|subst|unfold|delta|change|show_term|conv|congr|gcongr|ext|funext|split|split_ifs|by_cases|by_contra|push_neg|contrapose|field_simp|norm_cast|push_cast|exact_mod_cast|apply_fun|calc|repeat|first|all_goals|any_goals|focus|case|next|on_goal|pick_goal|swap|rotate_left|rotate_right|clear|rename_i|set|nth_rewrite|nth_rw|simp_rw|infer_instance|inferInstance|fin_cases|interval_cases|bound|polyrith|continuity|measurability|fun_prop|grind|lia|cutsat|nofun|nomatch|symm|trans|haveI|letI)(?![A-Za-z0-9_'!?])"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "support.type.lean4",
+          "match": "\\b(Nat|Int|Rat|Real|Complex|Bool|True|False|String|Char|List|Array|Option|Fin|UInt8|UInt16|UInt32|UInt64|Float|Unit|IO|Set|Finset|Multiset|Function)\\b|[ℕℤℚℝℂ]"
+        },
+        {
+          "name": "constant.language.lean4",
+          "match": "\\b(true|false|none|some)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "name": "constant.numeric.lean4", "match": "\\b(0x[0-9a-fA-F_]+|0b[01_]+|0o[0-7_]+|[0-9][0-9_]*(\\.[0-9]+)?([eE][+-]?[0-9]+)?)\\b" }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.lean4", "match": ":=|=>|->|<-|<->|→|←|↔|⟨|⟩|▸|∘|×|∧|∨|¬|≤|≥|≠|∈|∉|⊆|⊂|∩|∪|⊢|·|\\||\\$|<\\|>|<;>" }
+      ]
+    }
+  }
+}

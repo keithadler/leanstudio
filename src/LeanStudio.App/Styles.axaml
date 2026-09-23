@@ -1,0 +1,65 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="TextBlock.panelTitle">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Opacity" Value="0.7" />
+    <Setter Property="Margin" Value="0,8,0,4" />
+  </Style>
+  <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
+    <Setter Property="FontFamily" Value="JuliaMono, Cascadia Code, SF Mono, Menlo, Consolas, DejaVu Sans Mono, Noto Sans Mono, monospace" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+  <Style Selector="TextBlock.dim">
+    <Setter Property="Opacity" Value="0.65" />
+  </Style>
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+  <Style Selector="TabControl.panel TabItem">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="Padding" Value="10,0" />
+  </Style>
+  <Style Selector="TabStrip.docs TabStripItem">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="MinHeight" Value="32" />
+    <Setter Property="Padding" Value="10,0,4,0" />
+  </Style>
+  <Style Selector="Button.flat">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Padding" Value="6,2" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="Button.tool">
+    <Setter Property="Padding" Value="8,3" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+  <Styles.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="CardBackground" Color="#262A31" />
+          <SolidColorBrush x:Key="PanelBackground" Color="#1B1E23" />
+          <SolidColorBrush x:Key="StatusBackground" Color="#2D5B9A" />
+          <SolidColorBrush x:Key="InsertedBackground" Color="#2A3F2A" />
+          <SolidColorBrush x:Key="RemovedBackground" Color="#4A2A2A" />
+          <SolidColorBrush x:Key="GoalAccent" Color="#6FB3FF" />
+          <SolidColorBrush x:Key="CurrentStepBackground" Color="#2F3847" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="CardBackground" Color="#F1F3F6" />
+          <SolidColorBrush x:Key="PanelBackground" Color="#FAFAFB" />
+          <SolidColorBrush x:Key="StatusBackground" Color="#2D6BC4" />
+          <SolidColorBrush x:Key="InsertedBackground" Color="#DDF4DD" />
+          <SolidColorBrush x:Key="RemovedBackground" Color="#F8DDDD" />
+          <SolidColorBrush x:Key="GoalAccent" Color="#1F5FBF" />
+          <SolidColorBrush x:Key="CurrentStepBackground" Color="#E2EAF6" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+</Styles>

@@ -6,6 +6,9 @@ namespace LeanStudio.Core.Proofs;
 /// <summary>One line of a tactic proof, and where to ask Lean for the state after it.</summary>
 public sealed record ProofStep(int Line, string Text, int Indent)
 {
+    /// <summary>The start of the tactic: Lean reports the state before it there.</summary>
+    public Position Before => new(Line, Indent);
+
     /// <summary>The end of the line: Lean reports the state after the tactic there.</summary>
     public Position After => new(Line, Indent + Text.Length);
 }
