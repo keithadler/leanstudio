@@ -301,7 +301,8 @@ public sealed partial class MainViewModel
         {
             return "namespace";
         }
-        string text = s.Range.Start.Line < lines.Length ? lines[s.Range.Start.Line] : "";
+        // The name's line, not the range's first line: that can be a doc comment or an attribute.
+        string text = s.SelectionRange.Start.Line < lines.Length ? lines[s.SelectionRange.Start.Line] : "";
         foreach (string k in new[] { "theorem", "lemma", "def", "instance", "structure", "class", "inductive", "abbrev", "axiom", "example", "namespace", "section" })
         {
             if (System.Text.RegularExpressions.Regex.IsMatch(text, $@"(^|\s){k}\b"))

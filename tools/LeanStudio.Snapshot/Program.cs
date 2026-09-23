@@ -169,8 +169,84 @@ internal static class Scenario
         editor.TextArea.PerformTextInput(" ");
         string tail = editor.Document.Text[^12..];
         Check(tail.Contains("α → ℕ", StringComparison.Ordinal), $"\\alpha \\to \\N became α → ℕ (got '{tail.Trim()}')");
-        editor.Document.UndoStack.ClearAll();
         doc.Document.Text = doc.SavedText;
+        doc.Document.UndoStack.MarkAsOriginalFile();
+
+        Console.WriteLine("editing: brackets and indentation");
+        editor.CaretOffset = editor.Document.TextLength;
+        foreach (char c in "\nexample : True ∧ True := by")
+        {
+            editor.TextArea.PerformTextInput(c.ToString());
+        }
+        editor.TextArea.PerformTextInput("\n");
+        string afterBy = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
+        Check(afterBy == "  ", $"Enter after `:= by` indents two spaces (got '{afterBy}')");
+        foreach (char c in "exact \\<")
+        {
+            editor.TextArea.PerformTextInput(c.ToString());
+        }
+        editor.TextArea.PerformTextInput(" ");
+        string lastLine = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
+        Check(lastLine.Contains("⟨⟩", StringComparison.Ordinal), $"\\< becomes ⟨ and closes itself (got '{lastLine.Trim()}')");
+        editor.TextArea.PerformTextInput("(");
+        lastLine = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
+        Check(lastLine.Contains("⟨()⟩", StringComparison.Ordinal), $"( closes itself inside ⟨⟩ (got '{lastLine.Trim()}')");
+        editor.TextArea.PerformTextInput(")");
+        lastLine = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
+        Check(lastLine.Contains("⟨()⟩", StringComparison.Ordinal) && !lastLine.Contains("))", StringComparison.Ordinal), "typing ) steps over the closer instead of doubling it");
+        doc.Document.Text = doc.SavedText;
+        doc.Document.UndoStack.MarkAsOriginalFile();
+
+        Console.WriteLine("outline, references, find in files");
+        vm.SidebarTab = MainViewModel.OutlineTab;
+        Check(await WaitFor(() => vm.Outline.Any(o => o.Name == "not_not_elim"), 20), "the outline lists the file's declarations");
+        Check(vm.Outline.Any(o => o.Name == "em'" && o.Kind == "axiom"), "and knows an axiom from a theorem");
+        doc.Reveal(1, 5); // on `double` in its definition
+        await Task.Delay(300);
+        await vm.FindReferencesCommand.ExecuteAsync(null);
+        Check(vm.References.Count >= 2, $"references to double are found ({vm.References.Count})");
+        vm.SearchQuery = "and_swap";
+        await vm.SearchInFilesCommand.ExecuteAsync(null);
+        Check(vm.SearchResults.Any(r => r.File == "Basic.lean"), "find in files finds and_swap");
+        Snap(window, outDir, "06-outline");
+
+        Console.WriteLine("Try this: apply Lean's suggestion");
+        string tryFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "TryThis.lean");
+        await File.WriteAllTextAsync(tryFile, "theorem two : 1 + 1 = 2 := by\n  exact?\n");
+        try
+        {
+            DocumentViewModel? t = await vm.OpenFileAsync(tryFile);
+            Check(await WaitFor(() => t!.Diagnostics.Any(d => d.Message.Contains("Try this", StringComparison.Ordinal)), 90), "exact? offers a suggestion");
+            t!.Reveal(1, 4);
+            bool offered = await WaitFor(() => vm.Info.Messages.Any(m => m.HasSuggestions), 30);
+            Check(offered, "the tactic state shows it as a button");
+            await Task.Delay(300);
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            string buttonText = window.GetVisualDescendants().OfType<Button>()
+                .Select(b => (b.Content as TextBlock)?.Text ?? "").FirstOrDefault(x => x.StartsWith("Try this", StringComparison.Ordinal)) ?? "";
+            Check(buttonText.Contains('_', StringComparison.Ordinal), $"the button shows the name with its underscore ({buttonText})");
+            Snap(window, outDir, "07-try-this");
+            MessageView m = vm.Info.Messages.First(m => m.HasSuggestions);
+            vm.Info.ApplySuggestionCommand.Execute(m.Suggestions[0]);
+            Check(await WaitFor(() => !t.Document.Text.Contains("exact?", StringComparison.Ordinal), 10), "clicking it replaces exact? with the proof");
+            Check(await WaitFor(() => t.Diagnostics.Count == 0 && !t.IsProcessing, 60), "and Lean accepts the result");
+            await vm.CloseDocumentCommand.ExecuteAsync(t);
+        }
+        finally
+        {
+            File.Delete(tryFile);
+        }
+
+        Console.WriteLine("git");
+        vm.ActiveDocument = doc;
+        doc.Reveal(0, 0);
+        Check(await WaitFor(() => !vm.Info.HasSteps, 10), "outside a proof, no proof steps are shown");
+        vm.SidebarTab = MainViewModel.GitTab;
+        await vm.SourceControl.RefreshAsync();
+        Check(vm.SourceControl.IsRepository && vm.SourceControl.Branch.Length > 0, $"source control finds the repository and branch ({vm.SourceControl.Branch})");
+        Check(vm.BranchLabel.StartsWith("⎇", StringComparison.Ordinal), "the status bar shows the branch");
+        Check(vm.SourceControl.GitHubRepository == "keithadler/leanstudio" || vm.SourceControl.GitHubRepository is null, "and recognises a GitHub remote when there is one");
+        Snap(window, outDir, "08-git");
 
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();

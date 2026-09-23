@@ -24,16 +24,22 @@ public sealed class StatusMargin : AbstractMargin
     public static readonly IBrush ConditionalBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x9E, 0x2C));
     public static readonly IBrush RejectedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
 
-    public void Update(IReadOnlyList<LeanFileProgressRange> processing, IReadOnlyDictionary<int, DeclarationVerdict> verdicts)
+    private IReadOnlyList<Core.Git.LineChange> _changes = [];
+    private static readonly IBrush AddedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
+    private static readonly IBrush ModifiedBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x8E, 0xEA));
+    private static readonly IBrush DeletedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
+
+    public void Update(IReadOnlyList<LeanFileProgressRange> processing, IReadOnlyDictionary<int, DeclarationVerdict> verdicts, IReadOnlyList<Core.Git.LineChange> changes)
     {
         _processing = processing;
         _verdicts = verdicts;
+        _changes = changes;
         InvalidateVisual();
     }
 
     public DeclarationVerdict? VerdictAtLine(int oneBasedLine) => _verdicts.TryGetValue(oneBasedLine, out DeclarationVerdict? v) ? v : null;
 
-    protected override Size MeasureOverride(Size availableSize) => new(18, 0);
+    protected override Size MeasureOverride(Size availableSize) => new(20, 0);
 
     protected override void OnTextViewChanged(TextView? oldTextView, TextView? newTextView)
     {
@@ -73,6 +79,19 @@ public sealed class StatusMargin : AbstractMargin
                 }
             }
 
+            // Lines changed since the last commit: a thin bar at the left edge, as in most editors.
+            foreach (Core.Git.LineChange c in _changes)
+            {
+                if (c.Kind == Core.Git.LineChangeKind.Deleted && c.StartLine == line)
+                {
+                    context.FillRectangle(DeletedBrush, new Rect(0, top + height - 2, 6, 3));
+                }
+                else if (c.Kind != Core.Git.LineChangeKind.Deleted && c.StartLine <= line && line < c.StartLine + c.LineCount)
+                {
+                    context.FillRectangle(c.Kind == Core.Git.LineChangeKind.Added ? AddedBrush : ModifiedBrush, new Rect(0, top, 2.5, height));
+                }
+            }
+
             if (_verdicts.TryGetValue(line, out DeclarationVerdict? v))
             {
                 (string glyph, IBrush brush) = v.Status switch
@@ -82,7 +101,7 @@ public sealed class StatusMargin : AbstractMargin
                     _ => ("✗", RejectedBrush),
                 };
                 var text = new FormattedText(glyph, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Typeface.Default, Math.Min(13, height * 0.8), brush);
-                context.DrawText(text, new Point(1, top + (height - text.Height) / 2));
+                context.DrawText(text, new Point(4, top + (height - text.Height) / 2));
             }
         }
     }

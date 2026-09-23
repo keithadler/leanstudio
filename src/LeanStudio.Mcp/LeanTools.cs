@@ -27,6 +27,8 @@ public static class LeanTools
           warning and message with its line and column. Pass `content` to check text without saving it.
         - To see what a tactic proof needs, call goals at a line and column inside the proof, or proof_steps on
           any line of it for every step's resulting state. Lines and columns are 1-based.
+        - Write `exact?`, `apply?`, `simp?` or `rw?` where you are stuck, then call suggestions on that line: Lean
+          searches for a proof, and suggestions can apply the one you choose.
         - run_lean checks a snippet (#eval, #check, #print axioms, an example) inside the project, so its imports work.
         - A theorem is only proved when check_file shows no errors and no "declaration uses 'sorry'" warning.
           For a stronger answer, run build and then verify: Tenet re-checks every declaration with a second kernel
@@ -190,6 +192,75 @@ public static class LeanTools
                 FileReport r = await s.CheckAsync(path, null, ct);
                 Hover? h = await (await s.ServerAsync(ct)).HoverAsync(r.Uri, new Position(Int(a, "line") - 1, Math.Max(0, Int(a, "column") - 1)), ct);
                 return h is null || h.Contents.Trim().Length == 0 ? "nothing to show at that position" : h.Contents.Trim();
+            }),
+
+        new("suggestions",
+            "Lean's suggestions on a line: the \"Try this\" results of exact?, apply?, simp?, rw? and other tactics, and quick fixes. Put such a tactic in the proof, call this on its line, and pass `apply` (1-based) to write the chosen suggestion into the file.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("line", "integer", "1-based line of the tactic or message.", true),
+                   ("apply", "integer", "Optional: the number of the suggestion to apply (from a previous call); the file is edited on disk.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                ProjectSession s = bench.Session(path);
+                FileReport r = await s.CheckAsync(path, null, ct);
+                int line = Int(a, "line") - 1;
+                LeanServer server = await s.ServerAsync(ct);
+                var here = r.Diagnostics.Where(d => d.Extent.Start.Line <= line && line <= d.Extent.End.Line).ToList();
+                var actions = new List<CodeAction>();
+                foreach (Diagnostic d in here)
+                {
+                    actions.AddRange(await server.CodeActionsAsync(r.Uri, d.Range, [d], ct));
+                }
+                if (here.Count == 0)
+                {
+                    actions.AddRange(await server.CodeActionsAsync(r.Uri, new Lsp.Range(new Position(line, 0), new Position(line, 0)), [], ct));
+                }
+                actions = actions.GroupBy(x => x.Title).Select(g => g.First()).ToList();
+                if (actions.Count == 0)
+                {
+                    return "No suggestions on that line. Put `exact?`, `apply?`, `simp?` or `rw?` there, then ask again.";
+                }
+                if (OptInt(a, "apply") is int pick)
+                {
+                    if (pick < 1 || pick > actions.Count)
+                    {
+                        throw new ToolException($"apply must be between 1 and {actions.Count}");
+                    }
+                    CodeAction chosen = await server.ResolveAsync(actions[pick - 1], ct);
+                    if (chosen.Edit is not WorkspaceEdit edit || !edit.Changes.TryGetValue(r.Uri, out IReadOnlyList<TextEdit>? edits))
+                    {
+                        throw new ToolException("that suggestion has no edit to this file");
+                    }
+                    string updated = WorkspaceEdit.Apply(r.Text, edits);
+                    await File.WriteAllTextAsync(path, updated, ct);
+                    FileReport after = await s.CheckAsync(path, null, ct);
+                    return $"Applied \"{chosen.Title}\" and saved the file.\n\n" + FormatReport(after);
+                }
+                return string.Join('\n', actions.Select((x, i) => $"{i + 1}. {x.Title}")) + "\n\nCall again with apply=<number> to use one.";
+            }),
+
+        new("references",
+            "Every place a name is used, across the project (1-based line and column of the name).",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("line", "integer", "1-based line.", true),
+                   ("column", "integer", "1-based column on the name.", true)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                ProjectSession s = bench.Session(path);
+                FileReport r = await s.CheckAsync(path, null, ct);
+                IReadOnlyList<Location> locs = await (await s.ServerAsync(ct)).ReferencesAsync(r.Uri, new Position(Int(a, "line") - 1, Math.Max(0, Int(a, "column") - 1)), ct: ct);
+                if (locs.Count == 0)
+                {
+                    return "No references found (is the column on a name?).";
+                }
+                return string.Join('\n', locs.Select(l =>
+                {
+                    string file = LeanServer.PathOf(l.Uri);
+                    string text = File.Exists(file) ? File.ReadLines(file).Skip(l.Range.Start.Line).FirstOrDefault()?.Trim() ?? "" : "";
+                    return $"{Path.GetRelativePath(s.Project.Root, file)}:{l.Range.Start.Line + 1}:{l.Range.Start.Character + 1}  {text}";
+                }));
             }),
 
         new("run_lean",

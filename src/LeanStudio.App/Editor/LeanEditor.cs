@@ -35,6 +35,9 @@ public sealed class LeanEditor : UserControl
     private readonly TextEditor _editor;
     private readonly DiagnosticRenderer _diagnostics = new();
     private readonly StatusMargin _margin = new();
+    private readonly BracketHighlighter _brackets = new();
+    private AvaloniaEdit.Folding.FoldingManager? _folding;
+    private CancellationTokenSource? _foldCts;
     private readonly TextMate.Installation _textMate;
     private readonly Dictionary<DocumentViewModel, Vector> _scroll = new();
     private DocumentViewModel? _current;
@@ -62,6 +65,8 @@ public sealed class LeanEditor : UserControl
         _editor.Options.EnableEmailHyperlinks = false;
         _editor.Options.AllowScrollBelowDocument = true;
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnostics);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_brackets);
+        _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
         _textMate = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
         _textMate.SetGrammar(LeanRegistryOptions.LeanScope);
@@ -159,23 +164,40 @@ public sealed class LeanEditor : UserControl
         _current = doc;
         _abbrevStart = -1;
         _completion?.Close();
+        // A folding manager belongs to the document it was installed on: remove it before the document changes.
+        if (_folding is not null)
+        {
+            AvaloniaEdit.Folding.FoldingManager.Uninstall(_folding);
+            _folding = null;
+        }
         if (doc is null)
         {
             _editor.Document = new TextDocument();
             _editor.IsEnabled = false;
             _diagnostics.Update([]);
-            _margin.Update([], new Dictionary<int, DeclarationVerdict>());
+            _margin.Update([], new Dictionary<int, DeclarationVerdict>(), []);
             return;
         }
         _editor.IsEnabled = true;
         _editor.Document = doc.Document;
-        _textMate.SetGrammar(doc.IsLean
-            ? LeanRegistryOptions.LeanScope
-            : ((LeanRegistryOptions)_textMate.RegistryOptions).ScopeForExtension(System.IO.Path.GetExtension(doc.Path)));
+        _folding = AvaloniaEdit.Folding.FoldingManager.Install(_editor.TextArea);
+        try
+        {
+            _textMate.SetGrammar(doc.IsLean
+                ? LeanRegistryOptions.LeanScope
+                : ((LeanRegistryOptions)_textMate.RegistryOptions).ScopeForExtension(System.IO.Path.GetExtension(doc.Path)));
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            // Highlighting is a nicety; a grammar problem must never leave the editor without its document.
+            Main?.Log($"No highlighting for {System.IO.Path.GetFileName(doc.Path)}: {e.Message}");
+        }
         doc.PropertyChanged += OnDocumentPropertyChanged;
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
-        _margin.Update(doc.Processing, doc.Verdicts);
+        _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
+        _editor.IsReadOnly = doc.IsVirtual;
+        ScheduleFolds();
         int offset = Math.Min(doc.Document.TextLength, SafeOffset(doc.Document, doc.CaretLine, doc.CaretColumn));
         _editor.TextArea.Caret.Offset = offset;
         if (_scroll.TryGetValue(doc, out Vector v))
@@ -201,7 +223,12 @@ public sealed class LeanEditor : UserControl
                 break;
             case nameof(DocumentViewModel.Processing):
             case nameof(DocumentViewModel.Verdicts):
-                _margin.Update(_current.Processing, _current.Verdicts);
+            case nameof(DocumentViewModel.LineChanges):
+                _margin.Update(_current.Processing, _current.Verdicts, _current.LineChanges);
+                if (e.PropertyName == nameof(DocumentViewModel.Processing) && !_current.IsProcessing)
+                {
+                    ScheduleFolds();
+                }
                 break;
         }
     }
@@ -237,6 +264,7 @@ public sealed class LeanEditor : UserControl
         }
         TextViewPosition p = _editor.TextArea.Caret.Position;
         Main.CaretMoved(_current, p.Line - 1, p.Column - 1);
+        UpdateBracketMatch();
         if (_abbrevStart >= 0)
         {
             int caret = _editor.CaretOffset;
@@ -244,6 +272,75 @@ public sealed class LeanEditor : UserControl
             {
                 EndAbbreviation();
             }
+        }
+    }
+
+    // ---- brackets and folding ----
+
+    private void UpdateBracketMatch()
+    {
+        if (_current is null)
+        {
+            return;
+        }
+        string text = _current.Document.Text;
+        int caret = _editor.CaretOffset;
+        int at = caret < text.Length && (LeanText.IsOpener(text[caret]) || LeanText.IsCloser(text[caret])) ? caret
+               : caret > 0 && (LeanText.IsOpener(text[caret - 1]) || LeanText.IsCloser(text[caret - 1])) ? caret - 1 : -1;
+        int match = at < 0 || text.Length > 400_000 ? -1 : LeanText.MatchingBracket(text, at);
+        _brackets.Update(match < 0 ? -1 : at, match);
+        _editor.TextArea.TextView.InvalidateLayer(_brackets.Layer);
+    }
+
+    /// <summary>Ask Lean where the file's blocks are (declarations, namespaces, comments) and offer them for folding.</summary>
+    private void ScheduleFolds()
+    {
+        _foldCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _foldCts = cts;
+        _ = UpdateFoldsAsync(cts.Token);
+    }
+
+    private async Task UpdateFoldsAsync(CancellationToken ct)
+    {
+        if (_current is not { IsLean: true } doc || Main?.Server is not { State: LeanServerState.Running } server)
+        {
+            return;
+        }
+        try
+        {
+            await Task.Delay(400, ct);
+            IReadOnlyList<FoldingRange> ranges = await server.FoldingRangesAsync(doc.Uri, ct);
+            if (ct.IsCancellationRequested || _current != doc)
+            {
+                return;
+            }
+            TextDocument d = doc.Document;
+            var folds = ranges
+                .Where(r => r.EndLine > r.StartLine && r.EndLine < d.LineCount)
+                .Select(r => new AvaloniaEdit.Folding.NewFolding(d.GetLineByNumber(r.StartLine + 1).EndOffset, d.GetLineByNumber(r.EndLine + 1).EndOffset) { Name = " … " })
+                .OrderBy(f => f.StartOffset)
+                .ToList();
+            _folding?.UpdateFoldings(folds, -1);
+        }
+        catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException)
+        {
+        }
+    }
+
+    /// <summary>Type an opener and get its closer too, when nothing that could go inside follows the caret.</summary>
+    private void AutoClose(char opener)
+    {
+        if (_current is null || !LeanText.Pairs.TryGetValue(opener, out char closer))
+        {
+            return;
+        }
+        int caret = _editor.CaretOffset;
+        char? next = caret < _current.Document.TextLength ? _current.Document.GetCharAt(caret) : null;
+        if (LeanText.ShouldAutoClose(next))
+        {
+            _current.Document.Insert(caret, closer.ToString());
+            _editor.CaretOffset = caret;
         }
     }
 
@@ -266,6 +363,14 @@ public sealed class LeanEditor : UserControl
 
     private void OnTextEntering(object? sender, TextInputEventArgs e)
     {
+        // Typing a closer right before the same closer steps over it instead of doubling it.
+        if (_abbrevStart < 0 && _current is not null && e.Text is { Length: 1 } t && LeanText.IsCloser(t[0])
+            && _editor.CaretOffset < _current.Document.TextLength && _current.Document.GetCharAt(_editor.CaretOffset) == t[0])
+        {
+            _editor.CaretOffset++;
+            e.Handled = true;
+            return;
+        }
         if (!UnicodeInput || _abbrevStart < 0 || string.IsNullOrEmpty(e.Text) || _current is null)
         {
             return;
@@ -276,7 +381,8 @@ public sealed class LeanEditor : UserControl
         if (replacement is not null)
         {
             ReplacePending(replacement);
-            if (c == '\t')
+            // Tab only completes. So does a space after a bracket: `\<` then space gives ⟨|⟩, ready to fill in.
+            if (c == '\t' || (c == ' ' && replacement.Length == 1 && LeanText.IsOpener(replacement[0])))
             {
                 e.Handled = true;
             }
@@ -316,6 +422,10 @@ public sealed class LeanEditor : UserControl
         {
             _ = ShowCompletionAsync();
         }
+        else if (e.Text.Length == 1 && LeanText.IsOpener(e.Text[0]))
+        {
+            AutoClose(e.Text[0]);
+        }
     }
 
     private void ReplacePending(string symbol)
@@ -330,6 +440,10 @@ public sealed class LeanEditor : UserControl
         _completion?.Close();
         _current.Document.Replace(start, length, symbol);
         _editor.CaretOffset = start + symbol.Length;
+        if (symbol.Length == 1 && LeanText.IsOpener(symbol[0]))
+        {
+            AutoClose(symbol[0]);
+        }
     }
 
     private void EndAbbreviation()
@@ -439,6 +553,16 @@ public sealed class LeanEditor : UserControl
                 ReplacePending(symbol);
             }
         }
+        else if (e.Key == Key.Back && _current is not null && _editor.TextArea.Selection.IsEmpty)
+        {
+            int caret = _editor.CaretOffset;
+            TextDocument d = _current.Document;
+            if (caret > 0 && caret < d.TextLength && LeanText.Pairs.TryGetValue(d.GetCharAt(caret - 1), out char closer) && d.GetCharAt(caret) == closer)
+            {
+                e.Handled = true;
+                d.Remove(caret - 1, 2);
+            }
+        }
         else if (e.Key == Key.OemQuestion && cmd)
         {
             e.Handled = true;
@@ -544,6 +668,24 @@ public sealed class LeanEditor : UserControl
                     _ => DiagnosticRenderer.InfoBrush,
                 },
             });
+        }
+        // How to type the symbol under the pointer, which Lean users constantly need to know.
+        int off = doc.Document.GetOffset(p.Location);
+        if (off < doc.Document.TextLength)
+        {
+            string ch = char.IsHighSurrogate(doc.Document.GetCharAt(off)) && off + 1 < doc.Document.TextLength
+                ? doc.Document.GetText(off, 2)
+                : doc.Document.GetCharAt(off).ToString();
+            IReadOnlyList<string> names = ch[0] > 127 ? Abbreviations.NamesFor(ch) : [];
+            if (names.Count > 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = $"Type {ch} with " + string.Join(" or ", names.Take(3).Select(n => "\\" + n)),
+                    Opacity = 0.75,
+                    FontSize = _editor.FontSize - 2,
+                });
+            }
         }
         if (Main?.Server is { State: LeanServerState.Running } server)
         {

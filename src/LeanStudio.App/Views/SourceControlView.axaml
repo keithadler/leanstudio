@@ -41,10 +41,10 @@
               <DataTemplate x:DataType="vm:ChangeView">
                 <Grid ColumnDefinitions="18,*,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
                   <TextBlock Text="{Binding Letter}" Foreground="#3FB950" FontWeight="SemiBold" FontSize="12" />
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                  <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                     <TextBlock Text="{Binding FileName}" FontSize="12" />
-                    <TextBlock Text="{Binding Folder}" Classes="dim" FontSize="11" TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding Folder}" Classes="dim" FontSize="11" Margin="6,0,4,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </Grid>
                   <Button Grid.Column="2" Classes="flat" Content="−" ToolTip.Tip="Unstage" FontSize="12"
                           Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).UnstageCommand}" CommandParameter="{Binding}" />
                 </Grid>
@@ -64,10 +64,10 @@
               <DataTemplate x:DataType="vm:ChangeView">
                 <Grid ColumnDefinitions="18,*,Auto,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
                   <TextBlock Text="{Binding Letter}" Foreground="#E59E2C" FontWeight="SemiBold" FontSize="12" />
-                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                  <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                     <TextBlock Text="{Binding FileName}" FontSize="12" />
-                    <TextBlock Text="{Binding Folder}" Classes="dim" FontSize="11" TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding Folder}" Classes="dim" FontSize="11" Margin="6,0,4,0" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </Grid>
                   <Button Grid.Column="2" Classes="flat" Content="↶" ToolTip.Tip="Discard changes" FontSize="12"
                           Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).DiscardCommand}" CommandParameter="{Binding}" />
                   <Button Grid.Column="3" Classes="flat" Content="+" ToolTip.Tip="Stage" FontSize="12"
@@ -91,8 +91,10 @@
           <Button Content="Add Lean CI workflow" Command="{Binding AddCiWorkflowCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4"
                   ToolTip.Tip="Add .github/workflows/lean_action_ci.yml, which builds the project on every push" />
         </WrapPanel>
-        <Button Classes="flat" Content="{Binding PullRequest}" FontSize="11" IsVisible="{Binding PullRequest, Converter={x:Static ObjectConverters.IsNotNull}}"
-                Command="{Binding OpenPullRequestCommand}" HorizontalContentAlignment="Left" Foreground="#4D9FFF" />
+        <Button Classes="flat" FontSize="11" IsVisible="{Binding PullRequest, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Command="{Binding OpenPullRequestCommand}" HorizontalContentAlignment="Left" Foreground="#4D9FFF">
+  <TextBlock Text="{Binding PullRequest}" TextWrapping="Wrap" />
+</Button>
         <TextBlock Text="Publishing and pull requests use the GitHub CLI (gh). Install it from cli.github.com and run `gh auth login`."
                    TextWrapping="Wrap" Classes="dim" FontSize="11" IsVisible="{Binding !GhInstalled}" />
 

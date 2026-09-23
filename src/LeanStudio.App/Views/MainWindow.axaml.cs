@@ -93,7 +93,8 @@ public sealed partial class MainWindow : Window, IDialogs
         recent.Items.Clear();
         foreach (string p in _vm.Settings.RecentProjects)
         {
-            var item = new MenuItem { Header = p };
+            // A TextBlock, not a string: in a string header "_" marks a keyboard shortcut and disappears.
+            var item = new MenuItem { Header = new TextBlock { Text = p } };
             item.Click += async (_, _) =>
             {
                 await _vm.OpenProjectAsync(p);

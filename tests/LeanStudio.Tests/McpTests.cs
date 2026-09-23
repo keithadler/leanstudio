@@ -81,9 +81,30 @@ public sealed class McpTests
         Assert.Contains("continues on the lines below", steps, StringComparison.Ordinal);
         Assert.Contains("goals accomplished", steps, StringComparison.Ordinal);
 
+        var (refs, _) = await CallAsync(server, "references", new JsonObject { ["path"] = "Proofs/Basic.lean", ["line"] = 2, ["column"] = 6 });
+        Assert.Contains("Proofs/Basic.lean:5:10", refs.Replace('\\', '/'), StringComparison.Ordinal);
+
         var (snippet, _) = await CallAsync(server, "run_lean", new JsonObject { ["code"] = "#eval 6 * 7\n#check Nat.add_comm" });
         Assert.Contains("info: 42", snippet, StringComparison.Ordinal);
         Assert.Contains("Nat.add_comm", snippet, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SuggestionsAreListedAndApplied()
+    {
+        Lean.RequireLean();
+        string dir = Directory.CreateTempSubdirectory("leanstudio-suggest").FullName;
+        File.WriteAllText(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n");
+        string file = Path.Combine(dir, "S.lean");
+        File.WriteAllText(file, "theorem two : 1 + 1 = 2 := by\n  exact?\n");
+        await using var bench = new Workbench(dir);
+        McpServer server = LeanTools.Create(bench, "test");
+        var (list, _) = await CallAsync(server, "suggestions", new JsonObject { ["path"] = "S.lean", ["line"] = 2 });
+        Assert.StartsWith("1. Try this:", list, StringComparison.Ordinal);
+        var (applied, err) = await CallAsync(server, "suggestions", new JsonObject { ["path"] = "S.lean", ["line"] = 2, ["apply"] = 1 });
+        Assert.False(err, applied);
+        Assert.Contains("Lean accepts the file", applied, StringComparison.Ordinal);
+        Assert.DoesNotContain("exact?", File.ReadAllText(file), StringComparison.Ordinal);
     }
 
     [Fact]

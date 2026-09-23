@@ -79,8 +79,10 @@
                     <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="lsp:CodeAction">
-                          <Button Content="{Binding Title}" Classes="accent" FontSize="12" Padding="10,3" Margin="0,0,0,4" HorizontalAlignment="Left"
-                                  Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ApplySuggestionCommand}" CommandParameter="{Binding}" />
+                          <Button Classes="accent" FontSize="12" Padding="10,3" Margin="0,0,0,4" HorizontalAlignment="Left"
+                                  Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ApplySuggestionCommand}" CommandParameter="{Binding}">
+  <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+</Button>
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>

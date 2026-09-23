@@ -68,7 +68,16 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Raised when something asks the editor to move the caret (go to definition, a problem, a declaration).</summary>
     public event Action<int, int>? RevealRequested;
 
-    public void Reveal(int line, int column) => RevealRequested?.Invoke(line, column);
+    /// <summary>
+    /// Move the caret. Recorded as well as announced, so a document the editor has not switched to yet still opens
+    /// at the right place.
+    /// </summary>
+    public void Reveal(int line, int column)
+    {
+        CaretLine = line;
+        CaretColumn = column;
+        RevealRequested?.Invoke(line, column);
+    }
 
     public int CaretLine { get; set; }
     public int CaretColumn { get; set; }

@@ -55,7 +55,7 @@ A green build tells you Lean accepted the file. These badges tell you whether ea
 
 ![Searching declarations; statement, docs, axioms and dependencies of the selection](docs/images/navigator.png)
 
-The **Declarations** tab searches everything the project can see: your code, its dependencies (Mathlib included), and Lean's core library. It reads straight from the `.olean` files through Tenet, so it needs no language server and no re-elaboration. For each declaration it shows:
+The **Library** tab searches everything the project can see: your code, its dependencies (Mathlib included), and Lean's core library. It reads straight from the `.olean` files through Tenet, so it needs no language server and no re-elaboration. For each declaration it shows:
 
 - the statement and docstring
 - where it is defined, with a link to open the source
@@ -64,17 +64,48 @@ The **Declarations** tab searches everything the project can see: your code, its
 
 Press ⌘⇧D / Ctrl+Shift+D on any name in the editor to open it here.
 
+### Try this, with one click
+
+![exact? found a proof; the tactic state offers it as a button](docs/images/try-this.png)
+
+Write `exact?`, `apply?`, `simp?` or `rw?` where a proof is stuck. When Lean finds something, its "Try this" suggestion appears in the tactic state as a button, and clicking it puts the suggestion into your proof. ⌘. / Ctrl+. lists every suggestion and quick fix at the cursor.
+
+### Git and GitHub
+
+![The Git panel: branch, changes, commit, push, and GitHub](docs/images/git.png)
+
+The **Git** tab is built on your own `git`, so your config, hooks, credentials and commit signing all apply:
+- **Branch and changes:** the current branch, with how far it is ahead of or behind upstream, and the changed files. Click a file for its diff; stage, unstage or discard each one.
+- **Commit and sync:** commit (with nothing staged, everything is committed), push, pull and sync. Switch or create branches, and see recent history.
+- **Gutter:** a bar marks the lines you've changed since the last commit, green for added, blue for modified and red for deleted.
+- **Status bar:** shows the branch; click it to open the panel.
+
+GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your login is used and Lean Studio never sees a token:
+- **Clone:** File ▸ Clone Repository… takes `owner/repo` or a URL. For a Mathlib project, it offers to download Mathlib's prebuilt files.
+- **Publish to GitHub:** creates a private repository and pushes to it.
+- **Create Pull Request:** pushes the branch first if it needs to, then shows the PR's link in the panel.
+- **Open on GitHub:** jumps to the current file and line on github.com.
+- **Add Lean CI Workflow:** writes the standard `leanprover/lean-action` workflow, so every push is built.
+
 ### Everything else a Lean IDE needs
 
 - **Lean-aware editor**:
   - Lean 4 syntax highlighting, with `sorry` flagged.
   - Squiggles under errors and warnings.
   - An amber gutter bar while Lean elaborates.
-  - Hovers with type signatures and docstrings.
+  - Hovers with type signatures and docstrings, and for any symbol, how to type it (hover `⊢`: "Type ⊢ with \\|- or \\vdash").
   - Completion (Ctrl+Space, or after `.`).
-  - Go to definition (F12 or ⌘/Ctrl-click).
+  - Brackets, including `⟨⟩`, `⦃⦄` and `⟦⟧`, close themselves; typing the closer steps over it, and backspace removes an empty pair. The bracket matching the one at the cursor is highlighted.
+  - Enter indents the next line, two spaces deeper after `:= by`, `where`, `=>` or `do`.
+  - Folding for declarations, namespaces and comments.
   - Toggle comments (⌘/ / Ctrl+/), find and replace, and go to line.
-- **Unicode input**: type `\alpha`, `\to`, `\forall`, `\N`, `\<`, `\_1` and get `α → ∀ ℕ ⟨ ₁`.
+- **Navigation**:
+  - Go to definition (F12 or ⌘/Ctrl-click).
+  - Find references (⇧F12) and rename a symbol across the project (F2).
+  - An **Outline** of the file's declarations.
+  - **Go to File** (⌘P / Ctrl+P), **Go to Symbol** across the project and its dependencies (⌘T / Ctrl+T), and **Find in Files** with regex (⌘⇧F / Ctrl+Shift+F).
+- **Command palette** (⌘⇧P / Ctrl+Shift+P): every command, by name.
+- **Unicode input**: type `\alpha`, `\to`, `\forall`, `\N`, `\<`, `\_1` and get `α → ∀ ℕ ⟨⟩ ₁`.
   - About 430 abbreviations, with a pop-up list of matches as you type.
   - An abbreviation converts as soon as it can't be extended any further. Space or Tab converts it immediately.
 - **Projects**:
@@ -127,6 +158,8 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `goals` | The goals and hypotheses at a line and column, marking what the tactic there added or removed. |
 | `proof_steps` | Every step of a tactic proof, with the state after it and what it changed. |
 | `hover` | The type and documentation at a position. |
+| `suggestions` | Lean's "Try this" results for `exact?`, `apply?`, `simp?` and `rw?` on a line. It can apply the one chosen and re-check the file. |
+| `references` | Every use of a name across the project. |
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
@@ -240,7 +273,12 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | Build | ⌘B | Ctrl+B |
 | Verify with Tenet | ⌘⇧V | Ctrl+Shift+V |
 | Go to definition | F12 or ⌘-click | F12 or Ctrl-click |
-| Show declaration in navigator | ⌘⇧D | Ctrl+Shift+D |
+| Show declaration in the Library | ⌘⇧D | Ctrl+Shift+D |
+| Command palette | ⌘⇧P | Ctrl+Shift+P |
+| Go to file / Go to symbol | ⌘P / ⌘T | Ctrl+P / Ctrl+T |
+| Find in files | ⌘⇧F | Ctrl+Shift+F |
+| Quick fix / Try this | ⌘. | Ctrl+. |
+| Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Completion | Ctrl+Space | Ctrl+Space |
 | Toggle comment | ⌘/ | Ctrl+/ |
 | Restart Lean | ⌘⇧R | Ctrl+Shift+R |

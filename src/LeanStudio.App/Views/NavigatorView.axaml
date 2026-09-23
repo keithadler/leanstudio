@@ -55,8 +55,10 @@
         <ItemsControl ItemsSource="{Binding Uses}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="x:String">
-              <Button Classes="flat" Content="{Binding}" FontSize="11" HorizontalContentAlignment="Left"
-                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}" />
+              <Button Classes="flat" FontSize="11" HorizontalContentAlignment="Left"
+                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}">
+  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+</Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
@@ -68,8 +70,10 @@
         <ItemsControl ItemsSource="{Binding UsedByList}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="x:String">
-              <Button Classes="flat" Content="{Binding}" FontSize="11" HorizontalContentAlignment="Left"
-                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}" />
+              <Button Classes="flat" FontSize="11" HorizontalContentAlignment="Left"
+                      Command="{Binding $parent[UserControl].((vm:NavigatorViewModel)DataContext).NavigateCommand}" CommandParameter="{Binding}">
+  <TextBlock Text="{Binding}" TextWrapping="Wrap" />
+</Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>

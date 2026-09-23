@@ -243,6 +243,14 @@ public sealed partial class InfoViewModel : ObservableObject
         {
             await RefreshStepsAsync(server, doc, proof);
         }
+        else if (proof is null)
+        {
+            // Out of any proof: last proof's steps would only mislead.
+            _stepsCts?.Cancel();
+            _stepsKey = null;
+            Steps.Reset([]);
+            HasSteps = false;
+        }
     }
 
     /// <summary>For messages that offer "Try this", fetch the matching code actions so each can be applied with a click.</summary>
