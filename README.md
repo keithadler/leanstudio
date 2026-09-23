@@ -28,6 +28,8 @@ Lean Studio is a native desktop app built only for Lean. It is not a plugin or a
 
 Lean Studio is built to be the place to start, whether you're curious about theorems or you write code:
 
+![The welcome screen: new project, open a folder or file, the tutorial, and recent projects](docs/images/welcome.png)
+
 ![Lesson 1 of the tutorial, with the sorry explained in plain words](docs/images/tutorial.png)
 
 1. **A tutorial inside the editor.** Ten short lessons, in Lean files, from `#eval 2 + 2` to proofs by induction and proving your own programs correct. Each ends in exercises (`sorry`s to replace), and the Learn tab ticks a lesson off when Lean accepts it. Every exercise is checked against real Lean by the tests, so none is impossible.
@@ -195,6 +197,8 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 
   ![The toolchains panel](docs/images/toolchains.png)
 - **Problems** and **Output** panels, recent projects, and dark and light themes. Open files are restored the next time the app starts.
+
+![The light theme](docs/images/light-theme.png)
 
 ## Use it with AI assistants
 

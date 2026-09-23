@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+**Polish**:
+- The menu, toolbar and tab strips share one surface, and panels are divided by hairlines.
+- Vector icons are drawn for the toolbar, file tree and Tactic State.
+- Panel buttons are consistent chips.
+- Empty panels say what will appear in them.
+- The welcome screen is redesigned, and the light theme is fixed throughout.
+
 ## 0.4.0
 
 **Five new features**:
