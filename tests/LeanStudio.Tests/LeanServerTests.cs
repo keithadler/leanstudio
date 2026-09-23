@@ -2,6 +2,7 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.Tests;
 
+[Collection(Lean.Collection)]
 public sealed class LeanServerTests
 {
     private static async Task<(LeanServer Server, string Uri, List<Diagnostic> Diagnostics, TaskCompletionSource Done)> OpenDemoAsync()
@@ -31,7 +32,7 @@ public sealed class LeanServerTests
         };
         await server.StartAsync(TestContext.Current.CancellationToken);
         await server.OpenAsync(uri, await File.ReadAllTextAsync(Path.Combine(dir, "Demo.lean"), TestContext.Current.CancellationToken));
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(90), TestContext.Current.CancellationToken);
+        await done.Task.WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         return (server, uri, diags, done);
     }
 

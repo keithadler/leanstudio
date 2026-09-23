@@ -3,6 +3,7 @@ using LeanStudio.Core.Verification;
 
 namespace LeanStudio.Tests;
 
+[Collection(Lean.Collection)]
 public sealed class TenetTests
 {
     private static readonly SemaphoreSlim BuildLock = new(1, 1);

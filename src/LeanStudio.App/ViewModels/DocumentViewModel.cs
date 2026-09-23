@@ -15,9 +15,12 @@ public sealed partial class DocumentViewModel : ObservableObject
         Uri = LeanServer.UriOf(Path);
         Document = new TextDocument(text) { FileName = Path };
         SavedText = text;
+        Document.UndoStack.MarkAsOriginalFile();
+        // The undo stack knows whether the text is back at the saved version, without comparing the whole
+        // file on every keystroke.
         Document.TextChanged += (_, _) =>
         {
-            IsDirty = Document.Text != SavedText;
+            IsDirty = !Document.UndoStack.IsOriginalFile;
             TextChanged?.Invoke(this);
         };
     }
@@ -73,6 +76,7 @@ public sealed partial class DocumentViewModel : ObservableObject
         string text = Document.Text;
         await File.WriteAllTextAsync(Path, text);
         SavedText = text;
+        Document.UndoStack.MarkAsOriginalFile();
         IsDirty = false;
         OnPropertyChanged(nameof(Title));
     }

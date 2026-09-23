@@ -7,6 +7,15 @@ internal static class Lean
 {
     public const string Toolchain = "leanprover/lean4:v4.34.0";
 
+    /// <summary>
+    /// Tests that start a Lean server run one at a time: several servers elaborating at once on a small CI
+    /// machine (Windows especially) can take longer than any sensible timeout, and they test nothing extra.
+    /// </summary>
+    public const string Collection = "Lean";
+
+    /// <summary>How long to wait for Lean to finish a small file, generous for a cold CI runner.</summary>
+    public static readonly TimeSpan Patience = TimeSpan.FromSeconds(240);
+
     public static string RepoRoot { get; } = FindRepoRoot();
 
     public static string Sample(params string[] parts) => Path.Combine([RepoRoot, "samples", .. parts]);

@@ -179,7 +179,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async Task OpenProjectAsync(string dir)
     {
-        await CloseAllAsync(force: false);
+        if (!await CloseAllAsync(force: false))
+        {
+            return;
+        }
         var project = LeanProject.FindEnclosing(dir) is LeanProject enclosing && enclosing.Root == Path.GetFullPath(dir)
             ? enclosing
             : new LeanProject(dir);
@@ -196,7 +199,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await ReopenTenetAsync();
     }
 
-    public IReadOnlyList<string> RecentProjects => Settings.RecentProjects;
+    /// <summary>A fresh copy each time, so bindings see a new list when a project is opened.</summary>
+    public IReadOnlyList<string> RecentProjects => Settings.RecentProjects.ToList();
 
     [RelayCommand]
     private async Task NewProjectAsync()

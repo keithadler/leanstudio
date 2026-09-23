@@ -3,6 +3,7 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.Tests;
 
+[Collection(Lean.Collection)]
 public sealed class ProofStepTests
 {
     private static readonly string[] Demo = File.ReadAllLines(Lean.Sample("Demo", "Demo.lean"));
@@ -69,7 +70,7 @@ public sealed class ProofStepTests
         };
         await server.StartAsync(TestContext.Current.CancellationToken);
         await server.OpenAsync(uri, string.Join('\n', Demo));
-        await done.Task.WaitAsync(TimeSpan.FromSeconds(90), TestContext.Current.CancellationToken);
+        await done.Task.WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
 
         TacticProof p = ProofSteps.Find(Demo, 9)!; // constructor; · exact hp; · exact hq
         InteractiveGoals before = await server.InteractiveGoalsAsync(uri, p.Start, TestContext.Current.CancellationToken);

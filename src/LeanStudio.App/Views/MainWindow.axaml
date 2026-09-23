@@ -80,6 +80,8 @@
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="Keyboard Shortcuts" Click="OnShortcuts" />
+        <MenuItem Header="Keith Adler (@keithadler) on X" Click="OnAuthor" />
+        <Separator />
         <MenuItem Header="About Lean Studio" Click="OnAbout" />
       </MenuItem>
     </Menu>

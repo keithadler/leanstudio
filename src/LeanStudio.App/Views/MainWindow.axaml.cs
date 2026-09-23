@@ -230,14 +230,8 @@ public sealed partial class MainWindow : Window, IDialogs
             "\\name  Unicode input: \\alpha α, \\to →, \\N ℕ, \\forall ∀, \\<> ⟨⟩ (Tab completes)"), 520);
     }
 
-    private async void OnAbout(object? sender, RoutedEventArgs e)
-    {
-        string version = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "";
-        await Dialogs.InfoAsync(this, "About Lean Studio",
-            $"Lean Studio {version}\n\nAn IDE for Lean 4 on macOS, Windows and Linux.\n\n"
-            + "Lean's own language server elaborates your files and supplies goals, hovers and completion. "
-            + "Tenet, an independent implementation of the Lean kernel, re-checks every declaration Lean builds "
-            + "and reports which ones rest on sorry or on axioms.\n\n"
-            + $"Lean server: {_vm.Server?.Command.ToString() ?? "not running"}");
-    }
+    private async void OnAuthor(object? sender, RoutedEventArgs e) => await Launcher.LaunchUriAsync(new Uri(Credits.XUrl));
+
+    private async void OnAbout(object? sender, RoutedEventArgs e) =>
+        await Dialogs.AboutAsync(this, _vm.Server?.Command.ToString() ?? "not running");
 }

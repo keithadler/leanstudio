@@ -6,7 +6,8 @@
 
 <p align="center">
   <b>A desktop IDE for Lean 4, on macOS, Windows and Linux.</b><br>
-  Lean elaborates your proofs as you type. Tenet then re-checks each one it built.
+  Lean elaborates your proofs as you type. Tenet then re-checks each one it built.<br>
+  Created by <b>Keith Adler</b>, <a href="https://x.com/keithadler">@keithadler</a> on X.
 </p>
 
 <p align="center">
@@ -204,6 +205,10 @@ Lean Studio is at **0.1**, the first release. The whole workflow works end to en
 - ProofWidgets and other user widgets aren't rendered.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.
 - Release builds aren't signed or notarized.
+
+## Author
+
+Lean Studio is created and maintained by **Keith Adler**, [@keithadler](https://x.com/keithadler) on X, who also wrote [Tenet](https://github.com/keithadler/tenet). Follow him there for updates.
 
 ## License
 

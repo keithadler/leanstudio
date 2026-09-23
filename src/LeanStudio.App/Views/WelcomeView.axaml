@@ -35,6 +35,13 @@
         Build with ⌘B / Ctrl+B. After a build, Tenet marks each declaration in the gutter:
         ✓ verified, ◐ rests on sorry or an axiom, ✗ rejected.
       </TextBlock>
+
+      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,32,0,0">
+        <TextBlock Text="Created by Keith Adler" Classes="dim" FontSize="12" VerticalAlignment="Center" />
+        <TextBlock Text="·" Classes="dim" FontSize="12" VerticalAlignment="Center" />
+        <Button x:Name="XLink" Classes="flat" Content="@keithadler on X" FontSize="12" Padding="0" Foreground="#4D9FFF"
+                Cursor="Hand" Click="OnXLink" VerticalAlignment="Center" />
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

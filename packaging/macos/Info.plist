@@ -12,6 +12,7 @@
   <key>CFBundleVersion</key><string>__VERSION__</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Keith Adler (@keithadler). MIT License.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>

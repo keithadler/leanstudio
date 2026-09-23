@@ -59,6 +59,58 @@ internal static class Dialogs
         await w.ShowDialog(owner);
     }
 
+    /// <summary>The About box: icon, version, what Lean Studio is, and who made it, with the links live.</summary>
+    public static async Task AboutAsync(Window owner, string serverCommand)
+    {
+        static Button Link(string text, string url, Window w)
+        {
+            var b = new Button
+            {
+                Content = text,
+                Classes = { "flat" },
+                Foreground = new SolidColorBrush(Color.FromRgb(0x4D, 0x9F, 0xFF)),
+                Padding = new Thickness(0),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+            };
+            b.Click += async (_, _) => await w.Launcher.LaunchUriAsync(new Uri(url));
+            return b;
+        }
+        var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true };
+        var icon = new Image
+        {
+            Source = new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.AssetLoader.Open(new Uri("avares://LeanStudio/Assets/leanstudio-256.png"))),
+            Width = 72,
+            Height = 72,
+            VerticalAlignment = VerticalAlignment.Top,
+        };
+        var text = new StackPanel { Spacing = 4 };
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        header.Children.Add(icon);
+        Grid.SetColumn(text, 1);
+        text.Margin = new Thickness(16, 0, 0, 0);
+        header.Children.Add(text);
+        Window w = Frame("About Lean Studio", new StackPanel { Children = { header, Buttons(ok) } }, 480);
+        text.Children.Add(new TextBlock { Text = "Lean Studio", FontSize = 22, FontWeight = FontWeight.SemiBold });
+        text.Children.Add(new TextBlock { Text = "Version " + Services.Credits.Version, Opacity = 0.7 });
+        text.Children.Add(new TextBlock { Text = "An IDE for Lean 4 on macOS, Windows and Linux.", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
+        text.Children.Add(new TextBlock
+        {
+            Text = "Lean's own language server elaborates your files. Tenet, an independent implementation of the Lean kernel, re-checks every declaration Lean builds.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.8,
+            FontSize = 12,
+        });
+        text.Children.Add(new TextBlock { Text = "Created by " + Services.Credits.Author, Margin = new Thickness(0, 10, 0, 0), FontWeight = FontWeight.SemiBold });
+        text.Children.Add(Link(Services.Credits.XHandle + " on X", Services.Credits.XUrl, w));
+        text.Children.Add(Link("github.com/keithadler/leanstudio", Services.Credits.RepositoryUrl, w));
+        text.Children.Add(Link("Tenet: github.com/keithadler/tenet", Services.Credits.TenetUrl, w));
+        text.Children.Add(new TextBlock { Text = Services.Credits.Copyright, Opacity = 0.6, FontSize = 11, Margin = new Thickness(0, 8, 0, 0) });
+        text.Children.Add(new SelectableTextBlock { Text = "Lean server: " + serverCommand, Opacity = 0.6, FontSize = 11, TextWrapping = TextWrapping.Wrap });
+        ok.Click += (_, _) => w.Close();
+        await w.ShowDialog(owner);
+    }
+
     public static async Task<string?> PromptAsync(Window owner, string title, string message, string initial)
     {
         string? result = null;
