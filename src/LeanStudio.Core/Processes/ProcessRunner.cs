@@ -55,7 +55,8 @@ public static class ProcessRunner
             }
             lock (all)
             {
-                all.AppendLine(s);
+                // "\n", not AppendLine: on Windows that adds "\r\n", and every parser here splits on "\n".
+                all.Append(s).Append('\n');
             }
             onLine?.Invoke(s);
         }
