@@ -119,6 +119,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         ScheduleOutline();
         UpdateCanRun();
+        UpdateImportsStale();
     }
 
     // ---- logging ----
@@ -148,9 +149,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- startup ----
 
-    public async Task StartAsync()
+    public async Task StartAsync(bool restoreSession = true)
     {
         await Toolchains.RefreshAsync();
+        LeanMissing = !Elan.IsInstalled;
+        if (!restoreSession)
+        {
+            return;
+        }
         if (!Elan.IsInstalled)
         {
             Log("elan was not found. Install it from " + Elan.InstallUrl + " and restart Lean Studio.");
@@ -405,6 +411,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ToolchainLabel = Project.Toolchain ?? (fallback is null ? "elan default" : fallback + " (not pinned)");
         var server = new LeanServer(cmd);
         _server = server;
+        server.StateChanged += s =>
+        {
+            if (s == LeanServerState.Crashed && _server == server)
+            {
+                Dispatcher.UIThread.Post(OnServerCrashed);
+            }
+        };
         server.StateChanged += s => Dispatcher.UIThread.Post(() => ServerStatus = s switch
         {
             LeanServerState.Running => "Lean: ready",
@@ -472,6 +485,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         d.Diagnostics = diags;
         UpdateProblems();
+        if (d == ActiveDocument)
+        {
+            UpdateImportsStale();
+        }
         if (!d.IsProcessing)
         {
             Learn.FileChecked(d);
@@ -533,6 +550,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public async Task<DocumentViewModel?> OpenFileAsync(string path, int? line = null, int? column = null)
     {
         path = Path.GetFullPath(path);
+        if (line is not null || !string.Equals(ActiveDocument?.Path, path, StringComparison.Ordinal))
+        {
+            PushLocation(); // so Back returns to where this jump started
+        }
         DocumentViewModel? doc = Documents.FirstOrDefault(d => string.Equals(d.Path, path, StringComparison.Ordinal));
         if (doc is null)
         {

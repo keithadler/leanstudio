@@ -11,6 +11,7 @@
           <TextBlock Text="elan is not installed" FontWeight="SemiBold" />
           <TextBlock Text="Lean Studio uses elan to install Lean and pick the version each project asks for. Install it, then press Refresh." TextWrapping="Wrap" FontSize="12" />
           <SelectableTextBlock Text="{Binding ElanInstallUrl}" Classes="mono" FontSize="11" />
+          <Button Content="Install Lean for me" Classes="accent" FontSize="12" Padding="10,3" Click="OnInstallLean" />
         </StackPanel>
       </Border>
 

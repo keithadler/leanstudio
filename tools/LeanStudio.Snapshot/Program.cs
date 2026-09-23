@@ -321,6 +321,7 @@ internal static class Scenario
         Check(info?.Type == "Prop", $"hovering a subterm of the goal gives its type ({info?.Type})");
 
         string proofs = Path.Combine(repo, "samples", "Proofs", "Proofs");
+        string proofsDir = proofs;
         string fixes = Path.Combine(proofs, "Fixes.lean"), auto = Path.Combine(proofs, "AutoFix.lean");
         string rep1 = Path.Combine(proofs, "Rep1.lean"), rep2 = Path.Combine(proofs, "Rep2.lean");
         string modA = Path.Combine(proofs, "ModA.lean"), modB = Path.Combine(proofs, "ModB.lean"), modC = Path.Combine(proofs, "ModC.lean");
@@ -369,6 +370,65 @@ internal static class Scenario
             }
         }
         vm.ActiveDocument = doc;
+
+        Console.WriteLine("essentials");
+        vm.ActiveDocument = doc;
+        doc.Reveal(4, 10); // on `double` in `unfold double`
+        await Task.Delay(300);
+        await vm.GoToDefinitionCommand.ExecuteAsync(null);
+        Check(await WaitFor(() => vm.ActiveDocument?.CaretLine == 1, 10), "go to definition lands on def double");
+        await vm.GoBackCommand.ExecuteAsync(null);
+        Check(await WaitFor(() => vm.ActiveDocument?.CaretLine == 4, 10), "Back returns to where the jump started");
+        await vm.GoForwardCommand.ExecuteAsync(null);
+        Check(await WaitFor(() => vm.ActiveDocument?.CaretLine == 1, 10), "and Forward goes to the definition again");
+        doc.Reveal(0, 0);
+        vm.NextProblemCommand.Execute(null);
+        Check(await WaitFor(() => doc.CaretLine == 19, 5), "F8 moves to the next problem (the sorry)");
+
+        string scratchA = Path.Combine(proofsDir, "Scratch1.lean"), scratchB = Path.Combine(proofsDir, "Scratch2.lean"), scratchDir = Path.Combine(proofsDir, "ScratchDir");
+        string modX = Path.Combine(proofsDir, "ModX.lean"), modY = Path.Combine(proofsDir, "ModY.lean");
+        try
+        {
+            Check(await vm.CreateFileAsync(proofsDir, "Scratch1") is null && File.Exists(scratchA) && vm.ActiveDocument?.Path == scratchA, "the file tree creates and opens a new Lean file");
+            Check(await vm.RenamePathAsync(scratchA, "Scratch2.lean") is null && File.Exists(scratchB) && !File.Exists(scratchA) && vm.ActiveDocument?.Path == scratchB, "and renames it, keeping it open");
+            Check(vm.CreateFolder(proofsDir, "ScratchDir") is null && Directory.Exists(scratchDir), "and creates folders");
+            await vm.CloseDocumentCommand.ExecuteAsync(vm.ActiveDocument);
+
+            await File.WriteAllTextAsync(modX, "def modX := 1\n");
+            await File.WriteAllTextAsync(modY, "import Proofs.ModX\n#eval modX\n");
+            DocumentViewModel x = (await vm.OpenFileAsync(modX))!;
+            DocumentViewModel y = (await vm.OpenFileAsync(modY))!;
+            Check(await WaitFor(() => y.Diagnostics.Any(d => d.Message.Trim() == "1"), 120), "a file importing another sees its value");
+            vm.ActiveDocument = x;
+            x.ReplaceAll("def modX := 2\n");
+            await vm.SaveCommand.ExecuteAsync(null);
+            vm.ActiveDocument = y;
+            Check(await WaitFor(() => vm.ImportsStale, 60), "changing an imported file brings up the rebuild banner");
+            Snap(window, outDir, "15-stale-imports");
+            await vm.RestartFileCommand.ExecuteAsync(null);
+            Check(await WaitFor(() => y.Diagnostics.Any(d => d.Message.Trim() == "2") && !vm.ImportsStale, 120), "rebuilding and rechecking picks up the change");
+            await vm.CloseDocumentCommand.ExecuteAsync(y);
+            await vm.CloseDocumentCommand.ExecuteAsync(x);
+        }
+        finally
+        {
+            foreach (string f in new[] { scratchA, scratchB, modX, modY })
+            {
+                File.Delete(f);
+            }
+            if (Directory.Exists(scratchDir))
+            {
+                Directory.Delete(scratchDir, true);
+            }
+            foreach (string built in Directory.Exists(Path.Combine(repo, "samples", "Proofs", ".lake", "build", "lib", "lean", "Proofs"))
+                ? Directory.GetFiles(Path.Combine(repo, "samples", "Proofs", ".lake", "build", "lib", "lean", "Proofs"), "Mod*") : [])
+            {
+                File.Delete(built);
+            }
+        }
+        vm.ActiveDocument = doc;
+        Check(await WaitFor(() => !vm.SourceControl.Unstaged.Any(c => c.FileName is "ModX.lean" or "ModY.lean" or "Scratch2.lean"), 10),
+            "the Git panel forgets files that were deleted");
 
         Console.WriteLine("for newcomers");
         vm.ActiveDocument = doc;

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+**Essentials**: "Install Lean" for a computer without it (the official elan installer and the latest stable
+Lean); back and forward through jumps; next and previous problem (F8); a banner to rebuild imports and recheck
+when an imported file changes; "Add import" for unknown names, found on Loogle; creating, renaming (as a
+module, imports and all), trashing, revealing files and opening terminals from the file tree; drag and drop;
+a Preferences window; New Window; Lean restarted if it crashes; unexpected errors logged instead of fatal.
+
+**Fixes**: the Git panel could keep listing deleted files when a partial refresh cancelled a full one.
+
 ## 0.3.0
 
 **Power tools**: the C Lean emits for the definition at the cursor, side by side; hover any subterm of a goal

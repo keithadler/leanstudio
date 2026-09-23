@@ -421,12 +421,19 @@ public sealed partial class MainViewModel
         return Task.CompletedTask;
     }
 
+    private bool _fullGitRefreshPending;
+
+    /// <summary>
+    /// Debounced: a burst of changes becomes one refresh. A full refresh (the file list) that is still pending
+    /// is never downgraded to a partial one (just the gutter) by a later request.
+    /// </summary>
     private void ScheduleGitRefresh(bool full = true)
     {
         _gitCts?.Cancel();
         var cts = new CancellationTokenSource();
         _gitCts = cts;
-        _ = RefreshGitAsync(full, cts.Token);
+        _fullGitRefreshPending |= full;
+        _ = RefreshGitAsync(_fullGitRefreshPending, cts.Token);
     }
 
     private async Task RefreshGitAsync(bool full, CancellationToken ct)
@@ -436,6 +443,7 @@ public sealed partial class MainViewModel
             await Task.Delay(400, ct);
             if (full)
             {
+                _fullGitRefreshPending = false;
                 await SourceControl.RefreshAsync();
             }
             if (SourceControl.Repository is GitRepository repo)

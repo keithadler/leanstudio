@@ -57,14 +57,19 @@ public sealed partial class MainWindow : Window, IDialogs
             }
             else
             {
-                await _vm.StartAsync();
+                await _vm.StartAsync(restoreSession: !NewWindow);
             }
             BuildRecentMenu();
         };
         Closing += OnClosing;
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
+        AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(Avalonia.Input.DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
     }
+
+    /// <summary>Opened with --new-window: start empty rather than reopening the last session.</summary>
+    public bool NewWindow { get; set; }
 
     /// <summary>A folder or file given on the command line, opened instead of the last session.</summary>
     public string? OpenOnStartup { get; set; }
@@ -150,6 +155,11 @@ public sealed partial class MainWindow : Window, IDialogs
             (Key.OemPeriod, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.FixAllInFileCommand.Execute(null),
             (Key.OemPeriod, true, false) => () => _ = QuickFixAsync(),
             (Key.B, true, true) => () => _ = RunTaskAsync(),
+            (Key.OemComma, true, false) => () => OnPreferences(null, new RoutedEventArgs()),
+            (Key.Left, false, false) when e.KeyModifiers == KeyModifiers.Alt && !OperatingSystem.IsMacOS() => () => _vm.GoBackCommand.Execute(null),
+            (Key.Right, false, false) when e.KeyModifiers == KeyModifiers.Alt && !OperatingSystem.IsMacOS() => () => _vm.GoForwardCommand.Execute(null),
+            (Key.OemMinus, false, false) when OperatingSystem.IsMacOS() && e.KeyModifiers == KeyModifiers.Control => () => _vm.GoBackCommand.Execute(null),
+            (Key.OemMinus, false, true) when OperatingSystem.IsMacOS() && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) => () => _vm.GoForwardCommand.Execute(null),
             (Key.J, true, false) => () => TogglePanel(),
             (Key.B, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleSidebar(),
             (Key.I, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleInfo(),
@@ -310,16 +320,142 @@ public sealed partial class MainWindow : Window, IDialogs
         await _vm.ReplaceInFilesAsync((matches, files) =>
             ConfirmAsync("Replace in files", $"Replace {matches} match{(matches == 1 ? "" : "es")} of \"{_vm.SearchQuery}\" with \"{_vm.ReplaceWith}\" in {files} file{(files == 1 ? "" : "s")}?\n\nOpen files are changed in the editor, unsaved. Other files are written; File ▸ Local History keeps their previous version."));
 
-    /// <summary>The lightbulb: Lean's fixes for one line, as a menu.</summary>
+    /// <summary>The lightbulb: Lean's fixes for one line, and "Add import" for a name it does not know, as a menu.</summary>
     private async Task QuickFixAtLineAsync(int line)
     {
         IReadOnlyList<Lsp.CodeAction> actions = await _vm.CodeActionsAtLineAsync(line);
-        if (actions.Count == 0)
+        var items = actions.Select(a => new PickerItem(a.Title, a.Kind, () => _vm.ApplyCodeActionAsync(a))).ToList();
+        foreach (Core.Workflow.ImportSuggestion s in await _vm.ImportSuggestionsAsync(line))
         {
+            items.Add(new PickerItem($"Add import {s.Module}", $"defines {s.Name}", () => { _vm.AddImport(s.Module); return Task.CompletedTask; }));
+        }
+        if (items.Count == 0)
+        {
+            _vm.Log("No fixes found for that line.");
             return;
         }
         await Picker.ShowAsync(this, $"Fixes for line {line + 1}", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
-            Core.Editing.Fuzzy.Filter(actions, q, a => a.Title).Select(a => new PickerItem(a.Title, a.Kind, () => _vm.ApplyCodeActionAsync(a))).ToList()));
+            Core.Editing.Fuzzy.Filter(items, q, i => i.Title).ToList()));
+    }
+
+    // ---- files: the explorer's context menu, and dropping files on the window ----
+
+    private FileNode? SelectedNode => this.FindControl<TreeView>("FileTree")?.SelectedItem as FileNode;
+
+    /// <summary>The folder a new file goes in: the selected folder, the selected file's folder, or the project root.</summary>
+    private string? TargetFolder => SelectedNode is { } n ? (n.IsDirectory ? n.Path : Path.GetDirectoryName(n.Path)) : _vm.Project?.Root;
+
+    private async void OnTreeNewFile(object? sender, RoutedEventArgs e)
+    {
+        if (TargetFolder is not string folder)
+        {
+            return;
+        }
+        string? name = await PromptAsync("New file", $"In {Path.GetFileName(folder)}:", "NewFile.lean");
+        if (!string.IsNullOrWhiteSpace(name) && await _vm.CreateFileAsync(folder, name.Trim()) is string problem)
+        {
+            await Dialogs.InfoAsync(this, "New file", problem);
+        }
+    }
+
+    private async void OnTreeNewFolder(object? sender, RoutedEventArgs e)
+    {
+        if (TargetFolder is not string folder)
+        {
+            return;
+        }
+        string? name = await PromptAsync("New folder", $"In {Path.GetFileName(folder)}:", "NewFolder");
+        if (!string.IsNullOrWhiteSpace(name) && _vm.CreateFolder(folder, name.Trim()) is string problem)
+        {
+            await Dialogs.InfoAsync(this, "New folder", problem);
+        }
+    }
+
+    private async void OnTreeRename(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedNode is not { } n)
+        {
+            return;
+        }
+        string? name = await PromptAsync("Rename", n.Path.EndsWith(".lean", StringComparison.Ordinal) ? "New name (imports of this module are updated):" : "New name:", n.Name);
+        if (!string.IsNullOrWhiteSpace(name) && name.Trim() != n.Name && await _vm.RenamePathAsync(n.Path, name.Trim()) is string problem)
+        {
+            await Dialogs.InfoAsync(this, "Rename", problem);
+        }
+    }
+
+    private async void OnTreeTrash(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedNode is not { } n || !await ConfirmAsync("Move to Trash", $"Move {n.Name} to the trash?"))
+        {
+            return;
+        }
+        if (await _vm.TrashAsync(n.Path) is string problem)
+        {
+            await Dialogs.InfoAsync(this, "Move to Trash", problem);
+        }
+    }
+
+    private async void OnTreeReveal(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedNode is { } n)
+        {
+            await RevealAsync(n.Path);
+        }
+    }
+
+    private void OnTreeTerminal(object? sender, RoutedEventArgs e)
+    {
+        if (TargetFolder is string folder && !Core.Workflow.FileOps.OpenTerminal(folder))
+        {
+            _vm.Log("Could not find a terminal to open.");
+        }
+    }
+
+    private async void OnTreeCopyPath(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedNode is { } n && Clipboard is { } cb)
+        {
+            await Avalonia.Input.Platform.ClipboardExtensions.SetValueAsync(cb, Avalonia.Input.DataFormat.Text, n.Path);
+        }
+    }
+
+    private async void OnTreeCopyRelative(object? sender, RoutedEventArgs e)
+    {
+        if (SelectedNode is { } n && _vm.Project is { } p && Clipboard is { } cb)
+        {
+            await Avalonia.Input.Platform.ClipboardExtensions.SetValueAsync(cb, Avalonia.Input.DataFormat.Text, Path.GetRelativePath(p.Root, n.Path));
+        }
+    }
+
+    /// <summary>Drop a folder to open it as the project, or files to open them.</summary>
+    private async void OnDrop(object? sender, DragEventArgs e)
+    {
+        IStorageItem[]? items = e.DataTransfer.TryGetFiles();
+        foreach (IStorageItem item in items ?? [])
+        {
+            if (item.TryGetLocalPath() is not string path)
+            {
+                continue;
+            }
+            if (Directory.Exists(path))
+            {
+                await _vm.OpenProjectAsync(path);
+                BuildRecentMenu();
+                return;
+            }
+            await _vm.OpenFileAsync(path);
+        }
+    }
+
+    private async void OnPreferences(object? sender, RoutedEventArgs e)
+    {
+        await Dialogs.PreferencesAsync(this, _vm.Settings);
+        if (Avalonia.Application.Current is { } app)
+        {
+            app.RequestedThemeVariant = _vm.Settings.Theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
+        }
+        ApplySettings();
     }
     private void OnShowLearn(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.LearnTab;
     private void OnInsertSnippet(object? sender, RoutedEventArgs e) => _ = InsertSnippetAsync();
@@ -406,6 +542,14 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
         yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
         yield return ("Lean: Run Task…", m + "⇧B", RunTaskAsync);
+        yield return ("Lean: Restart File (rebuild its imports)", "", Cmd(_vm.RestartFileCommand));
+        yield return ("Lean: Install Lean (elan and the latest stable Lean)", "", Cmd(_vm.InstallLeanCommand));
+        yield return ("Go: Back", OperatingSystem.IsMacOS() ? "⌃-" : "Alt+←", Cmd(_vm.GoBackCommand));
+        yield return ("Go: Forward", OperatingSystem.IsMacOS() ? "⌃⇧-" : "Alt+→", Cmd(_vm.GoForwardCommand));
+        yield return ("Go: Next Problem", "F8", Cmd(_vm.NextProblemCommand));
+        yield return ("Go: Previous Problem", "⇧F8", Cmd(_vm.PreviousProblemCommand));
+        yield return ("File: New Window", m + "⇧N", Cmd(_vm.NewWindowCommand));
+        yield return ("File: Preferences…", m + ",", Act(() => OnPreferences(null, new RoutedEventArgs())));
         yield return ("Lean: Fix All in File", m + "⌥.", Cmd(_vm.FixAllInFileCommand));
         yield return ("Lean: Toggle Applying Suggestions Automatically", "", Act(() => { _vm.Settings.AutoApplyFixes = !_vm.Settings.AutoApplyFixes; ApplySettings(); _vm.Log("Apply suggestions automatically: " + (_vm.Settings.AutoApplyFixes ? "on" : "off")); }));
         yield return ("Lean: Show Compiled C", "", Act(() => _vm.RightTab = MainViewModel.CodeTab));

@@ -191,6 +191,26 @@ public sealed class NetworkTests
     }
 
     [Fact]
+    public async Task FindsWhereAMissingNameIsDefined()
+    {
+        RequireNetwork();
+        var found = await ImportFinder.SuggestAsync("Nat.add_comm", ct: TestContext.Current.CancellationToken);
+        Assert.Contains(found, s => s.Name == "Nat.add_comm" && s.Module == "Init.Data.Nat.Basic");
+    }
+
+    [Fact]
+    public async Task TheElanInstallersAreWhereWeExpect()
+    {
+        RequireNetwork();
+        using var http = new HttpClient();
+        foreach (string url in new[] { ElanInstaller.UnixScript, ElanInstaller.WindowsScript })
+        {
+            string script = await http.GetStringAsync(url, TestContext.Current.CancellationToken);
+            Assert.Contains("elan", script, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public async Task LoogleFindsMathlib()
     {
         RequireNetwork();

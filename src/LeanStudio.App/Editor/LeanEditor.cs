@@ -106,7 +106,8 @@ public sealed class LeanEditor : UserControl
     /// <summary>Lines with a message Lean can fix: a "Try this", or a hint marked [apply].</summary>
     private void UpdateBulbs() =>
         _margin.SetBulbs(_current is { IsLean: true } d
-            ? d.Diagnostics.Where(x => x.Message.Contains("Try this", StringComparison.Ordinal) || x.Message.Contains("[apply]", StringComparison.Ordinal))
+            ? d.Diagnostics.Where(x => x.Message.Contains("Try this", StringComparison.Ordinal) || x.Message.Contains("[apply]", StringComparison.Ordinal)
+                                       || Core.Workflow.ImportFinder.MissingName(x.Message) is not null)
                 .Select(x => x.Range.Start.Line + 1)
             : []);
 

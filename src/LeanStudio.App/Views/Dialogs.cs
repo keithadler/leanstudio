@@ -220,6 +220,94 @@ internal static class Dialogs
         return c;
     }
 
+    /// <summary>Every setting in one place, grouped, applied when OK is pressed.</summary>
+    public static async Task PreferencesAsync(Window owner, Services.Settings s)
+    {
+        CheckBox Check(string text, bool value, string? tip = null)
+        {
+            var c = new CheckBox { Content = text, IsChecked = value };
+            if (tip is not null)
+            {
+                ToolTip.SetTip(c, tip);
+            }
+            return c;
+        }
+        TextBlock Head(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 2) };
+
+        var theme = new ComboBox { ItemsSource = new[] { "Dark", "Light" }, SelectedItem = s.Theme == "Light" ? "Light" : "Dark", MinWidth = 140 };
+        var font = new TextBox { Text = s.EditorFontFamily };
+        var size = new NumericUpDown { Value = (decimal)s.EditorFontSize, Minimum = 8, Maximum = 32, Increment = 1, MinWidth = 140, FormatString = "0" };
+        var lineNumbers = Check("Line numbers", s.ShowLineNumbers);
+        var wrap = Check("Word wrap", s.WordWrap);
+        var unicode = Check("Unicode input (\\alpha becomes α)", s.UnicodeInput);
+        var autosave = Check("Auto save", s.AutoSave, "Save a moment after typing stops, and when the window loses focus");
+        var inline = Check("Show #eval and #check results at the end of the line", s.InlineResults);
+        var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
+        var explain = Check("Explain Lean's messages in plain words", s.ExplainErrors);
+        var autofix = Check("Apply a lone Try this suggestion automatically", s.AutoApplyFixes);
+        var verify = Check("Verify with Tenet after every build", s.VerifyAfterBuild);
+        var blame = Check("Show who last changed the current line", s.ShowBlame);
+        var updates = Check("Check for updates once a day", s.CheckForUpdates);
+        var installed = (await Core.Toolchains.Elan.ListAsync()).Select(t => t.Name).ToList();
+        var toolchains = new List<string> { "(the newest installed)" };
+        toolchains.AddRange(installed);
+        var fallback = new ComboBox
+        {
+            ItemsSource = toolchains,
+            SelectedItem = s.FallbackToolchain is string f && installed.Contains(f) ? f : toolchains[0],
+            MinWidth = 280,
+        };
+        ToolTip.SetTip(fallback, "The Lean version for files outside any project (a project's lean-toolchain file always wins)");
+
+        Grid Row(string label, Control c)
+        {
+            var g = new Grid { ColumnDefinitions = new ColumnDefinitions("140,*"), Margin = new Thickness(0, 2) };
+            g.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            Grid.SetColumn(c, 1);
+            g.Children.Add(c);
+            return g;
+        }
+
+        var ok = new Button { Content = "OK", IsDefault = true, Classes = { "accent" } };
+        var cancel = new Button { Content = "Cancel", IsCancel = true };
+        var panel = new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap,
+                Head("Editing"), unicode, autosave, inline,
+                Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
+                Head("Other"), blame, updates,
+                new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
+                Buttons(cancel, ok),
+            },
+        };
+        Window w = Frame("Preferences", new ScrollViewer { Content = panel, MaxHeight = 640 }, 540);
+        ok.Click += (_, _) =>
+        {
+            s.Theme = theme.SelectedItem as string ?? "Dark";
+            s.EditorFontFamily = string.IsNullOrWhiteSpace(font.Text) ? s.EditorFontFamily : font.Text.Trim();
+            s.EditorFontSize = (double)(size.Value ?? 14);
+            s.ShowLineNumbers = lineNumbers.IsChecked == true;
+            s.WordWrap = wrap.IsChecked == true;
+            s.UnicodeInput = unicode.IsChecked == true;
+            s.AutoSave = autosave.IsChecked == true;
+            s.InlineResults = inline.IsChecked == true;
+            s.ShowGoalsInEnglish = english.IsChecked == true;
+            s.ExplainErrors = explain.IsChecked == true;
+            s.AutoApplyFixes = autofix.IsChecked == true;
+            s.VerifyAfterBuild = verify.IsChecked == true;
+            s.ShowBlame = blame.IsChecked == true;
+            s.CheckForUpdates = updates.IsChecked == true;
+            s.FallbackToolchain = fallback.SelectedIndex > 0 ? fallback.SelectedItem as string : null;
+            s.Save();
+            w.Close();
+        };
+        cancel.Click += (_, _) => w.Close();
+        await w.ShowDialog(owner);
+    }
+
     public static async Task<string?> PromptAsync(Window owner, string title, string message, string initial)
     {
         string? result = null;

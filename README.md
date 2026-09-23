@@ -137,6 +137,11 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 - **Loogle.** Search all of Mathlib by name or by the shape of a type (`_ * (_ ^ _)`, `|- tsum _ = _`) from the Library tab. The Library also links any declaration to its documentation page.
 - **Blame.** The status bar says who last changed the current line, when, and in which commit.
 - **Tasks.** ⌘⇧B / Ctrl+Shift+B runs `lake build`, `lake test`, `lake lint`, any executable or Lake script; Lean ▸ Run Shell Command runs anything else in the project.
+- **Getting around.** Back and Forward after any jump (⌃- / ⌃⇧- on macOS, Alt+← / Alt+→ elsewhere). F8 and ⇧F8 go to the next and previous problem.
+- **Imports that changed.** When a file you import changes, a banner offers to rebuild the imports and check the file again (what other editors call Restart File).
+- **Add import.** On an "unknown identifier", the lightbulb looks the name up on Loogle and offers `import` of the module that defines it.
+- **Files.** Right-click in Files to create a file or folder, rename (a Lean file is renamed as a module, imports and all), move to the trash, reveal it, open a terminal there, or copy its path. Drop files or a folder on the window to open them.
+- **Settings, windows, resilience.** Preferences (⌘, / Ctrl+,) has every setting in one place. File ▸ New Window opens a second project. If Lean crashes it is started again, and an unexpected error is logged instead of closing the app.
 - **Your layout.** Hide the sidebar (⌘⌥B), the bottom panel (⌘J) or the goals (⌘⌥I), or use zen mode (⌘⌥Z) for just the editor and the goals. There's also word wrap (⌥Z). Each file reopens with the cursor where you left it, and the file you were on comes back when the app starts.
 
 ### Everything else a Lean IDE needs
@@ -225,7 +230,7 @@ This is tested with a real assistant. Claude Code, given the sample project and 
 
 ## Install
 
-Lean Studio needs **[elan](https://github.com/leanprover/elan#installation)**, Lean's toolchain manager. elan is the standard way to install Lean, so you probably have it already. Lean Studio has the right Lean version for each project installed through it.
+Lean Studio needs **[elan](https://github.com/leanprover/elan#installation)**, Lean's toolchain manager. elan is the standard way to install Lean, so you may have it already. If not, Lean Studio offers to install it for you with the official installer, together with the latest stable Lean. Lean Studio has the right Lean version for each project installed through it.
 
 Download builds from the [Releases](../../releases) page:
 

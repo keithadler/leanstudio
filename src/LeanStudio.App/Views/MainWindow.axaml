@@ -10,6 +10,7 @@
         Title="{Binding WindowTitle}"
         Width="1440" Height="900" MinWidth="900" MinHeight="560"
         Icon="/Assets/leanstudio.ico"
+        DragDrop.AllowDrop="True"
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
@@ -24,6 +25,9 @@
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" Command="{Binding ShowDeclarationAtCaretCommand}" />
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" Command="{Binding RestartServerCommand}" />
     <KeyBinding Gesture="F2" Command="{Binding RenameSymbolCommand}" />
+    <KeyBinding Gesture="F8" Command="{Binding NextProblemCommand}" />
+    <KeyBinding Gesture="Shift+F8" Command="{Binding PreviousProblemCommand}" />
+    <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+N', macOS='Cmd+Shift+N'}" Command="{Binding NewWindowCommand}" />
     <KeyBinding Gesture="Shift+F12" Command="{Binding FindReferencesCommand}" />
   </Window.KeyBindings>
 
@@ -38,6 +42,7 @@
         <MenuItem Header="Open File…" Command="{Binding OpenFileDialogCommand}" InputGesture="{OnPlatform Default='Ctrl+O', macOS='Cmd+O'}" />
         <MenuItem Header="Clone Repository…" Command="{Binding CloneRepositoryCommand}" />
         <MenuItem x:Name="RecentMenu" Header="Open Recent" />
+        <MenuItem Header="New Window" Command="{Binding NewWindowCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+N', macOS='Cmd+Shift+N'}" />
         <Separator />
         <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" />
         <MenuItem Header="Save As…" Command="{Binding SaveAsCommand}" />
@@ -45,6 +50,8 @@
         <MenuItem Header="Auto Save" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoSave}" Click="OnApplySettings" />
         <MenuItem Header="Local History…" Click="OnLocalHistory" />
         <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
+        <Separator />
+        <MenuItem Header="Preferences…" Click="OnPreferences" InputGesture="{OnPlatform Default='Ctrl+OemComma', macOS='Cmd+OemComma'}" />
         <Separator />
         <MenuItem Header="Exit" Click="OnExit" />
       </MenuItem>
@@ -80,6 +87,11 @@
         <MenuItem Header="Go to Symbol in Workspace…" Click="OnGoToSymbol" InputGesture="{OnPlatform Default='Ctrl+T', macOS='Cmd+T'}" />
         <MenuItem Header="Go to Line…" Command="{Binding GoToLineCommand}" InputGesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" />
         <Separator />
+        <MenuItem Header="Back" Command="{Binding GoBackCommand}" InputGesture="{OnPlatform Default='Alt+Left', macOS='Ctrl+OemMinus'}" />
+        <MenuItem Header="Forward" Command="{Binding GoForwardCommand}" InputGesture="{OnPlatform Default='Alt+Right', macOS='Ctrl+Shift+OemMinus'}" />
+        <MenuItem Header="Next Problem" Command="{Binding NextProblemCommand}" InputGesture="F8" />
+        <MenuItem Header="Previous Problem" Command="{Binding PreviousProblemCommand}" InputGesture="Shift+F8" />
+        <Separator />
         <MenuItem Header="Go to Definition" Command="{Binding GoToDefinitionCommand}" InputGesture="F12" />
         <MenuItem Header="Find References" Command="{Binding FindReferencesCommand}" InputGesture="Shift+F12" />
         <MenuItem Header="Show Declaration in Library" Command="{Binding ShowDeclarationAtCaretCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" />
@@ -92,6 +104,7 @@
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
         <Separator />
+        <MenuItem Header="Restart File (rebuild its imports)" Command="{Binding RestartFileCommand}" />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
         <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
         <Separator />
@@ -209,6 +222,20 @@
           <DockPanel>
             <TextBlock DockPanel.Dock="Top" Text="{Binding ProjectName}" FontWeight="SemiBold" Margin="10,6" />
             <TreeView x:Name="FileTree" ItemsSource="{Binding Files}" DoubleTapped="OnFileDoubleTapped" SelectionChanged="OnFileSelected">
+              <TreeView.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="New File…" Click="OnTreeNewFile" />
+                  <MenuItem Header="New Folder…" Click="OnTreeNewFolder" />
+                  <Separator />
+                  <MenuItem Header="Rename…" Click="OnTreeRename" />
+                  <MenuItem Header="Move to Trash" Click="OnTreeTrash" />
+                  <Separator />
+                  <MenuItem Header="Reveal in File Manager" Click="OnTreeReveal" />
+                  <MenuItem Header="Open in Terminal" Click="OnTreeTerminal" />
+                  <MenuItem Header="Copy Path" Click="OnTreeCopyPath" />
+                  <MenuItem Header="Copy Relative Path" Click="OnTreeCopyRelative" />
+                </ContextMenu>
+              </TreeView.ContextMenu>
               <TreeView.ItemContainerTheme>
                 <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}" x:DataType="vm:FileNode">
                   <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -272,9 +299,22 @@
           </TabStrip.ItemTemplate>
         </TabStrip>
 
-        <Grid Grid.Row="1">
-          <ed:LeanEditor x:Name="Editor" Document="{Binding ActiveDocument}" Main="{Binding}" />
-          <v:WelcomeView IsVisible="{Binding !HasDocument}" />
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
+          <Border Grid.Row="0" IsVisible="{Binding LeanMissing}" Background="{DynamicResource CurrentStepBackground}" Padding="12,8">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="Lean is not installed yet. Lean Studio can install it for you with the official installer (elan and the latest stable Lean, a few hundred MB)."
+                         TextWrapping="Wrap" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="Install Lean" Classes="accent" Command="{Binding InstallLeanCommand}" IsEnabled="{Binding !InstallingLean}" Margin="12,0,0,0" />
+            </Grid>
+          </Border>
+          <Border Grid.Row="1" IsVisible="{Binding ImportsStale}" Background="{DynamicResource CurrentStepBackground}" Padding="12,6">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="A file this one imports has changed. Rebuild the imports and check this file again?" TextWrapping="Wrap" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Content="Rebuild imports and recheck" Classes="accent" Command="{Binding RestartFileCommand}" Margin="12,0,0,0" />
+            </Grid>
+          </Border>
+          <ed:LeanEditor Grid.Row="2" x:Name="Editor" Document="{Binding ActiveDocument}" Main="{Binding}" />
+          <v:WelcomeView Grid.Row="2" IsVisible="{Binding !HasDocument}" />
         </Grid>
 
         <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" />
