@@ -542,8 +542,9 @@ internal static class Scenario
         if (window.MapWindow is { } mw)
         {
             await Task.Delay(500);
-            mw.View.Select("not_not_elim");
             Snap(mw, outDir, "22-project-map");
+            mw.View.Select("not_not_elim");
+            Snap(mw, outDir, "23-project-map-selected");
             mw.Close();
         }
         vm.ActiveDocument = doc;
