@@ -3,51 +3,96 @@
              xmlns:vm="using:LeanStudio.App.ViewModels"
              x:Class="LeanStudio.App.Views.WelcomeView"
              x:DataType="vm:MainViewModel"
-             Background="{DynamicResource PanelBackground}">
+             Background="{DynamicResource EditorBackground}">
   <ScrollViewer>
-    <StackPanel MaxWidth="620" Margin="40,48" Spacing="10">
-      <TextBlock Text="Lean Studio" FontSize="34" FontWeight="Light" />
-      <TextBlock Text="An IDE for Lean 4. Lean elaborates as you type; Tenet re-checks what it built with an independent kernel."
-                 TextWrapping="Wrap" Classes="dim" FontSize="14" />
-      <Border Classes="card" Margin="0,16,0,0" Padding="14,10">
-        <StackPanel Spacing="6">
-          <TextBlock Text="New to Lean?" FontWeight="SemiBold" FontSize="15" />
-          <TextBlock Text="Ten short lessons teach you to write programs and proofs, right here. No experience needed."
-                     TextWrapping="Wrap" Classes="dim" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <Button Content="Start the tutorial" Command="{Binding Learn.StartTutorialCommand}" Classes="accent" Padding="14,6" />
-            <Button Content="Open the playground" Command="{Binding Learn.OpenPlaygroundCommand}" Padding="14,6" />
-          </StackPanel>
+    <StackPanel MaxWidth="680" Margin="40,44" Spacing="10">
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <Image Source="/Assets/leanstudio-256.png" Width="60" Height="60" VerticalAlignment="Center" />
+        <StackPanel VerticalAlignment="Center" Spacing="2">
+          <TextBlock Text="Lean Studio" FontSize="32" FontWeight="Light" />
+          <TextBlock Text="An IDE for Lean 4. Lean checks as you type; Tenet re-checks what it built with an independent kernel."
+                     TextWrapping="Wrap" Classes="dim" FontSize="13" MaxWidth="560" />
         </StackPanel>
-      </Border>
-      <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,16,0,0">
-        <Button Content="New Project…" Command="{Binding NewProjectCommand}" Classes="accent" Padding="16,8" />
-        <Button Content="Open Folder…" Command="{Binding OpenFolderCommand}" Padding="16,8" />
-        <Button Content="Open File…" Command="{Binding OpenFileDialogCommand}" Padding="16,8" />
       </StackPanel>
 
-      <TextBlock Text="RECENT" Classes="panelTitle" Margin="0,24,0,4" />
+      <!-- Start -->
+      <UniformGrid Columns="3" Margin="0,24,0,0">
+        <Button Classes="welcome" Command="{Binding NewProjectCommand}" Margin="0,0,8,0">
+          <StackPanel Spacing="6">
+            <PathIcon Data="{StaticResource IconPlus}" Foreground="{DynamicResource GoalAccent}" />
+            <TextBlock Text="New Project" FontWeight="SemiBold" />
+            <TextBlock Text="A Lean project, optionally with Mathlib" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+        </Button>
+        <Button Classes="welcome" Command="{Binding OpenFolderCommand}" Margin="4,0">
+          <StackPanel Spacing="6">
+            <PathIcon Data="{StaticResource IconFolder}" Foreground="{DynamicResource FolderBrush}" />
+            <TextBlock Text="Open Folder" FontWeight="SemiBold" />
+            <TextBlock Text="A project you already have" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+        </Button>
+        <Button Classes="welcome" Command="{Binding OpenFileDialogCommand}" Margin="8,0,0,0">
+          <StackPanel Spacing="6">
+            <PathIcon Data="{StaticResource IconLean}" Foreground="{DynamicResource LeanFileBrush}" />
+            <TextBlock Text="Open File" FontWeight="SemiBold" />
+            <TextBlock Text="A single .lean file" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+          </StackPanel>
+        </Button>
+      </UniformGrid>
+
+      <!-- New to Lean -->
+      <Border Classes="card" Margin="0,8,0,0" Padding="16,12" BorderThickness="3,0,0,0" BorderBrush="{DynamicResource GoalAccent}">
+        <Grid ColumnDefinitions="Auto,*">
+          <PathIcon Data="{StaticResource IconBook}" Width="20" Height="20" Margin="0,2,14,0" VerticalAlignment="Top" Foreground="{DynamicResource GoalAccent}" />
+          <StackPanel Grid.Column="1" Spacing="6">
+            <TextBlock Text="New to Lean?" FontWeight="SemiBold" FontSize="15" />
+            <TextBlock Text="Ten short lessons teach you to write programs and proofs, right here. No experience needed."
+                       TextWrapping="Wrap" Classes="dim" />
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+              <Button Content="Start the tutorial" Command="{Binding Learn.StartTutorialCommand}" Classes="accent" Padding="14,6" />
+              <Button Content="Open the playground" Command="{Binding Learn.OpenPlaygroundCommand}" Padding="14,6" />
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <TextBlock Text="RECENT" Classes="panelTitle" Margin="0,20,0,2" />
+      <TextBlock Text="Projects you open will be listed here." Classes="dim" FontSize="12"
+                 IsVisible="{Binding RecentProjects.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
       <ItemsControl ItemsSource="{Binding RecentProjects}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="x:String">
-            <Button Classes="flat" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+            <Button Classes="recent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" ToolTip.Tip="{Binding}"
                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).OpenRecentCommand}" CommandParameter="{Binding}">
-              <TextBlock Text="{Binding}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+              <Grid ColumnDefinitions="Auto,Auto,*">
+                <PathIcon Data="{StaticResource IconFolder}" Width="13" Height="13" Foreground="{DynamicResource FolderBrush}" Margin="0,0,10,0" />
+                <TextBlock Grid.Column="1" Text="{Binding Converter={x:Static vm:StatusConverters.LastPart}}" FontWeight="SemiBold" FontSize="13" Margin="0,0,12,0" />
+                <TextBlock Grid.Column="2" Text="{Binding Converter={x:Static vm:StatusConverters.Friendly}}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </Grid>
             </Button>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
 
-      <TextBlock Text="WHILE YOU WORK" Classes="panelTitle" Margin="0,24,0,4" />
-      <TextBlock TextWrapping="Wrap" FontSize="13" LineHeight="22">
-        Type \alpha, \to, \forall or \N for α, →, ∀ and ℕ.
-        The panel on the right shows the goals at the cursor. Hypotheses a tactic added are green and ones it removed are struck out.
-        Under the goals, every step of the proof is listed with what it changed.
-        Build with ⌘B / Ctrl+B. After a build, Tenet marks each declaration in the gutter:
-        ✓ verified, ◐ rests on sorry or an axiom, ✗ rejected.
-      </TextBlock>
+      <TextBlock Text="WHILE YOU WORK" Classes="panelTitle" Margin="0,20,0,4" />
+      <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto">
+        <Grid.Styles>
+          <Style Selector="TextBlock.tip">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,16,10" />
+            <Setter Property="LineHeight" Value="18" />
+          </Style>
+        </Grid.Styles>
+        <TextBlock Classes="tip" Grid.Row="0" Grid.Column="0" Text="Type \alpha, \to, \forall or \N for α, →, ∀ and ℕ. Tab completes." />
+        <TextBlock Classes="tip" Grid.Row="0" Grid.Column="1" Text="The Tactic State shows the goals at the cursor: added hypotheses in green, removed ones struck out." />
+        <TextBlock Classes="tip" Grid.Row="1" Grid.Column="0" Text="Stuck on a sorry? Prove It (⌘⌥P / Ctrl+Alt+P) tries a portfolio of tactics on it." />
+        <TextBlock Classes="tip" Grid.Row="1" Grid.Column="1" Text="After a build, Tenet marks each declaration: ✓ verified, ◐ rests on sorry or an axiom, ✗ rejected." />
+        <TextBlock Classes="tip" Grid.Row="2" Grid.Column="0" Text="⌘⇧P / Ctrl+Shift+P opens the command palette: every command, by name." />
+        <TextBlock Classes="tip" Grid.Row="2" Grid.Column="1" Text="Describe a theorem in words in the Library and LeanSearch finds it in Mathlib." />
+      </Grid>
 
-      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,32,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,24,0,0">
         <TextBlock Text="Created by Keith Adler" Classes="dim" FontSize="12" VerticalAlignment="Center" />
         <TextBlock Text="·" Classes="dim" FontSize="12" VerticalAlignment="Center" />
         <Button x:Name="XLink" Classes="flat" Content="@keithadler on X" FontSize="12" Padding="0" Foreground="#4D9FFF"
@@ -55,4 +100,36 @@
       </StackPanel>
     </StackPanel>
   </ScrollViewer>
+
+  <UserControl.Styles>
+    <Style Selector="Button.welcome">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Top" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Divider}" />
+    </Style>
+    <Style Selector="Button.welcome:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource HoverBackground}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource GoalAccent}" />
+    </Style>
+    <Style Selector="Button.welcome PathIcon">
+      <Setter Property="Width" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Button.recent">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Padding" Value="8,6" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.recent:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource HoverBackground}" />
+    </Style>
+  </UserControl.Styles>
 </UserControl>

@@ -11,7 +11,8 @@
         Width="1440" Height="900" MinWidth="900" MinHeight="560"
         Icon="/Assets/leanstudio.ico"
         DragDrop.AllowDrop="True"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource PanelBackground}">
 
   <Window.KeyBindings>
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" Command="{Binding SaveCommand}" />
@@ -33,7 +34,7 @@
 
   <DockPanel>
     <!-- Menu -->
-    <Menu DockPanel.Dock="Top">
+    <Menu DockPanel.Dock="Top" Classes="chrome">
       <MenuItem Header="_File">
         <MenuItem Header="New Project…" Command="{Binding NewProjectCommand}" />
         <MenuItem Header="New File…" Command="{Binding NewFileCommand}" InputGesture="{OnPlatform Default='Ctrl+N', macOS='Cmd+N'}" />
@@ -181,7 +182,10 @@
                      ToolTip.Tip="{Binding BlameText}" />
           <TextBlock Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
         </StackPanel>
-        <TextBlock Grid.Column="4" Text="⏳ elaborating" Foreground="White" FontSize="12" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}" />
+        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}">
+          <ProgressBar IsIndeterminate="True" Width="36" MinWidth="36" Height="3" MinHeight="3" VerticalAlignment="Center" Foreground="White" />
+          <TextBlock Text="checking" Foreground="White" FontSize="12" />
+        </StackPanel>
         <StackPanel Grid.Column="5" Orientation="Horizontal">
           <TextBlock Text="{Binding BranchLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" Cursor="Hand" PointerPressed="OnBranchClicked" />
           <TextBlock Text="{Binding ProjectName}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
@@ -191,19 +195,41 @@
     </Border>
 
     <!-- Toolbar -->
-    <Border DockPanel.Dock="Top" Padding="8,4" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <Button Classes="tool" Content="New Project" Command="{Binding NewProjectCommand}" />
-        <Button Classes="tool" Content="Open Folder" Command="{Binding OpenFolderCommand}" />
-        <Button Classes="tool" Content="Save" Command="{Binding SaveCommand}" />
-        <Separator Width="1" Height="18" Margin="4,0" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" />
-        <Button Classes="tool" Content="▶ Run" Command="{Binding RunProgramCommand}" IsVisible="{Binding CanRun}"
-                ToolTip.Tip="Run this file's main function; the output appears in Output" />
-        <Button Classes="tool" Content="⚙ Build" Command="{Binding BuildCommand}" ToolTip.Tip="lake build" />
-        <Button Classes="tool" Content="✓ Verify with Tenet" Command="{Binding VerifyCommand}" ToolTip.Tip="Re-check every declaration Lean built with Tenet's independent kernel" />
-        <Button Classes="tool" Content="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
-        <Button Classes="tool" Content="⟳ Restart Lean" Command="{Binding RestartServerCommand}" />
-        <Button Classes="tool" Content="■ Cancel" Command="{Binding CancelTaskCommand}" IsVisible="{Binding IsBusy}" />
+    <Border DockPanel.Dock="Top" Classes="toolbar">
+      <StackPanel Orientation="Horizontal" Spacing="2">
+        <Button Classes="tool" Command="{Binding NewProjectCommand}" ToolTip.Tip="Create a Lean project">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconPlus}" /><TextBlock Text="New Project" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding OpenFolderCommand}" ToolTip.Tip="Open a project folder">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconFolder}" /><TextBlock Text="Open Folder" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding SaveCommand}" ToolTip.Tip="Save (⌘S / Ctrl+S)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconSave}" /><TextBlock Text="Save" /></StackPanel>
+        </Button>
+        <Border Width="1" Height="18" Margin="6,0" Background="{DynamicResource Divider}" />
+        <Button Classes="tool" Command="{Binding RunProgramCommand}" IsVisible="{Binding CanRun}"
+                ToolTip.Tip="Run this file's main function; the output appears in Output">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconPlay}" Foreground="#3FB950" /><TextBlock Text="Run" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding BuildCommand}" ToolTip.Tip="lake build (⌘B / Ctrl+B)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconBuild}" /><TextBlock Text="Build" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding VerifyCommand}" ToolTip.Tip="Re-check every declaration Lean built with Tenet's independent kernel (⌘⇧V / Ctrl+Shift+V)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconShield}" Classes="accent" /><TextBlock Text="Verify with Tenet" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding ProveItCommand}" ToolTip.Tip="Try a portfolio of tactics on the sorry at the cursor (⌘⌥P / Ctrl+Alt+P)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconBolt}" Foreground="#E5B93A" /><TextBlock Text="Prove It" /></StackPanel>
+        </Button>
+        <Border Width="1" Height="18" Margin="6,0" Background="{DynamicResource Divider}" />
+        <Button Classes="tool" Command="{Binding GetMathlibCacheCommand}" ToolTip.Tip="Download Mathlib's prebuilt files (lake exe cache get)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconDownload}" /><TextBlock Text="Mathlib Cache" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding RestartServerCommand}" ToolTip.Tip="Restart Lean (⌘⇧R / Ctrl+Shift+R)">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconRestart}" /><TextBlock Text="Restart Lean" /></StackPanel>
+        </Button>
+        <Button Classes="tool" Command="{Binding CancelTaskCommand}" IsVisible="{Binding IsBusy}" ToolTip.Tip="Stop the running task">
+          <StackPanel Orientation="Horizontal" Spacing="6"><PathIcon Data="{StaticResource IconStop}" Foreground="#F14C4C" /><TextBlock Text="Cancel" /></StackPanel>
+        </Button>
       </StackPanel>
     </Border>
 
@@ -226,7 +252,7 @@
 
     <Grid x:Name="MainGrid" ColumnDefinitions="300,4,*,4,420">
       <!-- Sidebar -->
-      <TabControl Grid.Column="0" Classes="panel" SelectedIndex="{Binding SidebarTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+      <TabControl Grid.Column="0" Classes="panel" SelectedIndex="{Binding SidebarTab}" Padding="0">
         <TabItem Header="Files">
           <DockPanel>
             <TextBlock DockPanel.Dock="Top" Text="{Binding ProjectName}" FontWeight="SemiBold" Margin="10,6" />
@@ -254,7 +280,8 @@
               <TreeView.ItemTemplate>
                 <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:FileNode">
                   <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock Text="{Binding Icon}" Width="16" FontSize="12" />
+                    <PathIcon Data="{Binding IconKey, Converter={x:Static vm:StatusConverters.Icon}}" Width="13" Height="13"
+                              Classes.folder="{Binding IsDirectory}" Classes.lean="{Binding IsLean}" Classes.plain="{Binding IsPlain}" />
                     <TextBlock Text="{Binding Name}" FontSize="13" />
                   </StackPanel>
                 </TreeDataTemplate>
@@ -328,13 +355,15 @@
 
         <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" />
 
-        <TabControl Grid.Row="3" Classes="panel" SelectedIndex="{Binding BottomTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+        <TabControl Grid.Row="3" Classes="panel" SelectedIndex="{Binding BottomTab}" Padding="0">
           <TabItem Header="{Binding ProblemSummary, StringFormat='Problems  {0}'}">
+            <Panel>
             <ListBox ItemsSource="{Binding Problems}" DoubleTapped="OnProblemDoubleTapped" x:Name="ProblemList" Background="Transparent">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:ProblemItem">
                   <StackPanel Orientation="Horizontal" Spacing="8" ToolTip.Tip="{Binding FullMessage}">
-                    <TextBlock Text="{Binding Icon}" Width="18" />
+                    <TextBlock Text="{Binding Icon}" Width="18" FontSize="11" VerticalAlignment="Center" TextAlignment="Center"
+                               Classes.bad="{Binding IsError}" Classes.warn="{Binding IsWarning}" />
                     <TextBlock Text="{Binding File}" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding Location}" Classes="dim" />
                     <TextBlock Text="{Binding Message}" />
@@ -342,6 +371,8 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+              <TextBlock Classes="empty" Text="No problems. Errors and warnings from Lean and from builds appear here." IsVisible="{Binding Problems.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+            </Panel>
           </TabItem>
           <TabItem Header="Output">
             <ed:OutputView x:Name="OutputView" />
@@ -350,6 +381,7 @@
             <v:VerificationView DataContext="{Binding Verification}" />
           </TabItem>
           <TabItem Header="{Binding ReferencesTitle}">
+            <Panel>
             <ListBox ItemsSource="{Binding References}" Background="Transparent" DoubleTapped="OnLocationDoubleTapped">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:LocationItem">
@@ -361,6 +393,8 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+              <TextBlock Classes="empty" Text="Find References (⇧F12 / Shift+F12) on a name lists every place it is used." IsVisible="{Binding References.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+            </Panel>
           </TabItem>
           <TabItem Header="{Binding MarkersTitle}">
             <DockPanel Margin="8,4">
@@ -369,6 +403,7 @@
                            Classes="dim" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="560" />
                 <Button Content="Refresh" Command="{Binding RefreshMarkersCommand}" FontSize="11" Padding="8,2" />
               </StackPanel>
+              <Panel>
               <ListBox ItemsSource="{Binding Markers}" Background="Transparent" Margin="0,4,0,0" Tapped="OnMarkerTapped">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:MarkerItem">
@@ -382,6 +417,8 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+                <TextBlock Classes="empty" Text="No sorry, admit or TODO in the project. Everything is proved." IsVisible="{Binding Markers.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+              </Panel>
             </DockPanel>
           </TabItem>
           <TabItem Header="Search">
@@ -398,6 +435,7 @@
                         ToolTip.Tip="Replace every match in the project; open files are edited in place, unsaved" />
               </Grid>
               <TextBlock DockPanel.Dock="Top" Text="{Binding SearchStatus}" Classes="dim" FontSize="11" Margin="2,4" />
+              <Panel>
               <ListBox ItemsSource="{Binding SearchResults}" Background="Transparent" DoubleTapped="OnLocationDoubleTapped">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:LocationItem">
@@ -409,6 +447,8 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+                <TextBlock Classes="empty" Text="Matches in every file of the project appear here." IsVisible="{Binding SearchResults.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+              </Panel>
             </DockPanel>
           </TabItem>
           <TabItem Header="Timing" ToolTip.Tip="How long each declaration takes Lean to check (Lean ▸ Profile File)">
@@ -417,6 +457,7 @@
                 <TextBlock Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
                 <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" FontSize="11" Padding="8,2" Margin="8,0,0,0" />
               </Grid>
+              <Panel>
               <ListBox ItemsSource="{Binding TimingItems}" Background="Transparent" Margin="0,4,0,0" x:Name="TimingList" Tapped="OnTimingTapped">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:TimingItem">
@@ -433,6 +474,8 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
+                <TextBlock Classes="empty" Text="Profile a file to see how long Lean spends on each declaration." IsVisible="{Binding TimingItems.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+              </Panel>
             </DockPanel>
           </TabItem>
         </TabControl>
@@ -441,7 +484,7 @@
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="Transparent" />
 
       <!-- Right column: the goals, or the compiled C of the definition at the cursor -->
-      <TabControl Grid.Column="4" Classes="panel" SelectedIndex="{Binding RightTab}" Padding="0" Background="{DynamicResource PanelBackground}">
+      <TabControl Grid.Column="4" Classes="panel" SelectedIndex="{Binding RightTab}" Padding="0">
         <TabItem Header="Goals">
           <v:InfoView DataContext="{Binding Info}" Background="{DynamicResource PanelBackground}" />
         </TabItem>

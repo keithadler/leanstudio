@@ -131,11 +131,13 @@ public sealed record ProblemItem(DocumentViewModel? Document, string Path, Diagn
     public string FullMessage => Diagnostic.Message;
     public string Icon => Diagnostic.Severity switch
     {
-        DiagnosticSeverity.Error => "⛔",
-        DiagnosticSeverity.Warning => "⚠",
-        _ => "ℹ",
+        DiagnosticSeverity.Error => "✕",
+        DiagnosticSeverity.Warning => "▲",
+        _ => "●",
     };
     public DiagnosticSeverity Severity => Diagnostic.Severity;
+    public bool IsError => Diagnostic.Severity == DiagnosticSeverity.Error;
+    public bool IsWarning => Diagnostic.Severity == DiagnosticSeverity.Warning;
 }
 
 public sealed class ObservableList<T> : ObservableCollection<T>

@@ -769,7 +769,7 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private void OnLightTheme(object? sender, RoutedEventArgs e) => SetTheme("Light");
 
-    private void SetTheme(string theme)
+    public void SetTheme(string theme)
     {
         _vm.Settings.Theme = theme;
         if (Avalonia.Application.Current is { } app)

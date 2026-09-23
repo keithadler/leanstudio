@@ -526,6 +526,18 @@ internal static class Scenario
         Check(((TextEditor)window.FindControl<LeanStudio.App.Editor.OutputView>("OutputView")!.Content!).TextArea.TextView.VisualLines.Count > 3, "the Output panel shows its latest lines");
         Snap(window, outDir, "10-playground");
 
+        Console.WriteLine("light theme");
+        vm.ActiveDocument = doc;
+        vm.SidebarTab = MainViewModel.FilesTab;
+        vm.BottomTab = MainViewModel.ProblemsPanel;
+        doc.Reveal(16, 14);
+        window.SetTheme("Light");
+        await Task.Delay(500);
+        Check(Application.Current!.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Light, "the light theme applies");
+        Snap(window, outDir, "19-light");
+        window.SetTheme("Dark");
+        await Task.Delay(300);
+
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();
         Check(vm.Toolchains.Installed.Count > 0, "installed toolchains are listed");

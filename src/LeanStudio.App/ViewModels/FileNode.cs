@@ -22,7 +22,10 @@ public sealed partial class FileNode : ObservableObject
     public string Path { get; }
     public bool IsDirectory { get; }
     public string Name => System.IO.Path.GetFileName(Path.TrimEnd(System.IO.Path.DirectorySeparatorChar));
-    public string Icon => IsDirectory ? "📁" : Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase) ? "λ" : "📄";
+    /// <summary>Which icon the tree shows: a folder, a Lean file, or any other file.</summary>
+    public string IconKey => IsDirectory ? "folder" : Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase) ? "lean" : Path.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ? "doc" : "file";
+    public bool IsLean => !IsDirectory && Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase);
+    public bool IsPlain => !IsDirectory && !IsLean;
     public ObservableList<FileNode> Children { get; } = new();
 
     [ObservableProperty]

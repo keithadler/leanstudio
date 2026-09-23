@@ -535,7 +535,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Problems.Reset(items);
         int errors = items.Count(p => p.Severity == DiagnosticSeverity.Error);
         int warnings = items.Count - errors;
-        ProblemSummary = items.Count == 0 ? "No problems" : $"⛔ {errors}  ⚠ {warnings}";
+        ProblemSummary = items.Count == 0 ? "No problems" : $"✕ {errors}   ▲ {warnings}";
     }
 
     // ---- documents ----

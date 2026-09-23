@@ -7,21 +7,22 @@
              x:DataType="vm:InfoViewModel">
   <Grid RowDefinitions="Auto,*,4,Auto">
     <!-- Header -->
-    <Border Grid.Row="0" Padding="12,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+    <Border Grid.Row="0" Padding="12,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Divider}">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel>
           <TextBlock Text="Tactic State" FontWeight="SemiBold" FontSize="14" />
           <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-          <Button Content="⚡ Prove it" Command="{Binding Search.ProveCommand}" FontSize="11" Padding="8,2" Classes="accent"
-                  ToolTip.Tip="Try rfl, decide, simp, omega, norm_num, linarith, aesop, grind, exact? and more on the sorry at the cursor, each on its own, and show which close it" />
-          <Button Content="📌 Pin" Command="{Binding PinCommand}" FontSize="11" Padding="8,2"
-                  ToolTip.Tip="Keep these goals on screen to compare with later ones" />
-          <ToggleButton Content="English" IsChecked="{Binding ShowEnglish}" FontSize="11" Padding="8,2"
-                        ToolTip.Tip="Read each goal aloud in English under it" />
-          <ToggleButton Content="Plain" IsChecked="{Binding PlainText}" FontSize="11" Padding="8,2"
-                        ToolTip.Tip="Show the goals as the plain text Lean prints" />
+          <Button Classes="chip accent" Command="{Binding Search.ProveCommand}"
+                  ToolTip.Tip="Try rfl, decide, simp, omega, norm_num, linarith, aesop, grind, exact? and more on the sorry at the cursor, each on its own, and show which close it">
+            <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource IconBolt}" /><TextBlock Text="Prove it" /></StackPanel>
+          </Button>
+          <Button Classes="chip" Command="{Binding PinCommand}" ToolTip.Tip="Keep these goals on screen to compare with later ones">
+            <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource IconPin}" /><TextBlock Text="Pin" /></StackPanel>
+          </Button>
+          <ToggleButton Classes="chip" Content="English" IsChecked="{Binding ShowEnglish}" ToolTip.Tip="Read each goal aloud in English under it" />
+          <ToggleButton Classes="chip" Content="Plain" IsChecked="{Binding PlainText}" ToolTip.Tip="Show the goals as the plain text Lean prints" />
         </StackPanel>
       </Grid>
     </Border>
@@ -33,9 +34,12 @@
         <Border Classes="card" BorderThickness="3,0,0,0" BorderBrush="#E5B93A" IsVisible="{Binding Search.IsVisible}" Margin="0,4,0,6">
           <StackPanel Spacing="6">
             <Grid ColumnDefinitions="*,Auto">
-              <TextBlock Text="⚡ Prove It" FontWeight="SemiBold" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Data="{StaticResource IconBolt}" Width="13" Height="13" Foreground="#E5B93A" />
+                <TextBlock Text="Prove It" FontWeight="SemiBold" />
+              </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                <Button Content="Every sorry in the file" Command="{Binding Search.ProveAllCommand}" FontSize="11" Padding="6,1" IsEnabled="{Binding !Search.IsRunning}"
+                <Button Classes="chip" Content="Every sorry in the file" Command="{Binding Search.ProveAllCommand}" IsEnabled="{Binding !Search.IsRunning}"
                         ToolTip.Tip="Search for a proof of each sorry in this file, in one pass of Lean" />
                 <Button Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Close (and stop a running search)" Command="{Binding Search.CloseCommand}" />
               </StackPanel>
@@ -84,7 +88,7 @@
               <Border Classes="card" BorderThickness="3,0,0,0" BorderBrush="#B48EAD">
                 <StackPanel Spacing="4">
                   <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="{Binding Where, StringFormat='📌 pinned at {0}'}" FontSize="11" Classes="dim" />
+                    <TextBlock Text="{Binding Where, StringFormat='Pinned at {0}'}" FontSize="11" Classes="dim" />
                     <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Unpin"
                             Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).UnpinCommand}" CommandParameter="{Binding}" />
                   </Grid>
@@ -183,7 +187,7 @@
     <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" IsVisible="{Binding HasSteps}" />
 
     <!-- Proof steps -->
-    <Border Grid.Row="3" MaxHeight="340" IsVisible="{Binding HasSteps}" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+    <Border Grid.Row="3" MaxHeight="340" IsVisible="{Binding HasSteps}" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource Divider}">
       <DockPanel>
         <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="12,8,12,4">
           <TextBlock Text="Proof Steps" FontWeight="SemiBold" />
