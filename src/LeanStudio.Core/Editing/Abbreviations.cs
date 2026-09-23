@@ -15,6 +15,13 @@ public static class Abbreviations
         .SelectMany(k => Enumerable.Range(1, k.Length).Select(n => k[..n]))
         .ToHashSet(StringComparer.Ordinal);
 
+    private static readonly Dictionary<string, List<string>> BySymbol = Table
+        .GroupBy(kv => kv.Value, StringComparer.Ordinal)
+        .ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).OrderBy(k => k.Length).ThenBy(k => k, StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
+
+    /// <summary>How to type a symbol: its abbreviations, shortest first (⊢ → ["|-", "vdash", "entails"]).</summary>
+    public static IReadOnlyList<string> NamesFor(string symbol) => BySymbol.TryGetValue(symbol, out List<string>? names) ? names : [];
+
     public static bool IsPrefix(string s) => Prefixes.Contains(s);
 
     public static string? Lookup(string s) => Table.TryGetValue(s, out string? v) ? v : null;

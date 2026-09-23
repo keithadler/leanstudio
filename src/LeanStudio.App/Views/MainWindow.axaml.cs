@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window, IDialogs
             BuildRecentMenu();
         };
         Closing += OnClosing;
+        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
     }
 
     /// <summary>A folder or file given on the command line, opened instead of the last session.</summary>
@@ -126,6 +127,176 @@ public sealed partial class MainWindow : Window, IDialogs
             }
         });
 
+    // ---- pickers, quick fix, and the keys that open them ----
+
+    private static bool Cmd(KeyEventArgs e) =>
+        OperatingSystem.IsMacOS() ? e.KeyModifiers.HasFlag(KeyModifiers.Meta) : e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        bool cmd = Cmd(e), shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        Action? action = (e.Key, cmd, shift) switch
+        {
+            (Key.P, true, true) => () => _ = CommandPaletteAsync(),
+            (Key.P, true, false) => () => _ = QuickOpenAsync(),
+            (Key.T, true, false) => () => _ = GoToSymbolAsync(),
+            (Key.F, true, true) => () => ShowFindInFiles(),
+            (Key.OemPeriod, true, false) => () => _ = QuickFixAsync(),
+            _ => null,
+        };
+        if (action is not null)
+        {
+            e.Handled = true;
+            action();
+        }
+    }
+
+    private void OnCommandPalette(object? sender, RoutedEventArgs e) => _ = CommandPaletteAsync();
+    private void OnQuickOpen(object? sender, RoutedEventArgs e) => _ = QuickOpenAsync();
+    private void OnGoToSymbol(object? sender, RoutedEventArgs e) => _ = GoToSymbolAsync();
+    private void OnQuickFix(object? sender, RoutedEventArgs e) => _ = QuickFixAsync();
+    private void OnFindInFiles(object? sender, RoutedEventArgs e) => ShowFindInFiles();
+    private void OnShowGit(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.GitTab;
+    private void OnBranchClicked(object? sender, PointerPressedEventArgs e) => _vm.SidebarTab = MainViewModel.GitTab;
+
+    private async void OnCommitAll(object? sender, RoutedEventArgs e)
+    {
+        _vm.SidebarTab = MainViewModel.GitTab;
+        string? message = await PromptAsync("Commit", "Commit message:", _vm.SourceControl.CommitMessage);
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            await _vm.SaveAllCommand.ExecuteAsync(null);
+            _vm.SourceControl.CommitMessage = message;
+            await _vm.SourceControl.CommitCommand.ExecuteAsync(null);
+        }
+    }
+
+    private void ShowFindInFiles()
+    {
+        string selected = EditorControl.TextEditor.SelectedText;
+        _vm.ShowSearch(selected.Contains('\n', StringComparison.Ordinal) ? null : selected);
+        Dispatcher.UIThread.Post(() => this.FindControl<TextBox>("SearchBox")?.Focus(), DispatcherPriority.Background);
+    }
+
+    private void OnSearchKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            _vm.SearchInFilesCommand.Execute(null);
+        }
+    }
+
+    private void OnOutlineTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: OutlineItem item })
+        {
+            _vm.GoToOutlineCommand.Execute(item);
+        }
+    }
+
+    private void OnLocationDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: LocationItem item })
+        {
+            _vm.OpenLocationCommand.Execute(item);
+        }
+    }
+
+    /// <summary>Every command, by name, runnable from the palette.</summary>
+    private IEnumerable<(string Title, string Keys, Func<Task> Run)> Commands()
+    {
+        string m = OperatingSystem.IsMacOS() ? "⌘" : "Ctrl+";
+        Func<Task> Cmd(System.Windows.Input.ICommand c) => () => { if (c.CanExecute(null)) { c.Execute(null); } return Task.CompletedTask; };
+        Func<Task> Act(Action a) => () => { a(); return Task.CompletedTask; };
+        yield return ("File: New Project…", "", Cmd(_vm.NewProjectCommand));
+        yield return ("File: New File…", m + "N", Cmd(_vm.NewFileCommand));
+        yield return ("File: Open Folder…", "", Cmd(_vm.OpenFolderCommand));
+        yield return ("File: Open File…", m + "O", Cmd(_vm.OpenFileDialogCommand));
+        yield return ("File: Save", m + "S", Cmd(_vm.SaveCommand));
+        yield return ("File: Save All", m + "⇧S", Cmd(_vm.SaveAllCommand));
+        yield return ("File: Close File", m + "W", Cmd(_vm.CloseDocumentCommand));
+        yield return ("Go: Go to File…", m + "P", QuickOpenAsync);
+        yield return ("Go: Go to Symbol in Workspace…", m + "T", GoToSymbolAsync);
+        yield return ("Go: Go to Line…", OperatingSystem.IsMacOS() ? "⌘L" : "Ctrl+G", Cmd(_vm.GoToLineCommand));
+        yield return ("Go: Go to Definition", "F12", Cmd(_vm.GoToDefinitionCommand));
+        yield return ("Go: Find References", "⇧F12", Cmd(_vm.FindReferencesCommand));
+        yield return ("Go: Show Declaration in Library", m + "⇧D", Cmd(_vm.ShowDeclarationAtCaretCommand));
+        yield return ("Edit: Find in Files…", m + "⇧F", Act(ShowFindInFiles));
+        yield return ("Edit: Find…", m + "F", Act(() => EditorControl.TextEditor.SearchPanel.Open()));
+        yield return ("Lean: Quick Fix / Try This…", m + ".", QuickFixAsync);
+        yield return ("Lean: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
+        yield return ("Lean: Restart Server", m + "⇧R", Cmd(_vm.RestartServerCommand));
+        yield return ("Lean: Refresh File Dependencies", "", Cmd(_vm.RefreshFileDependenciesCommand));
+        yield return ("Lean: Build Project", m + "B", Cmd(_vm.BuildCommand));
+        yield return ("Lean: Get Mathlib Cache", "", Cmd(_vm.GetMathlibCacheCommand));
+        yield return ("Lean: Update Dependencies", "", Cmd(_vm.UpdateDependenciesCommand));
+        yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
+        yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
+        yield return ("Git: Show Source Control", "", Act(() => _vm.SidebarTab = MainViewModel.GitTab));
+        yield return ("Git: Commit All…", "", Act(() => OnCommitAll(null, new RoutedEventArgs())));
+        yield return ("Git: Push", "", Cmd(_vm.SourceControl.PushCommand));
+        yield return ("Git: Pull", "", Cmd(_vm.SourceControl.PullCommand));
+        yield return ("Git: Sync", "", Cmd(_vm.SourceControl.SyncCommand));
+        yield return ("Git: New Branch…", "", Cmd(_vm.SourceControl.NewBranchCommand));
+        yield return ("Git: Clone Repository…", "", Cmd(_vm.CloneRepositoryCommand));
+        yield return ("GitHub: Publish to GitHub…", "", Cmd(_vm.SourceControl.PublishToGitHubCommand));
+        yield return ("GitHub: Create Pull Request…", "", Cmd(_vm.SourceControl.CreatePullRequestCommand));
+        yield return ("GitHub: Open on GitHub", "", Cmd(_vm.SourceControl.OpenOnGitHubCommand));
+        yield return ("GitHub: Add Lean CI Workflow", "", Cmd(_vm.SourceControl.AddCiWorkflowCommand));
+        yield return ("AI: Connect an AI Assistant…", "", Act(() => OnConnectAssistant(null, new RoutedEventArgs())));
+        yield return ("View: Dark Theme", "", Act(() => SetTheme("Dark")));
+        yield return ("View: Light Theme", "", Act(() => SetTheme("Light")));
+        yield return ("View: Outline", "", Act(() => _vm.SidebarTab = MainViewModel.OutlineTab));
+        yield return ("View: Library (declarations)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
+        yield return ("View: Toolchains", "", Act(() => _vm.SidebarTab = MainViewModel.ToolchainsTab));
+        yield return ("Help: Keyboard Shortcuts", "", Act(() => OnShortcuts(null, new RoutedEventArgs())));
+        yield return ("Help: About Lean Studio", "", Act(() => OnAbout(null, new RoutedEventArgs())));
+    }
+
+    private Task CommandPaletteAsync()
+    {
+        var all = Commands().ToList();
+        return Picker.ShowAsync(this, "Type a command", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(all, q, c => c.Title).Select(c => new PickerItem(c.Title, c.Keys, c.Run)).ToList()));
+    }
+
+    private Task QuickOpenAsync()
+    {
+        IReadOnlyList<string> files = _vm.ProjectFiles();
+        string root = _vm.Project?.Root ?? "";
+        return Picker.ShowAsync(this, "Go to file", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(files, q, f => f).Take(200)
+                .Select(f => new PickerItem(Path.GetFileName(f), Path.GetDirectoryName(f), async () => await _vm.OpenFileAsync(Path.Combine(root, f))))
+                .ToList()));
+    }
+
+    private Task GoToSymbolAsync() =>
+        Picker.ShowAsync(this, "Go to symbol in workspace (Lean's index: project, dependencies, core)", async (q, ct) =>
+        {
+            await Task.Delay(150, ct);
+            IReadOnlyList<Lsp.SymbolLocation> symbols = await _vm.WorkspaceSymbolsAsync(q, ct);
+            return symbols.Take(200).Select(s => new PickerItem(s.Name, Path.GetFileName(Lsp.LeanServer.PathOf(s.Location.Uri)) + ":" + (s.Location.Range.Start.Line + 1),
+                async () => await _vm.OpenFileAsync(Lsp.LeanServer.PathOf(s.Location.Uri), s.Location.Range.Start.Line, s.Location.Range.Start.Character))).ToList();
+        });
+
+    /// <summary>Lean's code actions at the cursor (its "Try this" suggestions and quick fixes), as a menu.</summary>
+    private async Task QuickFixAsync()
+    {
+        IReadOnlyList<Lsp.CodeAction> actions = await _vm.CodeActionsAtCaretAsync();
+        if (actions.Count == 0)
+        {
+            _vm.Log("No suggestions at the cursor. Try `exact?`, `apply?` or `simp?` there, and Lean will offer some.");
+            return;
+        }
+        if (actions.Count == 1)
+        {
+            await _vm.ApplyCodeActionAsync(actions[0]);
+            return;
+        }
+        await Picker.ShowAsync(this, "Apply a suggestion", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            Core.Editing.Fuzzy.Filter(actions, q, a => a.Title).Select(a => new PickerItem(a.Title, a.Kind, () => _vm.ApplyCodeActionAsync(a))).ToList()));
+    }
+
     private async void OnConnectAssistant(object? sender, RoutedEventArgs e) =>
         await Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);
 
@@ -169,6 +340,8 @@ public sealed partial class MainWindow : Window, IDialogs
     public Task<bool> ConfirmAsync(string title, string message) => Dialogs.ConfirmAsync(this, title, message);
 
     public Task<string?> PromptAsync(string title, string message, string initial) => Dialogs.PromptAsync(this, title, message, initial);
+
+    public async Task LaunchAsync(Uri uri) => await Launcher.LaunchUriAsync(uri);
 
     public Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent) =>
         Dialogs.NewProjectAsync(this, toolchains, defaultParent, () => PickFolderAsync("Where to create the project"));

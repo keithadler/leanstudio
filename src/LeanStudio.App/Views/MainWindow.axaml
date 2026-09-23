@@ -23,6 +23,8 @@
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" Command="{Binding GoToLineCommand}" />
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" Command="{Binding ShowDeclarationAtCaretCommand}" />
     <KeyBinding Gesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" Command="{Binding RestartServerCommand}" />
+    <KeyBinding Gesture="F2" Command="{Binding RenameSymbolCommand}" />
+    <KeyBinding Gesture="Shift+F12" Command="{Binding FindReferencesCommand}" />
   </Window.KeyBindings>
 
   <DockPanel>
@@ -34,6 +36,7 @@
         <Separator />
         <MenuItem Header="Open Folder…" Command="{Binding OpenFolderCommand}" />
         <MenuItem Header="Open File…" Command="{Binding OpenFileDialogCommand}" InputGesture="{OnPlatform Default='Ctrl+O', macOS='Cmd+O'}" />
+        <MenuItem Header="Clone Repository…" Command="{Binding CloneRepositoryCommand}" />
         <MenuItem x:Name="RecentMenu" Header="Open Recent" />
         <Separator />
         <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="{OnPlatform Default='Ctrl+S', macOS='Cmd+S'}" />
@@ -49,11 +52,13 @@
         <Separator />
         <MenuItem Header="Find…" Click="OnFind" InputGesture="{OnPlatform Default='Ctrl+F', macOS='Cmd+F'}" />
         <MenuItem Header="Replace…" Click="OnReplace" InputGesture="{OnPlatform Default='Ctrl+H', macOS='Cmd+Alt+F'}" />
-        <MenuItem Header="Go to Line…" Command="{Binding GoToLineCommand}" InputGesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" />
+        <MenuItem Header="Find in Files…" Click="OnFindInFiles" InputGesture="{OnPlatform Default='Ctrl+Shift+F', macOS='Cmd+Shift+F'}" />
         <Separator />
         <MenuItem Header="Unicode Input (\alpha → α)" ToggleType="CheckBox" IsChecked="{Binding Settings.UnicodeInput}" />
       </MenuItem>
       <MenuItem Header="_View">
+        <MenuItem Header="Command Palette…" Click="OnCommandPalette" InputGesture="{OnPlatform Default='Ctrl+Shift+P', macOS='Cmd+Shift+P'}" />
+        <Separator />
         <MenuItem Header="Dark Theme" Click="OnDarkTheme" />
         <MenuItem Header="Light Theme" Click="OnLightTheme" />
         <Separator />
@@ -61,9 +66,18 @@
         <MenuItem Header="Smaller Font" Click="OnFontSmaller" InputGesture="{OnPlatform Default='Ctrl+OemMinus', macOS='Cmd+OemMinus'}" />
         <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
       </MenuItem>
-      <MenuItem Header="_Lean">
+      <MenuItem Header="_Go">
+        <MenuItem Header="Go to File…" Click="OnQuickOpen" InputGesture="{OnPlatform Default='Ctrl+P', macOS='Cmd+P'}" />
+        <MenuItem Header="Go to Symbol in Workspace…" Click="OnGoToSymbol" InputGesture="{OnPlatform Default='Ctrl+T', macOS='Cmd+T'}" />
+        <MenuItem Header="Go to Line…" Command="{Binding GoToLineCommand}" InputGesture="{OnPlatform Default='Ctrl+G', macOS='Cmd+L'}" />
+        <Separator />
         <MenuItem Header="Go to Definition" Command="{Binding GoToDefinitionCommand}" InputGesture="F12" />
-        <MenuItem Header="Show Declaration at Cursor" Command="{Binding ShowDeclarationAtCaretCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" />
+        <MenuItem Header="Find References" Command="{Binding FindReferencesCommand}" InputGesture="Shift+F12" />
+        <MenuItem Header="Show Declaration in Library" Command="{Binding ShowDeclarationAtCaretCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" />
+      </MenuItem>
+      <MenuItem Header="_Lean">
+        <MenuItem Header="Quick Fix / Try This…" Click="OnQuickFix" InputGesture="{OnPlatform Default='Ctrl+OemPeriod', macOS='Cmd+OemPeriod'}" />
+        <MenuItem Header="Rename Symbol…" Command="{Binding RenameSymbolCommand}" InputGesture="F2" />
         <Separator />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
         <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
@@ -73,6 +87,20 @@
         <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
         <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
         <MenuItem Header="Cancel Running Task" Command="{Binding CancelTaskCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Git">
+        <MenuItem Header="Source Control" Click="OnShowGit" />
+        <MenuItem Header="Commit All…" Click="OnCommitAll" />
+        <MenuItem Header="Push" Command="{Binding SourceControl.PushCommand}" />
+        <MenuItem Header="Pull" Command="{Binding SourceControl.PullCommand}" />
+        <MenuItem Header="Sync (Pull, then Push)" Command="{Binding SourceControl.SyncCommand}" />
+        <MenuItem Header="New Branch…" Command="{Binding SourceControl.NewBranchCommand}" />
+        <Separator />
+        <MenuItem Header="Clone Repository…" Command="{Binding CloneRepositoryCommand}" />
+        <MenuItem Header="Publish to GitHub…" Command="{Binding SourceControl.PublishToGitHubCommand}" />
+        <MenuItem Header="Create Pull Request…" Command="{Binding SourceControl.CreatePullRequestCommand}" />
+        <MenuItem Header="Open on GitHub" Command="{Binding SourceControl.OpenOnGitHubCommand}" />
+        <MenuItem Header="Add Lean CI Workflow" Command="{Binding SourceControl.AddCiWorkflowCommand}" />
       </MenuItem>
       <MenuItem Header="_Tenet">
         <MenuItem Header="Verify Project" Command="{Binding VerifyCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" />
@@ -100,7 +128,10 @@
         </StackPanel>
         <TextBlock Grid.Column="3" Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
         <TextBlock Grid.Column="4" Text="⏳ elaborating" Foreground="White" FontSize="12" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}" />
-        <TextBlock Grid.Column="5" Text="{Binding ProjectName}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        <StackPanel Grid.Column="5" Orientation="Horizontal">
+          <TextBlock Text="{Binding BranchLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" Cursor="Hand" PointerPressed="OnBranchClicked" />
+          <TextBlock Text="{Binding ProjectName}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
+        </StackPanel>
         <TextBlock Grid.Column="6" Text="{Binding ToolchainLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
       </Grid>
     </Border>
@@ -120,7 +151,7 @@
       </StackPanel>
     </Border>
 
-    <Grid ColumnDefinitions="280,4,*,4,420">
+    <Grid ColumnDefinitions="300,4,*,4,420">
       <!-- Sidebar -->
       <TabControl Grid.Column="0" Classes="panel" SelectedIndex="{Binding SidebarTab}" Padding="0" Background="{DynamicResource PanelBackground}">
         <TabItem Header="Files">
@@ -144,10 +175,27 @@
             </TreeView>
           </DockPanel>
         </TabItem>
-        <TabItem Header="Declarations">
+        <TabItem Header="Outline">
+          <ListBox ItemsSource="{Binding Outline}" Background="Transparent" x:Name="OutlineList" Tapped="OnOutlineTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:OutlineItem">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <TextBlock Text="{Binding Indent}" FontSize="12" />
+                  <TextBlock Text="{Binding Icon}" Width="16" FontSize="12" Foreground="{DynamicResource GoalAccent}" />
+                  <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding Kind}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </TabItem>
+        <TabItem Header="Library" ToolTip.Tip="Every declaration the project can see, read from the compiled library">
           <v:NavigatorView DataContext="{Binding Navigator}" />
         </TabItem>
-        <TabItem Header="Toolchains">
+        <TabItem Header="Git" ToolTip.Tip="Source control and GitHub">
+          <v:SourceControlView DataContext="{Binding SourceControl}" />
+        </TabItem>
+        <TabItem Header="Lean" ToolTip.Tip="Lean toolchains">
           <v:ToolchainsView DataContext="{Binding Toolchains}" />
         </TabItem>
       </TabControl>
@@ -195,6 +243,41 @@
           </TabItem>
           <TabItem Header="Tenet">
             <v:VerificationView DataContext="{Binding Verification}" />
+          </TabItem>
+          <TabItem Header="{Binding ReferencesTitle}">
+            <ListBox ItemsSource="{Binding References}" Background="Transparent" DoubleTapped="OnLocationDoubleTapped">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:LocationItem">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding File}" FontWeight="SemiBold" FontSize="12" />
+                    <TextBlock Text="{Binding Where}" Classes="dim" FontSize="12" />
+                    <TextBlock Text="{Binding Text}" Classes="mono" FontSize="12" />
+                  </StackPanel>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+          <TabItem Header="Search">
+            <DockPanel Margin="8,4">
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto">
+                <TextBox x:Name="SearchBox" Text="{Binding SearchQuery}" PlaceholderText="Find in files (Enter to search)" FontSize="12" KeyDown="OnSearchKey" />
+                <CheckBox Grid.Column="1" Content="Aa" IsChecked="{Binding SearchCaseSensitive}" ToolTip.Tip="Match case" Margin="8,0,0,0" />
+                <CheckBox Grid.Column="2" Content=".*" IsChecked="{Binding SearchRegex}" ToolTip.Tip="Regular expression" Margin="4,0,0,0" />
+                <Button Grid.Column="3" Content="Search" Command="{Binding SearchInFilesCommand}" FontSize="12" Padding="10,3" Margin="6,0,0,0" />
+              </Grid>
+              <TextBlock DockPanel.Dock="Top" Text="{Binding SearchStatus}" Classes="dim" FontSize="11" Margin="2,4" />
+              <ListBox ItemsSource="{Binding SearchResults}" Background="Transparent" DoubleTapped="OnLocationDoubleTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LocationItem">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding File}" FontWeight="SemiBold" FontSize="12" />
+                      <TextBlock Text="{Binding Where}" Classes="dim" FontSize="12" />
+                      <TextBlock Text="{Binding Text}" Classes="mono" FontSize="12" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
           </TabItem>
         </TabControl>
       </Grid>

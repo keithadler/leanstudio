@@ -1,0 +1,111 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             x:Class="LeanStudio.App.Views.SourceControlView"
+             x:DataType="vm:SourceControlViewModel">
+  <ScrollViewer>
+    <StackPanel Margin="10,8" Spacing="6">
+      <!-- Not a repository -->
+      <StackPanel IsVisible="{Binding !IsRepository}" Spacing="6">
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" FontSize="12" />
+        <Button Content="Initialize a Git repository" Click="OnInit" FontSize="12" Padding="10,3" IsVisible="{Binding GitInstalled}" />
+      </StackPanel>
+
+      <StackPanel IsVisible="{Binding IsRepository}" Spacing="6">
+        <!-- Branch -->
+        <Grid ColumnDefinitions="*,Auto">
+          <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding Branch, Mode=OneWay}" FontSize="12" HorizontalAlignment="Stretch"
+                    x:Name="BranchBox" SelectionChanged="OnBranchChosen" ToolTip.Tip="Switch branch" />
+          <Button Grid.Column="1" Content="+" Command="{Binding NewBranchCommand}" FontSize="12" Padding="8,2" Margin="4,0,0,0" ToolTip.Tip="New branch" />
+        </Grid>
+        <TextBlock Text="{Binding BranchLabel}" Classes="dim" FontSize="11" />
+
+        <!-- Commit -->
+        <TextBox Text="{Binding CommitMessage}" PlaceholderText="Commit message" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="54" FontSize="12" />
+        <WrapPanel>
+          <Button Content="✓ Commit" Command="{Binding CommitCommand}" Classes="accent" FontSize="12" Padding="10,3" Margin="0,0,4,4"
+                  ToolTip.Tip="Commit staged changes, or every change when nothing is staged" />
+          <Button Content="⟳ Sync" Command="{Binding SyncCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" ToolTip.Tip="Pull, then push" />
+          <Button Content="↑ Push" Command="{Binding PushCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
+          <Button Content="↓ Pull" Command="{Binding PullCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding HasRemote}" />
+          <Button Content="Refresh" Command="{Binding RefreshCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" />
+        </WrapPanel>
+        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsBusy}" Height="3" MinHeight="3" />
+        <TextBlock Text="{Binding Status}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+
+        <!-- Staged -->
+        <StackPanel IsVisible="{Binding HasStaged}">
+          <TextBlock Text="STAGED" Classes="panelTitle" />
+          <ItemsControl ItemsSource="{Binding Staged}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChangeView">
+                <Grid ColumnDefinitions="18,*,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
+                  <TextBlock Text="{Binding Letter}" Foreground="#3FB950" FontWeight="SemiBold" FontSize="12" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding FileName}" FontSize="12" />
+                    <TextBlock Text="{Binding Folder}" Classes="dim" FontSize="11" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <Button Grid.Column="2" Classes="flat" Content="−" ToolTip.Tip="Unstage" FontSize="12"
+                          Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).UnstageCommand}" CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+
+        <!-- Changes -->
+        <StackPanel IsVisible="{Binding HasUnstaged}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="CHANGES" Classes="panelTitle" />
+            <Button Grid.Column="1" Classes="flat" Content="Stage all" FontSize="11" Command="{Binding StageAllCommand}" />
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Unstaged}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ChangeView">
+                <Grid ColumnDefinitions="18,*,Auto,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
+                  <TextBlock Text="{Binding Letter}" Foreground="#E59E2C" FontWeight="SemiBold" FontSize="12" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding FileName}" FontSize="12" />
+                    <TextBlock Text="{Binding Folder}" Classes="dim" FontSize="11" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <Button Grid.Column="2" Classes="flat" Content="↶" ToolTip.Tip="Discard changes" FontSize="12"
+                          Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).DiscardCommand}" CommandParameter="{Binding}" />
+                  <Button Grid.Column="3" Classes="flat" Content="+" ToolTip.Tip="Stage" FontSize="12"
+                          Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).StageCommand}" CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="Click a file to see its changes; double-click to open it." Classes="dim" FontSize="10" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- GitHub -->
+        <TextBlock Text="GITHUB" Classes="panelTitle" />
+        <TextBlock Text="{Binding GitHubRepository}" Classes="mono" FontSize="12" IsVisible="{Binding IsOnGitHub}" />
+        <WrapPanel>
+          <Button Content="Publish to GitHub…" Command="{Binding PublishToGitHubCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding CanPublish}"
+                  ToolTip.Tip="Create a private GitHub repository and push this one (uses the GitHub CLI, gh)" />
+          <Button Content="Open on GitHub" Command="{Binding OpenOnGitHubCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}"
+                  ToolTip.Tip="The current file and line on github.com" />
+          <Button Content="Create Pull Request…" Command="{Binding CreatePullRequestCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4" IsVisible="{Binding IsOnGitHub}" />
+          <Button Content="Add Lean CI workflow" Command="{Binding AddCiWorkflowCommand}" FontSize="12" Padding="8,3" Margin="0,0,4,4"
+                  ToolTip.Tip="Add .github/workflows/lean_action_ci.yml, which builds the project on every push" />
+        </WrapPanel>
+        <Button Classes="flat" Content="{Binding PullRequest}" FontSize="11" IsVisible="{Binding PullRequest, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Command="{Binding OpenPullRequestCommand}" HorizontalContentAlignment="Left" Foreground="#4D9FFF" />
+        <TextBlock Text="Publishing and pull requests use the GitHub CLI (gh). Install it from cli.github.com and run `gh auth login`."
+                   TextWrapping="Wrap" Classes="dim" FontSize="11" IsVisible="{Binding !GhInstalled}" />
+
+        <!-- History -->
+        <TextBlock Text="RECENT COMMITS" Classes="panelTitle" />
+        <ItemsControl ItemsSource="{Binding History}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Text="{Binding}" Classes="mono dim" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

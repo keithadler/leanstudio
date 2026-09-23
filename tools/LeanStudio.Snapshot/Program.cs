@@ -151,7 +151,7 @@ internal static class Scenario
         Snap(window, outDir, "03-tenet");
 
         Console.WriteLine("declaration navigator");
-        vm.SidebarTab = 1;
+        vm.SidebarTab = MainViewModel.LibraryTab;
         vm.Navigator.Query = "not_not_elim";
         Check(await WaitFor(() => vm.Navigator.Results.Count > 0, 20), "search finds not_not_elim");
         vm.Navigator.Selected = vm.Navigator.Results[0];
@@ -172,7 +172,7 @@ internal static class Scenario
         editor.Document.UndoStack.ClearAll();
         doc.Document.Text = doc.SavedText;
 
-        vm.SidebarTab = 2;
+        vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();
         Check(vm.Toolchains.Installed.Count > 0, "installed toolchains are listed");
         Snap(window, outDir, "05-toolchains");

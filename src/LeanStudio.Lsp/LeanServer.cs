@@ -441,6 +441,105 @@ public sealed class LeanServer : IAsyncDisposable
         e.TryGetProperty("detail", out JsonElement d) ? d.GetString() : null,
         e.TryGetProperty("children", out JsonElement c) && c.ValueKind == JsonValueKind.Array ? c.EnumerateArray().Select(ParseSymbol).ToList() : []);
 
+    public async Task<IReadOnlyList<CodeAction>> CodeActionsAsync(string uri, Range range, IReadOnlyList<Diagnostic> diagnostics, CancellationToken ct = default)
+    {
+        var p = new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = uri },
+            ["range"] = JsonRpcConnection.ToNode(range),
+            ["context"] = new JsonObject { ["diagnostics"] = JsonRpcConnection.ToNode(diagnostics) },
+        };
+        JsonElement r = await Rpc.RequestAsync("textDocument/codeAction", p, ct).ConfigureAwait(false);
+        if (r.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        var list = new List<CodeAction>();
+        foreach (JsonElement a in r.EnumerateArray())
+        {
+            if (!a.TryGetProperty("title", out JsonElement title))
+            {
+                continue;
+            }
+            list.Add(new CodeAction(
+                title.GetString() ?? "",
+                a.TryGetProperty("kind", out JsonElement k) ? k.GetString() : null,
+                a.TryGetProperty("edit", out JsonElement e) ? WorkspaceEdit.Parse(e) : null,
+                a.TryGetProperty("isPreferred", out JsonElement pref) && pref.ValueKind == JsonValueKind.True,
+                a.Clone()));
+        }
+        return list;
+    }
+
+    /// <summary>Fill in a code action's edit when the server sent it without one (LSP's codeAction/resolve).</summary>
+    public async Task<CodeAction> ResolveAsync(CodeAction action, CancellationToken ct = default)
+    {
+        if (action.Edit is not null)
+        {
+            return action;
+        }
+        JsonElement r = await Rpc.RequestAsync("codeAction/resolve", action.Raw, ct).ConfigureAwait(false);
+        return action with { Edit = r.ValueKind == JsonValueKind.Object && r.TryGetProperty("edit", out JsonElement e) ? WorkspaceEdit.Parse(e) : WorkspaceEdit.Empty };
+    }
+
+    public async Task<IReadOnlyList<Location>> ReferencesAsync(string uri, Position pos, bool includeDeclaration = true, CancellationToken ct = default)
+    {
+        JsonObject p = At(uri, pos);
+        p["context"] = new JsonObject { ["includeDeclaration"] = includeDeclaration };
+        JsonElement r = await Rpc.RequestAsync("textDocument/references", p, ct).ConfigureAwait(false);
+        return r.ValueKind == JsonValueKind.Array ? r.EnumerateArray().Select(l => l.As<Location>()!).ToList() : [];
+    }
+
+    /// <summary>The range of the name that would be renamed, or null when there is nothing renameable there.</summary>
+    public async Task<Range?> PrepareRenameAsync(string uri, Position pos, CancellationToken ct = default)
+    {
+        JsonElement r = await Rpc.RequestAsync("textDocument/prepareRename", At(uri, pos), ct).ConfigureAwait(false);
+        if (r.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+        return r.TryGetProperty("range", out JsonElement inner) ? inner.As<Range>() : r.As<Range>();
+    }
+
+    public async Task<WorkspaceEdit> RenameAsync(string uri, Position pos, string newName, CancellationToken ct = default)
+    {
+        JsonObject p = At(uri, pos);
+        p["newName"] = newName;
+        JsonElement r = await Rpc.RequestAsync("textDocument/rename", p, ct).ConfigureAwait(false);
+        return WorkspaceEdit.Parse(r);
+    }
+
+    public async Task<IReadOnlyList<SymbolLocation>> WorkspaceSymbolsAsync(string query, CancellationToken ct = default)
+    {
+        JsonElement r = await Rpc.RequestAsync("workspace/symbol", new JsonObject { ["query"] = query }, ct).ConfigureAwait(false);
+        if (r.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+        return r.EnumerateArray()
+            .Where(s => s.TryGetProperty("location", out _))
+            .Select(s => new SymbolLocation(
+                s.GetProperty("name").GetString() ?? "",
+                s.TryGetProperty("kind", out JsonElement k) ? k.GetInt32() : 0,
+                s.GetProperty("location").As<Location>()!,
+                s.TryGetProperty("containerName", out JsonElement c) ? c.GetString() : null))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<FoldingRange>> FoldingRangesAsync(string uri, CancellationToken ct = default)
+    {
+        JsonElement r = await Rpc.RequestAsync("textDocument/foldingRange", new JsonObject
+        {
+            ["textDocument"] = new JsonObject { ["uri"] = uri },
+        }, ct).ConfigureAwait(false);
+        return r.ValueKind == JsonValueKind.Array
+            ? r.EnumerateArray().Select(f => new FoldingRange(
+                f.GetProperty("startLine").GetInt32(),
+                f.GetProperty("endLine").GetInt32(),
+                f.TryGetProperty("kind", out JsonElement k) ? k.GetString() : null)).ToList()
+            : [];
+    }
+
     // ---- Lean RPC (interactive goals) ----
 
     private Task<string> SessionAsync(string uri, CancellationToken ct) =>

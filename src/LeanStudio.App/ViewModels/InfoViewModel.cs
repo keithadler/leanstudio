@@ -26,6 +26,26 @@ public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hy
         g.IsRemoved);
 }
 
+/// <summary>A message at the cursor, with Lean's suggestions ("Try this: …") as actions that can be applied.</summary>
+public sealed partial class MessageView : ObservableObject
+{
+    public MessageView(Diagnostic diagnostic) => Diagnostic = diagnostic;
+
+    public Diagnostic Diagnostic { get; }
+
+    public string Text => (Diagnostic.Severity switch
+    {
+        DiagnosticSeverity.Error => "error: ",
+        DiagnosticSeverity.Warning => "warning: ",
+        _ => "",
+    }) + Diagnostic.Message;
+
+    public ObservableList<CodeAction> Suggestions { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasSuggestions;
+}
+
 public sealed partial class ProofStepView : ObservableObject
 {
     public ProofStepView(ProofStep step, int index)
@@ -73,7 +93,19 @@ public sealed partial class InfoViewModel : ObservableObject
     private string? _stepsKey;
 
     public ObservableList<GoalView> Goals { get; } = new();
-    public ObservableList<string> Messages { get; } = new();
+    public ObservableList<MessageView> Messages { get; } = new();
+
+    /// <summary>Raised when the person clicks a suggestion, for the window to apply its edit.</summary>
+    public event Action<CodeAction>? ApplyRequested;
+
+    [RelayCommand]
+    private void ApplySuggestion(CodeAction? action)
+    {
+        if (action is not null)
+        {
+            ApplyRequested?.Invoke(action);
+        }
+    }
     public ObservableList<ProofStepView> Steps { get; } = new();
 
     [ObservableProperty]
@@ -148,10 +180,11 @@ public sealed partial class InfoViewModel : ObservableObject
         // Messages on this line need no round trip.
         var msgs = doc.Diagnostics
             .Where(d => d.Extent.Start.Line <= pos.Line && pos.Line <= d.Extent.End.Line)
-            .Select(d => (d.Severity switch { DiagnosticSeverity.Error => "error: ", DiagnosticSeverity.Warning => "warning: ", _ => "" }) + d.Message)
+            .Select(d => new MessageView(d))
             .ToList();
         Messages.Reset(msgs);
         HasMessages = msgs.Count > 0;
+        _ = LoadSuggestionsAsync(server, doc, msgs, cts.Token);
 
         TacticProof? proof = ProofSteps.Find(doc.Lines(), pos.Line);
         InProof = proof is not null;
@@ -209,6 +242,23 @@ public sealed partial class InfoViewModel : ObservableObject
         if (proof is not null && !cts.IsCancellationRequested)
         {
             await RefreshStepsAsync(server, doc, proof);
+        }
+    }
+
+    /// <summary>For messages that offer "Try this", fetch the matching code actions so each can be applied with a click.</summary>
+    private static async Task LoadSuggestionsAsync(LeanServer server, DocumentViewModel doc, List<MessageView> msgs, CancellationToken ct)
+    {
+        foreach (MessageView m in msgs.Where(m => m.Diagnostic.Message.Contains("Try this", StringComparison.Ordinal)))
+        {
+            try
+            {
+                IReadOnlyList<CodeAction> actions = await server.CodeActionsAsync(doc.Uri, m.Diagnostic.Range, [m.Diagnostic], ct);
+                m.Suggestions.Reset(actions.Where(a => a.Title.StartsWith("Try this", StringComparison.Ordinal)));
+                m.HasSuggestions = m.Suggestions.Count > 0;
+            }
+            catch (Exception e) when (e is JsonRpcException or IOException or OperationCanceledException)
+            {
+            }
         }
     }
 

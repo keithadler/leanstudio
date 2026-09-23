@@ -21,6 +21,7 @@ public interface IDialogs
     Task<bool> ConfirmAsync(string title, string message);
     Task<string?> PromptAsync(string title, string message, string initial);
     Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent);
+    Task LaunchAsync(Uri uri);
 }
 
 /// <summary>
@@ -48,6 +49,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Navigator.OpenSourceRequested += (file, line, col) => _ = OpenFileAsync(file, line - 1, col);
         Toolchains = new ToolchainsViewModel(() => Project, Log, RestartServerAsync);
         Verification = new VerificationViewModel();
+        InitFeatures();
     }
 
     public Settings Settings { get; }
@@ -111,6 +113,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             CaretMoved(value, value.CaretLine, value.CaretColumn);
         }
+        ScheduleOutline();
     }
 
     // ---- logging ----
@@ -197,6 +200,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Files.Reset(root.Children);
         Log($"Opened {project.Root}" + (project.IsLakeProject ? " (Lake project)" : "") + (project.Toolchain is string tc ? $", toolchain {tc}" : ""));
         WatchDisk(project.Root);
+        await SourceControl.OpenAsync(project.Root);
         await StartServerAsync();
         await Toolchains.RefreshAsync();
         await ReopenTenetAsync();
@@ -301,7 +305,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             return;
         }
-        foreach (DocumentViewModel d in Documents.ToList())
+        foreach (DocumentViewModel d in Documents.Where(d => !d.IsVirtual).ToList())
         {
             if (!File.Exists(d.Path))
             {
@@ -329,6 +333,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Log($"Reloaded {Path.GetFileName(d.Path)}: it changed on disk.");
         }
         RefreshFiles();
+        ScheduleGitRefresh();
     }
 
     // ---- the AI assistant bridge ----
@@ -352,7 +357,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         o["selection"] = SelectionProvider?.Invoke() ?? "";
         o["goals"] = Info.PlainGoals;
-        o["messages"] = new System.Text.Json.Nodes.JsonArray(Info.Messages.Select(m => (System.Text.Json.Nodes.JsonNode)m).ToArray());
+        o["messages"] = new System.Text.Json.Nodes.JsonArray(Info.Messages.Select(m => (System.Text.Json.Nodes.JsonNode)m.Text).ToArray());
         return o;
     }
 
@@ -469,6 +474,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Info.InvalidateSteps();
             CaretMoved(d, d.CaretLine, d.CaretColumn);
+            ScheduleOutline();
         }
     }
 
@@ -523,6 +529,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             ApplyVerdicts(doc);
             RememberOpenFiles();
+            ScheduleGitRefresh(full: false);
         }
         ActiveDocument = doc;
         if (line is int l)
@@ -667,6 +674,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SaveDocumentAsync(DocumentViewModel d)
     {
+        if (d.IsVirtual)
+        {
+            return;
+        }
         try
         {
             await d.SaveAsync();
@@ -674,6 +685,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await s.SaveAsync(d.Uri, d.Document.Text);
             }
+            ScheduleGitRefresh();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -689,7 +701,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             return;
         }
-        if (d.IsDirty && !await _dialogs.ConfirmAsync("Unsaved changes", $"Close {Path.GetFileName(d.Path)} without saving?"))
+        if (d.IsDirty && !d.IsVirtual && !await _dialogs.ConfirmAsync("Unsaved changes", $"Close {Path.GetFileName(d.Path)} without saving?"))
         {
             return;
         }
@@ -723,7 +735,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private void RememberOpenFiles()
     {
-        Settings.LastOpenFiles = Documents.Select(d => d.Path).ToList();
+        Settings.LastOpenFiles = Documents.Where(d => !d.IsVirtual).Select(d => d.Path).ToList();
         Settings.Save();
     }
 
@@ -995,7 +1007,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Navigator.Query = word;
             await Navigator.ShowAsync(word);
-            SidebarTab = 1;
+            SidebarTab = LibraryTab;
         }
     }
 

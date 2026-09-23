@@ -507,7 +507,7 @@ public sealed class LeanEditor : UserControl
         {
             Main.BottomTab = 2;
             _ = Main.Navigator.ShowAsync(v.Name);
-            Main.SidebarTab = 1;
+            Main.SidebarTab = MainViewModel.LibraryTab;
         }
     }
 

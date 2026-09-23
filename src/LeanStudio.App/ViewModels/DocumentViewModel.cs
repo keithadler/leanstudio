@@ -30,9 +30,18 @@ public sealed partial class DocumentViewModel : ObservableObject
     public TextDocument Document { get; }
     public string SavedText { get; private set; }
 
-    public string Title => System.IO.Path.GetFileName(Path) + (IsDirty ? " •" : "");
+    public string Title => IsVirtual
+        ? System.IO.Path.GetFileNameWithoutExtension(Path) + " (changes)"
+        : System.IO.Path.GetFileName(Path) + (IsDirty ? " •" : "");
 
-    public bool IsLean => Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase);
+    public bool IsLean => !IsVirtual && Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A view with no file behind it (a diff): read-only, never saved, never sent to Lean.</summary>
+    public bool IsVirtual { get; init; }
+
+    /// <summary>Lines that differ from the last commit, for the gutter.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<Core.Git.LineChange> _lineChanges = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title))]

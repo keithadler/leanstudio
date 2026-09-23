@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LeanStudio.App.ViewModels"
+             xmlns:lsp="using:LeanStudio.Lsp"
              x:Class="LeanStudio.App.Views.InfoView"
              x:DataType="vm:InfoViewModel">
   <Grid RowDefinitions="Auto,*,4,Auto">
@@ -71,9 +72,19 @@
           <TextBlock Text="MESSAGES" Classes="panelTitle" />
           <ItemsControl ItemsSource="{Binding Messages}">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="x:String">
+              <DataTemplate x:DataType="vm:MessageView">
                 <Border Classes="card">
-                  <SelectableTextBlock Text="{Binding}" Classes="mono" TextWrapping="Wrap" />
+                  <StackPanel Spacing="6">
+                    <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="lsp:CodeAction">
+                          <Button Content="{Binding Title}" Classes="accent" FontSize="12" Padding="10,3" Margin="0,0,0,4" HorizontalAlignment="Left"
+                                  Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ApplySuggestionCommand}" CommandParameter="{Binding}" />
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
                 </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
