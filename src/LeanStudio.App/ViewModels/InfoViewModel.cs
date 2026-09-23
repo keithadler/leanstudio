@@ -256,8 +256,7 @@ public sealed partial class InfoViewModel : ObservableObject
                 v.GoalsAfter = after.Goals.Count;
                 // A line like `cases h with` or `calc` opens a tactic that the following, deeper lines finish;
                 // the end of its first line is not the end of the tactic, so there is no "after" to compare yet.
-                ProofStep? next = v.Index + 1 < views.Count ? views[v.Index + 1].Step : null;
-                bool continues = next is not null && (next.Indent > v.Step.Indent || next.Text.StartsWith('|'));
+                bool continues = ProofSteps.ContinuesBelow(proof.Steps, v.Index);
                 v.Summary = continues && change.Summary == "no change" ? "continues below" : change.Summary;
                 v.ClosesAll = change.ClosedAll;
                 v.HasError = doc.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.Extent.Start.Line <= v.Line && v.Line <= d.Extent.End.Line);

@@ -81,6 +81,16 @@ public sealed partial class DocumentViewModel : ObservableObject
         OnPropertyChanged(nameof(Title));
     }
 
+    /// <summary>Take text that changed on disk as the new saved version.</summary>
+    public void ReloadFrom(string text)
+    {
+        SavedText = text;
+        Document.Text = text;
+        Document.UndoStack.MarkAsOriginalFile();
+        IsDirty = false;
+        OnPropertyChanged(nameof(Title));
+    }
+
     public string[] Lines() => Document.Text.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
 }
 

@@ -42,6 +42,7 @@ public sealed class TenetTests
         Assert.Equal(["em'"], V("not_not_elim").Assumptions);
         Assert.Equal(["sorryAx"], V("unfinished").Assumptions);
         Assert.Equal(4, V("double_eq_two_mul").Line);
+        Assert.Equal(2, V("double").Line); // past its doc comment, on the `def`
     }
 
     [Fact]

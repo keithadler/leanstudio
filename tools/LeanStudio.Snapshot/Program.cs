@@ -18,6 +18,8 @@ string outDir = Path.GetFullPath(args.Length > 1 ? args[1] : "snapshots");
 Directory.CreateDirectory(outDir);
 string settingsDir = Path.Combine(Path.GetTempPath(), "leanstudio-snapshot-" + Environment.ProcessId);
 Environment.SetEnvironmentVariable("LEANSTUDIO_SETTINGS_DIR", settingsDir);
+// Its own bridge pipe, so a Lean Studio the person has open is left alone.
+Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", "leanstudio-snapshot-" + Environment.ProcessId);
 
 AppBuilder.Configure<App>()
     .UseSkia()
@@ -119,6 +121,25 @@ internal static class Scenario
         Check(vm.Info.Goals.Any(g => g.Hypotheses.Any(h => h.Names == "hp")), "hypothesis hp is listed");
         Check(await WaitFor(() => vm.Info.HasSteps && vm.Info.Steps.All(s => s.GoalsAfter >= 0), 30), "every proof step has a state");
         Snap(window, outDir, "02-goals");
+
+        Console.WriteLine("an AI assistant asks the window what the person is looking at");
+        System.Text.Json.Nodes.JsonObject? context = await LeanStudio.Core.Agents.StudioBridge.RequestAsync(new System.Text.Json.Nodes.JsonObject { ["method"] = "context" });
+        Check(context?["file"]?.GetValue<string>() == doc.Path, "the bridge reports the open file");
+        Check(context?["line"]?.GetValue<int>() == 17, "and the cursor line (1-based)");
+        Check(context?["goals"]?.GetValue<string>().Contains("hp : p", StringComparison.Ordinal) == true, "and the goals at the cursor");
+        System.Text.Json.Nodes.JsonObject? shown = await LeanStudio.Core.Agents.StudioBridge.RequestAsync(new System.Text.Json.Nodes.JsonObject
+        {
+            ["method"] = "show", ["path"] = doc.Path, ["line"] = 5, ["column"] = 3,
+        });
+        Check(shown?["ok"]?.GetValue<bool>() == true && doc.CaretLine == 4, "an assistant can move the person's cursor to a line");
+
+        Console.WriteLine("a file changed on disk by an assistant reloads");
+        string original = doc.SavedText;
+        await File.WriteAllTextAsync(doc.Path, original + "\n-- added by an assistant\n");
+        Check(await WaitFor(() => doc.Document.Text.Contains("added by an assistant", StringComparison.Ordinal), 10), "the open editor picks up the change");
+        await File.WriteAllTextAsync(doc.Path, original);
+        Check(await WaitFor(() => doc.Document.Text == original, 10), "and the change back");
+        doc.Reveal(16, 14);
 
         Console.WriteLine("build and verify with Tenet");
         await vm.BuildCommand.ExecuteAsync(null);

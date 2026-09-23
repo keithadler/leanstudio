@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using LeanStudio.App.ViewModels;
+using LeanStudio.Core.Agents;
 using LeanStudio.Core.Projects;
 
 namespace LeanStudio.App.Views;
@@ -109,6 +110,114 @@ internal static class Dialogs
         text.Children.Add(new SelectableTextBlock { Text = "Lean server: " + serverCommand, Opacity = 0.6, FontSize = 11, TextWrapping = TextWrapping.Wrap });
         ok.Click += (_, _) => w.Close();
         await w.ShowDialog(owner);
+    }
+
+    /// <summary>
+    /// How to connect Claude Code, Gemini CLI, Codex, Grok or any MCP client to Lean Studio: the snippet for each,
+    /// a Copy button, and one-click setup where the assistant's configuration can be written for the person.
+    /// </summary>
+    public static async Task ConnectAssistantAsync(Window owner, AgentSetup setup, Action<string> log)
+    {
+        var close = new Button { Content = "Close", IsDefault = true, IsCancel = true };
+        var status = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 8, 0, 0) };
+        var list = new StackPanel { Spacing = 14 };
+        Window w = Frame("Connect an AI Assistant", new StackPanel(), 720);
+        list.Children.Add(new TextBlock
+        {
+            Text = "Lean Studio is also an MCP server. Connect an AI coding assistant and it can check your Lean files, read goals "
+                 + "and proof steps, run snippets, build, verify with Tenet, and see and open files in this window.",
+            TextWrapping = TextWrapping.Wrap,
+        });
+        foreach (AgentClient c in setup.Clients())
+        {
+            var code = new SelectableTextBlock
+            {
+                Text = c.Snippet,
+                FontFamily = new FontFamily("JuliaMono, Cascadia Code, SF Mono, Menlo, Consolas, DejaVu Sans Mono, monospace"),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+            };
+            var copy = new Button { Content = "Copy", FontSize = 12, Padding = new Thickness(10, 3) };
+            copy.Click += async (_, _) =>
+            {
+                if (w.Clipboard is { } cb)
+                {
+                    await Avalonia.Input.Platform.ClipboardExtensions.SetValueAsync(cb, Avalonia.Input.DataFormat.Text, c.Snippet);
+                    status.Text = $"Copied the {c.Name} snippet.";
+                }
+            };
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { copy } };
+            if (c.CanInstall)
+            {
+                var install = new Button { Content = "Set up " + c.Name, FontSize = 12, Padding = new Thickness(10, 3), Classes = { "accent" } };
+                install.Click += async (_, _) =>
+                {
+                    install.IsEnabled = false;
+                    try
+                    {
+                        string result = await setup.InstallAsync(c.Name);
+                        status.Text = result;
+                        log(result);
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                    {
+                        status.Text = $"Could not set up {c.Name}: {e.Message}";
+                    }
+                    finally
+                    {
+                        install.IsEnabled = true;
+                    }
+                };
+                buttons.Children.Insert(0, install);
+            }
+            list.Children.Add(new StackPanel
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock { Text = c.Name, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = c.Description, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, FontSize = 12 },
+                    new Border
+                    {
+                        Padding = new Thickness(8, 6),
+                        CornerRadius = new CornerRadius(4),
+                        Background = new SolidColorBrush(Color.FromArgb(0x30, 0x80, 0x80, 0x80)),
+                        Child = code,
+                    },
+                    buttons,
+                },
+            });
+        }
+        list.Children.Add(new TextBlock
+        {
+            Text = "Then start the assistant in your Lean project and ask it to prove, fix or explain something. It works on the files "
+                 + "on disk; open files here reload when it changes them, and it can open files in this window to show you its work.",
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.75,
+            FontSize = 12,
+        });
+        list.Children.Add(status);
+        w.Content = new Border
+        {
+            Padding = new Thickness(20, 16),
+            Child = new DockPanel
+            {
+                Children =
+                {
+                    Dock(Buttons(close), Avalonia.Controls.Dock.Bottom),
+                    new ScrollViewer { Content = list, MaxHeight = 620 },
+                },
+            },
+        };
+        w.SizeToContent = SizeToContent.Height;
+        close.Click += (_, _) => w.Close();
+        await w.ShowDialog(owner);
+    }
+
+    private static Control Dock(Control c, Avalonia.Controls.Dock d)
+    {
+        DockPanel.SetDock(c, d);
+        return c;
     }
 
     public static async Task<string?> PromptAsync(Window owner, string title, string message, string initial)

@@ -7,7 +7,7 @@
     <PackageReference Include="xunit.v3" Version="4.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/LeanStudio.Core/LeanStudio.Core.csproj" />
+    <ProjectReference Include="../../src/LeanStudio.Mcp/LeanStudio.Mcp.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

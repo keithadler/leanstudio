@@ -78,6 +78,9 @@
         <MenuItem Header="Verify Project" Command="{Binding VerifyCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+V', macOS='Cmd+Shift+V'}" />
         <MenuItem Header="Verify After Every Build" ToggleType="CheckBox" IsChecked="{Binding Settings.VerifyAfterBuild}" />
       </MenuItem>
+      <MenuItem Header="_AI">
+        <MenuItem Header="Connect an AI Assistant…" Click="OnConnectAssistant" />
+      </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="Keyboard Shortcuts" Click="OnShortcuts" />
         <MenuItem Header="Keith Adler (@keithadler) on X" Click="OnAuthor" />

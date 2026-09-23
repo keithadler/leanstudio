@@ -468,6 +468,16 @@ public sealed class TenetWorkspace : IDisposable
                 }
             }
 
+            var sources = new Dictionary<TenetName, string[]>();
+            string[] SourceOf(TenetName m)
+            {
+                if (!sources.TryGetValue(m, out string[]? lines))
+                {
+                    string? f = SourceFileOf(m.ToString());
+                    sources[m] = lines = f is null ? [] : File.ReadAllLines(f);
+                }
+                return lines;
+            }
             foreach ((TenetName module, ConstantInfo ci, OleanModule file) in own)
             {
                 string name = ci.Name.ToString();
@@ -475,7 +485,7 @@ public sealed class TenetWorkspace : IDisposable
                 {
                     continue;
                 }
-                int? line = file.SourceRangeOf(ci.Name)?.Line;
+                int? line = file.SourceRangeOf(ci.Name)?.Line is int l ? Proofs.ProofSteps.DeclarationLine(SourceOf(module), l) : null;
                 if (failures.TryGetValue(ci.Name, out OleanCheckFailure? f))
                 {
                     verdicts.Add(new DeclarationVerdict(name, module.ToString(), VerificationStatus.Rejected, [], f.Message, line));

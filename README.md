@@ -13,6 +13,7 @@
 <p align="center">
   <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
+  <a href="#use-it-with-ai-assistants">AI assistants</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#building-from-source">Build from source</a> ·
   <a href="#keyboard-shortcuts">Shortcuts</a>
@@ -88,6 +89,55 @@ Press ⌘⇧D / Ctrl+Shift+D on any name in the editor to open it here.
   ![The toolchains panel](docs/images/toolchains.png)
 - **Problems** and **Output** panels, recent projects, and dark and light themes. Open files are restored the next time the app starts.
 
+## Use it with AI assistants
+
+Lean Studio is also an **MCP server**, so Claude Code, Gemini CLI, Codex, Grok CLI, Cursor, or any other assistant that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can use Lean itself while it works, instead of guessing whether its Lean is right. The same binary does both: `LeanStudio --mcp` runs the server with no window.
+
+**Connect one:** open **AI ▸ Connect an AI Assistant…** in Lean Studio.
+- Claude Code, Gemini CLI and Codex have a one-click **Set up** button.
+- Every assistant gets a snippet to copy, including ones not listed.
+
+Or do it by hand:
+
+```bash
+claude mcp add --scope user leanstudio -- /path/to/LeanStudio --mcp
+```
+
+For Gemini CLI (`~/.gemini/settings.json`), Grok CLI, Cursor and most others, add the server to the tool's MCP configuration:
+
+```json
+{ "mcpServers": { "leanstudio": { "command": "/path/to/LeanStudio", "args": ["--mcp"] } } }
+```
+
+For Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.leanstudio]
+command = "/path/to/LeanStudio"
+args = ["--mcp"]
+```
+
+On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. From source, the command is `dotnet` and the arguments are `["path/to/LeanStudio.dll", "--mcp"]`.
+
+**What the assistant gets:**
+
+| Tool | What it does |
+|---|---|
+| `check_file` | Elaborates a file and waits for Lean. Returns every error, warning and `#eval` result with its line and column. Can check unsaved text. |
+| `goals` | The goals and hypotheses at a line and column, marking what the tactic there added or removed. |
+| `proof_steps` | Every step of a tactic proof, with the state after it and what it changed. |
+| `hover` | The type and documentation at a position. |
+| `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
+| `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
+| `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
+| `project_info`, `toolchains` | The project's layout, toolchain and build state. |
+| `studio_context` | What *you* are looking at in Lean Studio: file, cursor, selection, goals, messages. |
+| `studio_show` | Opens a file at a line in your Lean Studio window, so you can review what it did. |
+
+The assistant edits files on disk the way it always does. Open files in Lean Studio reload when it changes them; files with your own unsaved edits are left alone. The server also tells the assistant how to work: check after every edit, and don't call anything proved while `sorry` remains.
+
+This is tested with a real assistant. Claude Code, given the sample project and only these tools, proved `unfinished` by induction. It confirmed the proof with `check_file`, built the project, and got Tenet's verdict: verified.
+
 ## Install
 
 Lean Studio needs **[elan](https://github.com/leanprover/elan#installation)**, Lean's toolchain manager. elan is the standard way to install Lean, so you probably have it already. Lean Studio has the right Lean version for each project installed through it.
@@ -161,20 +211,21 @@ The runtime IDs are `osx-arm64`, `osx-x64`, `win-x64`, `win-arm64`, `linux-x64` 
 dotnet test --project tests/LeanStudio.Tests
 ```
 
-The tests run against a **real Lean server** and a **real Lake build**. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
+The tests run against a **real Lean server** and a **real Lake build**. They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
 
 ```bash
 dotnet run --project tools/LeanStudio.Snapshot -- . snapshots
 ```
 
-This drives the **whole app** without a display, against a live Lean server. It opens a project, waits for elaboration, reads the goals, builds, verifies with Tenet, searches the navigator and types Unicode abbreviations. It saves a screenshot at each stage (the images in this README come from it) and fails if anything doesn't behave. CI runs it on macOS and Linux.
+This drives the **whole app** without a display, against a live Lean server. It opens a project, waits for elaboration, and reads the goals. It then plays an AI assistant: it asks the window for your context, moves your cursor, and edits the file on disk to check that the editor reloads. Finally it builds, verifies with Tenet, searches the navigator and types Unicode abbreviations. It saves a screenshot at each stage (the images in this README come from it) and fails if anything doesn't behave. CI runs it on macOS and Linux.
 
 ### Layout
 
 | Path | What it is |
 |---|---|
 | `src/LeanStudio.Lsp` | JSON-RPC and LSP client for Lean's server, including Lean's goal and RPC extensions |
-| `src/LeanStudio.Core` | Projects, Lake, elan, proof-step analysis, Unicode abbreviations, and Tenet verification and navigation |
+| `src/LeanStudio.Core` | Projects, Lake, elan, proof-step analysis, Unicode abbreviations, Tenet verification and navigation, and the workbench and bridge that AI assistants drive |
+| `src/LeanStudio.Mcp` | The MCP server and its tools (`LeanStudio --mcp`) |
 | `src/LeanStudio.App` | The Avalonia desktop app |
 | `tests/LeanStudio.Tests` | Unit tests and integration tests against real Lean |
 | `tools/LeanStudio.Snapshot` | Headless end-to-end run with screenshots |

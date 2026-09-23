@@ -35,6 +35,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _buildCts;
     private TenetWorkspace? _tenet;
     private LeanServer? _server;
+    private FileSystemWatcher? _watcher;
+    private CancellationTokenSource? _diskCts;
 
     public MainViewModel(IDialogs dialogs, Settings settings)
     {
@@ -194,6 +196,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         root.Load();
         Files.Reset(root.Children);
         Log($"Opened {project.Root}" + (project.IsLakeProject ? " (Lake project)" : "") + (project.Toolchain is string tc ? $", toolchain {tc}" : ""));
+        WatchDisk(project.Root);
         await StartServerAsync();
         await Toolchains.RefreshAsync();
         await ReopenTenetAsync();
@@ -241,6 +244,129 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await OpenFileAsync(main);
             }
         });
+    }
+
+    // ---- changes made outside the editor (an AI assistant, git, another editor) ----
+
+    private void WatchDisk(string root)
+    {
+        _watcher?.Dispose();
+        try
+        {
+            _watcher = new FileSystemWatcher(root)
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.Size,
+            };
+        }
+        catch (Exception e) when (e is IOException or ArgumentException or PlatformNotSupportedException)
+        {
+            return;
+        }
+        void Changed(object? sender, FileSystemEventArgs e)
+        {
+            string sep = Path.DirectorySeparatorChar.ToString();
+            if (e.FullPath.Contains(sep + ".lake" + sep, StringComparison.Ordinal) || e.FullPath.Contains(sep + ".git" + sep, StringComparison.Ordinal))
+            {
+                return;
+            }
+            Dispatcher.UIThread.Post(ScheduleDiskSync);
+        }
+        _watcher.Changed += Changed;
+        _watcher.Created += Changed;
+        _watcher.Deleted += Changed;
+        _watcher.Renamed += (s, e) => Changed(s, e);
+        _watcher.EnableRaisingEvents = true;
+    }
+
+    private void ScheduleDiskSync()
+    {
+        _diskCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _diskCts = cts;
+        _ = SyncFromDiskAsync(cts.Token);
+    }
+
+    /// <summary>
+    /// Pick up files changed on disk: an open file with no unsaved edits takes the new text (and Lean re-checks it),
+    /// one with unsaved edits is left alone and the change is logged, and the file tree is refreshed.
+    /// </summary>
+    private async Task SyncFromDiskAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(250, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        foreach (DocumentViewModel d in Documents.ToList())
+        {
+            if (!File.Exists(d.Path))
+            {
+                continue;
+            }
+            string disk;
+            try
+            {
+                disk = await File.ReadAllTextAsync(d.Path, ct);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or OperationCanceledException)
+            {
+                continue;
+            }
+            if (disk == d.SavedText)
+            {
+                continue;
+            }
+            if (d.IsDirty)
+            {
+                Log($"{d.Path} changed on disk, but it has unsaved edits here; keeping yours.");
+                continue;
+            }
+            d.ReloadFrom(disk);
+            Log($"Reloaded {Path.GetFileName(d.Path)}: it changed on disk.");
+        }
+        RefreshFiles();
+    }
+
+    // ---- the AI assistant bridge ----
+
+    /// <summary>What the person is looking at, for an assistant that asks (see StudioBridge).</summary>
+    public System.Text.Json.Nodes.JsonObject BridgeContext()
+    {
+        var o = new System.Text.Json.Nodes.JsonObject { ["project"] = Project?.Root };
+        if (ActiveDocument is not DocumentViewModel d)
+        {
+            return o;
+        }
+        o["file"] = d.Path;
+        o["line"] = d.CaretLine + 1;
+        o["column"] = d.CaretColumn + 1;
+        o["dirty"] = d.IsDirty;
+        string[] lines = d.Lines();
+        if (d.CaretLine < lines.Length)
+        {
+            o["lineText"] = lines[d.CaretLine];
+        }
+        o["selection"] = SelectionProvider?.Invoke() ?? "";
+        o["goals"] = Info.PlainGoals;
+        o["messages"] = new System.Text.Json.Nodes.JsonArray(Info.Messages.Select(m => (System.Text.Json.Nodes.JsonNode)m).ToArray());
+        return o;
+    }
+
+    /// <summary>The editor's selected text; set by the window.</summary>
+    public Func<string>? SelectionProvider { get; set; }
+
+    public async Task<string?> BridgeShowAsync(string path, int line, int column)
+    {
+        if (!File.Exists(path))
+        {
+            return "no such file: " + path;
+        }
+        await OpenFileAsync(path, Math.Max(0, line - 1), Math.Max(0, column - 1));
+        return null;
     }
 
     // ---- the Lean server ----
@@ -833,7 +959,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         string[] lines = d.Lines();
         foreach (DeclarationVerdict v in r.Declarations.Where(v => v.Module == module && v.Line is not null))
         {
-            int line = DeclarationLine(lines, v.Line!.Value);
+            int line = Core.Proofs.ProofSteps.DeclarationLine(lines, v.Line!.Value);
             // Several constants can share a line (a structure and its projections); show the most serious.
             if (!map.TryGetValue(line, out DeclarationVerdict? existing) || v.Status > existing.Status)
             {
@@ -841,32 +967,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
         d.Verdicts = map;
-    }
-
-    /// <summary>
-    /// Lean records a declaration's range from its doc comment and attributes; the badge belongs on the line with
-    /// the keyword, so step past a leading <c>/-- … -/</c> and any <c>@[…]</c> lines.
-    /// </summary>
-    private static int DeclarationLine(string[] lines, int oneBased)
-    {
-        int i = oneBased - 1;
-        if (i < 0 || i >= lines.Length)
-        {
-            return oneBased;
-        }
-        if (lines[i].TrimStart().StartsWith("/--", StringComparison.Ordinal))
-        {
-            while (i < lines.Length && !lines[i].Contains("-/", StringComparison.Ordinal))
-            {
-                i++;
-            }
-            i++;
-        }
-        while (i < lines.Length && (lines[i].TrimStart().StartsWith("@[", StringComparison.Ordinal) || lines[i].Trim().Length == 0))
-        {
-            i++;
-        }
-        return i < lines.Length ? i + 1 : oneBased;
     }
 
     [RelayCommand]
@@ -925,6 +1025,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _watcher?.Dispose();
         RememberOpenFiles();
         await StopServerAsync();
         _tenet?.Dispose();

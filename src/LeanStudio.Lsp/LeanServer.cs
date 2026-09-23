@@ -37,6 +37,10 @@ public sealed class LeanServer : IAsyncDisposable
     private JsonRpcConnection? _rpc;
     private readonly ConcurrentDictionary<string, int> _versions = new();
     private readonly ConcurrentDictionary<string, Task<string>> _sessions = new();
+    private readonly ConcurrentDictionary<string, (int Version, IReadOnlyList<Diagnostic> Diagnostics)> _diagnostics = new();
+    private readonly ConcurrentDictionary<string, int> _elaborated = new();
+    private readonly object _waitLock = new();
+    private readonly List<(string Uri, int Version, TaskCompletionSource Done)> _waiters = [];
     private Timer? _keepAlive;
     private bool _disposed;
 
@@ -174,13 +178,23 @@ public sealed class LeanServer : IAsyncDisposable
             {
                 string uri = p.GetProperty("uri").GetString() ?? "";
                 var list = p.GetProperty("diagnostics").As<List<Diagnostic>>() ?? [];
+                int version = p.TryGetProperty("version", out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+                _diagnostics[uri] = (version, list);
                 DiagnosticsPublished?.Invoke(uri, list);
                 break;
             }
             case "$/lean/fileProgress":
             {
-                string uri = p.GetProperty("textDocument").GetProperty("uri").GetString() ?? "";
+                JsonElement doc = p.GetProperty("textDocument");
+                string uri = doc.GetProperty("uri").GetString() ?? "";
                 var list = p.GetProperty("processing").As<List<LeanFileProgressRange>>() ?? [];
+                // Done means nothing left to elaborate: either no ranges, or only the part Lean gave up on.
+                if (list.All(r => r.Kind == LeanFileProgressKind.FatalError))
+                {
+                    int version = doc.TryGetProperty("version", out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+                    _elaborated.AddOrUpdate(uri, version, (_, old) => Math.Max(old, version));
+                    ReleaseWaiters(uri);
+                }
                 FileProgress?.Invoke(uri, list);
                 break;
             }
@@ -209,6 +223,7 @@ public sealed class LeanServer : IAsyncDisposable
     public Task OpenAsync(string uri, string text)
     {
         _versions[uri] = 1;
+        _elaborated.TryRemove(uri, out _);
         return Rpc.NotifyAsync("textDocument/didOpen", new JsonObject
         {
             ["textDocument"] = new JsonObject
@@ -244,6 +259,8 @@ public sealed class LeanServer : IAsyncDisposable
     {
         _versions.TryRemove(uri, out _);
         _sessions.TryRemove(uri, out _);
+        _elaborated.TryRemove(uri, out _);
+        _diagnostics.TryRemove(uri, out _);
         return Rpc.NotifyAsync("textDocument/didClose", new JsonObject
         {
             ["textDocument"] = new JsonObject { ["uri"] = uri },
@@ -258,6 +275,57 @@ public sealed class LeanServer : IAsyncDisposable
         });
 
     public bool IsOpen(string uri) => _versions.ContainsKey(uri);
+
+    /// <summary>The version of the text Lean was last sent for a file.</summary>
+    public int VersionOf(string uri) => _versions.GetValueOrDefault(uri);
+
+    /// <summary>The newest diagnostics Lean published for a file.</summary>
+    public IReadOnlyList<Diagnostic> DiagnosticsOf(string uri) =>
+        _diagnostics.TryGetValue(uri, out var d) ? d.Diagnostics : [];
+
+    /// <summary>
+    /// Wait until Lean has finished elaborating the text most recently sent for a file, and its diagnostics for
+    /// that text have arrived. What a caller that edits and then asks "did it work?" needs: an answer about the
+    /// text it sent, not the one before.
+    /// </summary>
+    public async Task WaitForElaborationAsync(string uri, CancellationToken ct = default)
+    {
+        int version = VersionOf(uri);
+        TaskCompletionSource? done = null;
+        lock (_waitLock)
+        {
+            if (_elaborated.GetValueOrDefault(uri, -1) < version)
+            {
+                done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _waiters.Add((uri, version, done));
+            }
+        }
+        if (done is not null)
+        {
+            await done.Task.WaitAsync(ct).ConfigureAwait(false);
+        }
+        // Lean publishes the final diagnostics around the same moment it reports progress done; give them a moment.
+        for (int i = 0; i < 40 && (!_diagnostics.TryGetValue(uri, out var d) || d.Version < version); i++)
+        {
+            await Task.Delay(50, ct).ConfigureAwait(false);
+        }
+    }
+
+    private void ReleaseWaiters(string uri)
+    {
+        int done = _elaborated.GetValueOrDefault(uri, -1);
+        lock (_waitLock)
+        {
+            for (int i = _waiters.Count - 1; i >= 0; i--)
+            {
+                if (_waiters[i].Uri == uri && _waiters[i].Version <= done)
+                {
+                    _waiters[i].Done.TrySetResult();
+                    _waiters.RemoveAt(i);
+                }
+            }
+        }
+    }
 
     private static JsonObject At(string uri, Position pos) => new()
     {

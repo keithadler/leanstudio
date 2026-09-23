@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/LeanStudio.Lsp/LeanStudio.Lsp.csproj" />
     <Project Path="src/LeanStudio.Core/LeanStudio.Core.csproj" />
+    <Project Path="src/LeanStudio.Mcp/LeanStudio.Mcp.csproj" />
     <Project Path="src/LeanStudio.App/LeanStudio.App.csproj" />
   </Folder>
   <Folder Name="/tests/">

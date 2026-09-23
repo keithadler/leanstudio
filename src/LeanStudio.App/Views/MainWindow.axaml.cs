@@ -4,6 +4,9 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
+using Avalonia.Threading;
+using System.Text.Json.Nodes;
+using LeanStudio.Core.Agents;
 using LeanStudio.App.Editor;
 using LeanStudio.App.Services;
 using LeanStudio.App.ViewModels;
@@ -13,6 +16,7 @@ namespace LeanStudio.App.Views;
 public sealed partial class MainWindow : Window, IDialogs
 {
     private readonly MainViewModel _vm;
+    private readonly CancellationTokenSource _bridgeCts = new();
     private bool _closing;
 
     public MainWindow()
@@ -27,9 +31,14 @@ public sealed partial class MainWindow : Window, IDialogs
         DataContext = _vm;
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         EditorControl.ApplySettings(settings);
+        _vm.SelectionProvider = () => EditorControl.TextEditor.SelectedText;
         Opened += async (_, _) =>
         {
             BuildRecentMenu();
+            if (StudioBridge.TryServe(HandleBridgeAsync, _bridgeCts.Token))
+            {
+                _vm.Log("AI assistants connected through Lean Studio's MCP server can see this window (AI ▸ Connect an AI Assistant).");
+            }
             if (OpenOnStartup is string path)
             {
                 if (Directory.Exists(path))
@@ -71,6 +80,7 @@ public sealed partial class MainWindow : Window, IDialogs
             return;
         }
         _closing = true;
+        _bridgeCts.Cancel();
         _vm.Settings.Save();
         await _vm.DisposeAsync();
         Close();
@@ -92,6 +102,32 @@ public sealed partial class MainWindow : Window, IDialogs
         }
         recent.IsEnabled = recent.Items.Count > 0;
     }
+
+    /// <summary>Answer an assistant's request (see StudioBridge), on the UI thread.</summary>
+    private Task<JsonObject> HandleBridgeAsync(JsonObject request) =>
+        Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            switch (request["method"]?.GetValue<string>())
+            {
+                case "context":
+                    return _vm.BridgeContext();
+                case "show":
+                    string? error = await _vm.BridgeShowAsync(
+                        request["path"]?.GetValue<string>() ?? "",
+                        request["line"]?.GetValue<int>() ?? 1,
+                        request["column"]?.GetValue<int>() ?? 1);
+                    if (error is null)
+                    {
+                        Activate();
+                    }
+                    return error is null ? new JsonObject { ["ok"] = true } : new JsonObject { ["error"] = error };
+                default:
+                    return new JsonObject { ["error"] = "unknown request" };
+            }
+        });
+
+    private async void OnConnectAssistant(object? sender, RoutedEventArgs e) =>
+        await Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);
 
     // ---- IDialogs ----
 

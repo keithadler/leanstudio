@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Lean Studio as an MCP server: Claude Code, Gemini CLI, Codex, Grok and any other MCP client can check Lean files, read goals and proof steps, run snippets, build, verify with Tenet, and talk to the open IDE.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../LeanStudio.Core/LeanStudio.Core.csproj" />
+  </ItemGroup>
+</Project>

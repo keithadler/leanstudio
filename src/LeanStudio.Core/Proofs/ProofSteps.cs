@@ -108,6 +108,39 @@ public static partial class ProofSteps
         return null;
     }
 
+    /// <summary>
+    /// Whether a step's tactic carries on into the lines after it (`cases h with`, `calc`, `induction n with`):
+    /// then the end of its line is not the end of the tactic, and there is no "after" to report yet.
+    /// </summary>
+    public static bool ContinuesBelow(IReadOnlyList<ProofStep> steps, int index) =>
+        index + 1 < steps.Count && (steps[index + 1].Indent > steps[index].Indent || steps[index + 1].Text.StartsWith('|'));
+
+    /// <summary>
+    /// Lean records a declaration's range from its doc comment and attributes; the line people mean is the one
+    /// with the keyword, so step past a leading <c>/-- … -/</c> and any <c>@[…]</c> lines. Both lines are 1-based.
+    /// </summary>
+    public static int DeclarationLine(IReadOnlyList<string> lines, int oneBased)
+    {
+        int i = oneBased - 1;
+        if (i < 0 || i >= lines.Count)
+        {
+            return oneBased;
+        }
+        if (lines[i].TrimStart().StartsWith("/--", StringComparison.Ordinal))
+        {
+            while (i < lines.Count && !lines[i].Contains("-/", StringComparison.Ordinal))
+            {
+                i++;
+            }
+            i++;
+        }
+        while (i < lines.Count && (lines[i].TrimStart().StartsWith("@[", StringComparison.Ordinal) || lines[i].Trim().Length == 0))
+        {
+            i++;
+        }
+        return i < lines.Count ? i + 1 : oneBased;
+    }
+
     private static string NameOf(string line)
     {
         string s = Regex.Replace(line, @"^(@\[[^\]]*\]\s*)*((private|protected|noncomputable|partial|unsafe|nonrec|scoped|local)\s+)*", "");
