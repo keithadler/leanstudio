@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Lean Studio
+Comment=An IDE for Lean 4
+Exec=LeanStudio %f
+Icon=leanstudio
+Terminal=false
+Categories=Development;IDE;Education;Math;
+MimeType=text/x-lean;

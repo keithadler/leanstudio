@@ -9,6 +9,7 @@
         x:DataType="vm:MainViewModel"
         Title="{Binding WindowTitle}"
         Width="1440" Height="900" MinWidth="900" MinHeight="560"
+        Icon="/Assets/leanstudio.ico"
         WindowStartupLocation="CenterScreen">
 
   <Window.KeyBindings>
