@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Everything in Lean Studio that is not UI: projects, toolchains, Lake, proof steps, Unicode input, and Tenet.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../LeanStudio.Lsp/LeanStudio.Lsp.csproj" />
+    <ProjectReference Include="../../external/tenet/src/Tenet.Olean/Tenet.Olean.csproj" />
+  </ItemGroup>
+</Project>

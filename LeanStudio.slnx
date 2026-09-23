@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LeanStudio.Lsp/LeanStudio.Lsp.csproj" />
+    <Project Path="src/LeanStudio.Core/LeanStudio.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LeanStudio.Tests/LeanStudio.Tests.csproj" />
+  </Folder>
+  <Folder Name="/external/">
+    <Project Path="external/tenet/src/Tenet.Kernel/Tenet.Kernel.csproj" />
+    <Project Path="external/tenet/src/Tenet.Olean/Tenet.Olean.csproj" />
+  </Folder>
+</Solution>

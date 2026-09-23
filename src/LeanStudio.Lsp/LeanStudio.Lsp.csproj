@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>A client for Lean 4's language server: JSON-RPC over stdio, document sync, diagnostics, and Lean's goal and RPC extensions.</Description>
+  </PropertyGroup>
+</Project>

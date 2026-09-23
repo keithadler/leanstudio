@@ -1,0 +1,9 @@
+bin/
+obj/
+.lake/
+*.user
+.vs/
+.idea/
+artifacts/
+publish/
+.DS_Store

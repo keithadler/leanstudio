@@ -1,0 +1,3 @@
+[submodule "external/tenet"]
+	path = external/tenet
+	url = https://github.com/keithadler/tenet
