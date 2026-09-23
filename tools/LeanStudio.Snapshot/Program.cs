@@ -605,6 +605,24 @@ internal static class Scenario
         window.SetTheme("Dark");
         await Task.Delay(300);
 
+        Console.WriteLine("dialogs");
+        string? dialogName = null;
+        void OnDialog(Window d) => Dispatcher.UIThread.Post(async () =>
+        {
+            await Task.Delay(400);
+            Snap(d, outDir, dialogName!);
+            d.Close();
+        });
+        DialogHooks.Opened += OnDialog;
+        dialogName = "24-about";
+        await window.ShowAboutAsync();
+        dialogName = "25-preferences";
+        await window.ShowPreferencesAsync();
+        dialogName = "26-connect-assistant";
+        await window.ShowConnectAssistantAsync();
+        DialogHooks.Opened -= OnDialog;
+        Check(File.Exists(Path.Combine(outDir, "24-about.png")) && File.Exists(Path.Combine(outDir, "26-connect-assistant.png")), "the About, Preferences and Connect dialogs open and close");
+
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();
         Check(vm.Toolchains.Installed.Count > 0, "installed toolchains are listed");

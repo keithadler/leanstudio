@@ -901,6 +901,11 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private async void OnAuthor(object? sender, RoutedEventArgs e) => await Launcher.LaunchUriAsync(new Uri(Credits.XUrl));
 
-    private async void OnAbout(object? sender, RoutedEventArgs e) =>
-        await Dialogs.AboutAsync(this, _vm.Server?.Command.ToString() ?? "not running");
+    private async void OnAbout(object? sender, RoutedEventArgs e) => await ShowAboutAsync();
+
+    public Task ShowAboutAsync() => Dialogs.AboutAsync(this, _vm.Server?.Command.ToString() ?? "not running");
+
+    public Task ShowConnectAssistantAsync() => Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);
+
+    public Task ShowPreferencesAsync() => Dialogs.PreferencesAsync(this, _vm.Settings);
 }

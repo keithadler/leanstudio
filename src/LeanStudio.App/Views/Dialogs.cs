@@ -8,19 +8,44 @@ using LeanStudio.Core.Projects;
 
 namespace LeanStudio.App.Views;
 
+/// <summary>Lets a test harness see each dialog as it opens (to capture it, and close it).</summary>
+public static class DialogHooks
+{
+    public static event Action<Window>? Opened;
+
+    internal static void Raise(Window w) => Opened?.Invoke(w);
+}
+
 /// <summary>Small modal dialogs, built in code: a confirmation, a one-line prompt, and the new-project form.</summary>
 internal static class Dialogs
 {
-    private static Window Frame(string title, Control content, double width = 420) => new()
+    private static Window Frame(string title, Control content, double width = 420)
     {
-        Title = title,
-        Width = width,
-        SizeToContent = SizeToContent.Height,
-        CanResize = false,
-        WindowStartupLocation = WindowStartupLocation.CenterOwner,
-        ShowInTaskbar = false,
-        Content = new Border { Padding = new Thickness(20, 16), Child = content },
-    };
+        var w = new Window
+        {
+            Title = title,
+            Width = width,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ShowInTaskbar = false,
+            Content = new Border { Padding = new Thickness(24, 20), Child = content },
+        };
+        w.Bind(Window.BackgroundProperty, w.GetResourceObservable("PanelBackground"));
+        w.Opened += (_, _) => DialogHooks.Raise(w);
+        return w;
+    }
+
+    /// <summary>A section heading, as the panels have them.</summary>
+    private static TextBlock Heading(string text) => new() { Text = text.ToUpperInvariant(), Classes = { "panelTitle" }, Margin = new Thickness(0, 14, 0, 4) };
+
+    /// <summary>A code block on the card colour.</summary>
+    private static Border CodeBlock(Control child)
+    {
+        var b = new Border { Padding = new Thickness(10, 8), CornerRadius = new CornerRadius(6), Child = child };
+        b.Bind(Border.BackgroundProperty, b.GetResourceObservable("CardBackground"));
+        return b;
+    }
 
     private static StackPanel Buttons(params Button[] buttons)
     {
@@ -50,10 +75,10 @@ internal static class Dialogs
 
     public static async Task InfoAsync(Window owner, string title, string message, double width = 460)
     {
-        var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true };
+        var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true, Classes = { "accent" } };
         var panel = new StackPanel
         {
-            Children = { new SelectableTextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, Buttons(ok) },
+            Children = { new SelectableTextBlock { Text = message, TextWrapping = TextWrapping.Wrap, LineHeight = 20 }, Buttons(ok) },
         };
         Window w = Frame(title, panel, width);
         ok.Click += (_, _) => w.Close();
@@ -77,7 +102,7 @@ internal static class Dialogs
             b.Click += async (_, _) => await w.Launcher.LaunchUriAsync(new Uri(url));
             return b;
         }
-        var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true };
+        var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true, Classes = { "accent" } };
         var icon = new Image
         {
             Source = new Avalonia.Media.Imaging.Bitmap(Avalonia.Platform.AssetLoader.Open(new Uri("avares://LeanStudio/Assets/leanstudio-256.png"))),
@@ -137,7 +162,7 @@ internal static class Dialogs
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
             };
-            var copy = new Button { Content = "Copy", FontSize = 12, Padding = new Thickness(10, 3) };
+            var copy = new Button { Content = "Copy", Classes = { "chip" } };
             copy.Click += async (_, _) =>
             {
                 if (w.Clipboard is { } cb)
@@ -149,7 +174,7 @@ internal static class Dialogs
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { copy } };
             if (c.CanInstall)
             {
-                var install = new Button { Content = "Set up " + c.Name, FontSize = 12, Padding = new Thickness(10, 3), Classes = { "accent" } };
+                var install = new Button { Content = "Set up " + c.Name, Classes = { "chip", "accent" } };
                 install.Click += async (_, _) =>
                 {
                     install.IsEnabled = false;
@@ -177,13 +202,7 @@ internal static class Dialogs
                 {
                     new TextBlock { Text = c.Name, FontWeight = FontWeight.SemiBold },
                     new TextBlock { Text = c.Description, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, FontSize = 12 },
-                    new Border
-                    {
-                        Padding = new Thickness(8, 6),
-                        CornerRadius = new CornerRadius(4),
-                        Background = new SolidColorBrush(Color.FromArgb(0x30, 0x80, 0x80, 0x80)),
-                        Child = code,
-                    },
+                    CodeBlock(code),
                     buttons,
                 },
             });
@@ -199,7 +218,7 @@ internal static class Dialogs
         list.Children.Add(status);
         w.Content = new Border
         {
-            Padding = new Thickness(20, 16),
+            Padding = new Thickness(24, 20),
             Child = new DockPanel
             {
                 Children =
@@ -232,7 +251,7 @@ internal static class Dialogs
             }
             return c;
         }
-        TextBlock Head(string text) => new() { Text = text, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 12, 0, 2) };
+        TextBlock Head(string text) => Heading(text);
 
         var theme = new ComboBox { ItemsSource = new[] { "Dark", "Light" }, SelectedItem = s.Theme == "Light" ? "Light" : "Dark", MinWidth = 140 };
         var font = new TextBox { Text = s.EditorFontFamily };
@@ -280,10 +299,13 @@ internal static class Dialogs
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
-                Buttons(cancel, ok),
             },
         };
-        Window w = Frame("Preferences", new ScrollViewer { Content = panel, MaxHeight = 640 }, 540);
+        // The buttons stay in view below the list, however long it gets.
+        Window w = Frame("Preferences", new DockPanel
+        {
+            Children = { Dock(Buttons(cancel, ok), Avalonia.Controls.Dock.Bottom), new ScrollViewer { Content = panel, MaxHeight = 600 } },
+        }, 540);
         ok.Click += (_, _) =>
         {
             s.Theme = theme.SelectedItem as string ?? "Dark";
@@ -314,8 +336,8 @@ internal static class Dialogs
         var box = new TextBox { Text = initial };
         var ok = new Button { Content = "OK", IsDefault = true, Classes = { "accent" } };
         var cancel = new Button { Content = "Cancel", IsCancel = true };
-        var panel = new StackPanel { Spacing = 8, Children = { new TextBlock { Text = message }, box, Buttons(cancel, ok) } };
-        Window w = Frame(title, panel, 360);
+        var panel = new StackPanel { Spacing = 10, Children = { new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, LineHeight = 19 }, box, Buttons(cancel, ok) } };
+        Window w = Frame(title, panel, 460);
         ok.Click += (_, _) => { result = box.Text; w.Close(); };
         cancel.Click += (_, _) => w.Close();
         w.Opened += (_, _) => { box.Focus(); box.SelectAll(); };
