@@ -210,6 +210,16 @@ public sealed partial class MainWindow : Window, IDialogs
         return _mapWindow;
     }
 
+    private async void OnCheckFfi(object? sender, RoutedEventArgs e)
+    {
+        IReadOnlyList<Core.Workflow.FfiProblem> problems = await _vm.CheckFfiNowAsync();
+        _vm.Log(problems.Count == 0 ? "C bindings: every @[extern] has its C function, with the right number of arguments." : $"C bindings: {problems.Count} problem(s), in Problems.");
+        if (problems.Count > 0)
+        {
+            _vm.BottomTab = MainViewModel.ProblemsPanel;
+        }
+    }
+
     private void OnShowRepl(object? sender, RoutedEventArgs e)
     {
         _vm.BottomTab = MainViewModel.ReplPanel;
@@ -666,6 +676,9 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Prove It (try tactics on this sorry)", m + "⌥P", Cmd(_vm.ProveItCommand));
         yield return ("Lean: Prove Every Sorry in File", "", Cmd(_vm.ProveAllSorriesCommand));
         yield return ("Refactor: Extract Goal as Lemma…", "", Cmd(_vm.ExtractLemmaCommand));
+        yield return ("FFI: New C Binding…", "", Cmd(_vm.NewFfiBindingCommand));
+        yield return ("FFI: Write C Stub for This Extern", "", Cmd(_vm.WriteCStubCommand));
+        yield return ("FFI: Check C Bindings", "", Act(() => OnCheckFfi(null, new RoutedEventArgs())));
         yield return ("Lean: Profile File (where the time goes)", "", Cmd(_vm.ProfileFileCommand));
         yield return ("Tenet: Why Isn't This Proved?", "", Cmd(_vm.WhyNotProvedAtCaretCommand));
         yield return ("Tenet: Project Map…", "", Cmd(_vm.ShowProjectMapCommand));

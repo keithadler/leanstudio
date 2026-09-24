@@ -172,6 +172,13 @@ public sealed class McpTests
             Assert.Contains("exact step (by assumption)", File.ReadAllText(file), StringComparison.Ordinal);
             File.WriteAllText(file, "theorem t (a b : Nat) : a + b = b + a := by\n  omega\n");
 
+            File.WriteAllText(Path.Combine(dir, "N.lean"), "@[extern \"n_twice\"]\nopaque twice (x : UInt32) : UInt32\n");
+            var (ffi, ferr) = await CallAsync(server, "ffi_bindings", new JsonObject());
+            Assert.False(ferr, ffi);
+            Assert.Contains("n_twice: MISSING", ffi, StringComparison.Ordinal);
+            Assert.Contains("LEAN_EXPORT uint32_t n_twice(uint32_t x)", ffi, StringComparison.Ordinal);
+            File.Delete(Path.Combine(dir, "N.lean"));
+
             var (walk, werr) = await CallAsync(server, "export_walkthrough", new JsonObject { ["path"] = "P.lean" });
             Assert.False(werr, walk);
             Assert.Contains("live.lean-lang.org/#code=", walk, StringComparison.Ordinal);

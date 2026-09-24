@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+**C and Lean's FFI**:
+- Go to definition goes from an `@[extern]` to its C function and back.
+- `@[extern]` bindings are checked against the project's C files (missing functions, wrong argument counts) in Problems.
+- C stubs are written with the signature Lean expects, and New C Binding… writes both sides.
+- clangd serves C files, with Lean's headers on the include path.
+- MCP tool `ffi_bindings`.
+
+**Documentation**:
+- An architecture guide ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) and a contributor guide ([CONTRIBUTING.md](CONTRIBUTING.md)).
+- Every public type and member in `src/` has an XML doc comment, and the build fails without one.
+- The README's status section is brought up to date.
+
+## 0.5.0
+
 **Four more features**:
 - **Counterexamples**: when no tactic closes a goal, Prove It looks for values that make it false.
 - **Extract Goal as Lemma**: Lean writes the lemma, with just the hypotheses the goal needs.
@@ -16,11 +30,9 @@ MCP tools: `extract_lemma` and `project_map`, and `prove` now reports counterexa
 - Panel buttons are consistent chips.
 - Empty panels say what will appear in them.
 - The welcome screen is redesigned, and the light theme is fixed throughout.
+- Dialogs have themed backgrounds and wrapping prompts, and the Preferences buttons stay in view.
 
-**Documentation**:
-- An architecture guide ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) and a contributor guide ([CONTRIBUTING.md](CONTRIBUTING.md)).
-- Every public type and member in `src/` has an XML doc comment, and the build fails without one.
-- The README's status section is brought up to date.
+**Fixes**: when Lean was asked whether a file was done, it could answer with an early batch of messages; it now waits until they stop arriving.
 
 ## 0.4.0
 

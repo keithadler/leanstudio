@@ -43,6 +43,7 @@ public static class LeanTools
           search_mathlib finds Mathlib results from a description in plain English when you do not know a name.
         - If verify says a theorem rests on sorry, why_not_proved shows the chain of lemmas down to the one to fix.
         - profile shows which declarations make a file slow to check, and the step inside each that costs most.
+        - For code that calls C (@[extern]), ffi_bindings checks each binding against the C files and writes stubs.
         - If the person has Lean Studio open, studio_context tells you which file, line and goal they are looking
           at, and studio_show opens a file at a line in their window so they can review your change.
         """;
@@ -512,6 +513,45 @@ public static class LeanTools
                 }
                 return (apply ? $"wrote into {path}:\n\n" : "would add:\n\n") + lemma.Text.TrimEnd()
                     + $"\n\nat line {lemma.InsertLine + 1}, and replace the sorry at line {site.Line + 1} with: {lemma.Call}";
+            }),
+
+        new("ffi_bindings",
+            "Lean's C FFI in the project: every @[extern \"c_name\"] declaration and the C function that implements it (file and line), what does not agree (a missing C function, or a C function taking a different number of arguments than Lean passes), and a C stub with the exact signature Lean expects for each missing one.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                var (externs, functions, problems) = Core.Workflow.Ffi.Check(p.Root);
+                if (externs.Count == 0)
+                {
+                    return Task.FromResult("No @[extern] declarations in the project.");
+                }
+                var sb = new StringBuilder();
+                foreach (Core.Workflow.ExternBinding b in externs)
+                {
+                    Core.Workflow.CFunctionSite? site = functions.Where(f => f.Name == b.CName).OrderBy(f => f.IsDefinition ? 0 : 1).FirstOrDefault();
+                    sb.Append(CultureInfo.InvariantCulture, $"{b.LeanName} {b.Signature}  ({b.Path}:{b.Line + 1})\n  → {b.CName}: ")
+                      .Append(site is null ? (b.CName.StartsWith("lean_", StringComparison.Ordinal) ? "Lean runtime" : "MISSING") : $"{site.Path}:{site.Line + 1}, {site.Parameters} parameter(s)")
+                      .Append('\n');
+                }
+                if (problems.Count > 0)
+                {
+                    sb.Append("\nProblems:\n");
+                    foreach (Core.Workflow.FfiProblem pr in problems)
+                    {
+                        sb.Append("  ").Append(pr.IsError ? "error: " : "warning: ").Append(pr.Message).Append('\n');
+                    }
+                }
+                var missing = externs.Where(b => !b.CName.StartsWith("lean_", StringComparison.Ordinal) && !functions.Any(f => f.Name == b.CName)).ToList();
+                if (missing.Count > 0)
+                {
+                    sb.Append("\nC stubs for the missing ones (with #include <lean/lean.h>):\n\n");
+                    foreach (Core.Workflow.ExternBinding b in missing)
+                    {
+                        sb.Append(Core.Workflow.Ffi.Stub(b)).Append('\n');
+                    }
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
             }),
 
         new("profile",

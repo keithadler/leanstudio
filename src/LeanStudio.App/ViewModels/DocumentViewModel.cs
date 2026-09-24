@@ -53,6 +53,9 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>A <c>.lean</c> file, which Lean checks; false for a virtual document.</summary>
     public bool IsLean => !IsVirtual && Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>C or C++ (a project's FFI code), which clangd serves when it is installed.</summary>
+    public bool IsC => !IsVirtual && Core.Workflow.Ffi.IsCFile(Path);
+
     /// <summary>A view with no file behind it (a diff): read-only, never saved, never sent to Lean.</summary>
     public bool IsVirtual { get; init; }
 

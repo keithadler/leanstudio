@@ -385,7 +385,7 @@ public sealed class LeanServer : IAsyncDisposable
         }
     }
 
-    private static JsonObject At(string uri, Position pos) => new()
+    internal static JsonObject At(string uri, Position pos) => new()
     {
         ["textDocument"] = new JsonObject { ["uri"] = uri },
         ["position"] = new JsonObject { ["line"] = pos.Line, ["character"] = pos.Character },
@@ -417,9 +417,20 @@ public sealed class LeanServer : IAsyncDisposable
     }
 
     /// <summary>The hover at a 0-based position: usually the type and docstring of the name there; null when there is none.</summary>
-    public async Task<Hover?> HoverAsync(string uri, Position pos, CancellationToken ct = default)
+    public async Task<Hover?> HoverAsync(string uri, Position pos, CancellationToken ct = default) =>
+        ParseHover(await Rpc.RequestAsync("textDocument/hover", At(uri, pos), ct).ConfigureAwait(false));
+
+    /// <summary>Where the name at a 0-based position is defined; empty when Lean does not know. Links are reduced to their target's name range.</summary>
+    public async Task<IReadOnlyList<Location>> DefinitionAsync(string uri, Position pos, CancellationToken ct = default) =>
+        ParseLocations(await Rpc.RequestAsync("textDocument/definition", At(uri, pos), ct).ConfigureAwait(false));
+
+    /// <summary>The completions at a 0-based position, in the server's order; empty when there are none.</summary>
+    public async Task<IReadOnlyList<CompletionItem>> CompletionAsync(string uri, Position pos, CancellationToken ct = default) =>
+        ParseCompletions(await Rpc.RequestAsync("textDocument/completion", At(uri, pos), ct).ConfigureAwait(false));
+
+    /// <summary>Reads a <c>textDocument/hover</c> result; null when it has no contents.</summary>
+    internal static Hover? ParseHover(JsonElement r)
     {
-        JsonElement r = await Rpc.RequestAsync("textDocument/hover", At(uri, pos), ct).ConfigureAwait(false);
         if (r.ValueKind != JsonValueKind.Object || !r.TryGetProperty("contents", out JsonElement c))
         {
             return null;
@@ -435,10 +446,9 @@ public sealed class LeanServer : IAsyncDisposable
         return new Hover(text, r.TryGetProperty("range", out JsonElement range) ? range.As<Range>() : null);
     }
 
-    /// <summary>Where the name at a 0-based position is defined; empty when Lean does not know. Links are reduced to their target's name range.</summary>
-    public async Task<IReadOnlyList<Location>> DefinitionAsync(string uri, Position pos, CancellationToken ct = default)
+    /// <summary>Reads a <c>textDocument/definition</c> result (locations or location links); empty when there is none.</summary>
+    internal static IReadOnlyList<Location> ParseLocations(JsonElement r)
     {
-        JsonElement r = await Rpc.RequestAsync("textDocument/definition", At(uri, pos), ct).ConfigureAwait(false);
         var list = new List<Location>();
         IEnumerable<JsonElement> items = r.ValueKind switch
         {
@@ -461,10 +471,9 @@ public sealed class LeanServer : IAsyncDisposable
         return list;
     }
 
-    /// <summary>The completions at a 0-based position, in the server's order; empty when there are none.</summary>
-    public async Task<IReadOnlyList<CompletionItem>> CompletionAsync(string uri, Position pos, CancellationToken ct = default)
+    /// <summary>Reads a <c>textDocument/completion</c> result (a list or a completion list); empty when there is none.</summary>
+    internal static IReadOnlyList<CompletionItem> ParseCompletions(JsonElement r)
     {
-        JsonElement r = await Rpc.RequestAsync("textDocument/completion", At(uri, pos), ct).ConfigureAwait(false);
         JsonElement items = r.ValueKind == JsonValueKind.Object && r.TryGetProperty("items", out JsonElement i) ? i : r;
         if (items.ValueKind != JsonValueKind.Array)
         {

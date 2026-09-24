@@ -545,20 +545,28 @@ public sealed class LeanEditor : UserControl
 
     private async Task ShowCompletionAsync()
     {
-        if (_current is not { IsLean: true } doc || Main?.Server is not { State: LeanServerState.Running } server)
+        if (_current is not { } doc)
+        {
+            return;
+        }
+        Func<string, Position, Task<IReadOnlyList<CompletionItem>>>? complete =
+            doc.IsLean && Main?.Server is { State: LeanServerState.Running } server ? (u, pos) => server.CompletionAsync(u, pos)
+            : doc.IsC && Main?.CServer is { IsRunning: true } clangd ? (u, pos) => clangd.CompletionAsync(u, pos)
+            : null;
+        if (complete is null)
         {
             return;
         }
         TextViewPosition p = _editor.TextArea.Caret.Position;
         int caret = _editor.CaretOffset;
-        // Completion answers about the text Lean has; give the pending edit a moment to arrive.
+        // Completion answers about the text the server has; give the pending edit a moment to arrive.
         await Task.Delay(200);
         IReadOnlyList<CompletionItem> items;
         try
         {
-            items = await server.CompletionAsync(doc.Uri, new Position(p.Line - 1, p.Column - 1));
+            items = await complete(doc.Uri, new Position(p.Line - 1, p.Column - 1));
         }
-        catch (Exception e) when (e is JsonRpcException or IOException)
+        catch (Exception e) when (e is JsonRpcException or IOException or InvalidOperationException)
         {
             return;
         }
@@ -706,7 +714,7 @@ public sealed class LeanEditor : UserControl
 
     private async void OnPointerHover(object? sender, PointerEventArgs e)
     {
-        if (_current is not { IsLean: true } doc)
+        if (_current is not DocumentViewModel doc || !(doc.IsLean || doc.IsC))
         {
             return;
         }
@@ -743,7 +751,7 @@ public sealed class LeanEditor : UserControl
             }
         }
         // A tactic or keyword under the pointer: say what it does, for people new to Lean.
-        if (WordAt(doc.Document, doc.Document.GetOffset(p.Location)) is string word && Core.Learn.TacticGuide.Explain(word) is { } guide)
+        if (doc.IsLean && WordAt(doc.Document, doc.Document.GetOffset(p.Location)) is string word && Core.Learn.TacticGuide.Explain(word) is { } guide)
         {
             panel.Children.Add(new StackPanel
             {
@@ -758,7 +766,7 @@ public sealed class LeanEditor : UserControl
         }
         // How to type the symbol under the pointer, which Lean users constantly need to know.
         int off = doc.Document.GetOffset(p.Location);
-        if (off < doc.Document.TextLength)
+        if (doc.IsLean && off < doc.Document.TextLength)
         {
             string ch = char.IsHighSurrogate(doc.Document.GetCharAt(off)) && off + 1 < doc.Document.TextLength
                 ? doc.Document.GetText(off, 2)
@@ -774,7 +782,24 @@ public sealed class LeanEditor : UserControl
                 });
             }
         }
-        if (Main?.Server is { State: LeanServerState.Running } server)
+        if (doc.IsC && Main?.CServer is { IsRunning: true } clangd)
+        {
+            try
+            {
+                Hover? h = await clangd.HoverAsync(doc.Uri, lsp, cts.Token);
+                if (h is not null && h.Contents.Trim().Length > 0 && !cts.IsCancellationRequested)
+                {
+                    foreach (Control c in RenderMarkdown(h.Contents))
+                    {
+                        panel.Children.Add(c);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is JsonRpcException or IOException or OperationCanceledException or InvalidOperationException)
+            {
+            }
+        }
+        else if (Main?.Server is { State: LeanServerState.Running } server)
         {
             try
             {

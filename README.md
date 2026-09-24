@@ -93,6 +93,22 @@ AI assistants get all five too: the `prove`, `why_not_proved`, `profile`, `expor
 
 Assistants get these through the `extract_lemma` and `project_map` tools, and through `prove`, which now reports counterexamples.
 
+### C and Lean's FFI
+
+For Lean code that calls C (`@[extern "c_name"]`):
+
+- **Go to definition crosses the boundary.** F12 on an `@[extern]` declaration opens its C function. F12 on that C function opens the Lean declaration it implements.
+- **Bindings are checked.** Problems flags an `@[extern]` whose C function the project doesn't have. It also flags a C function that takes a different number of arguments than Lean passes, which is easy to get wrong with `IO` functions and their extra world argument. Lean's own runtime functions (`lean_*`) are left alone.
+- **C stubs with the right signature.** *Lean ▸ C and FFI ▸ Write C Stub for This Extern* writes the C function Lean expects:
+  - scalar types (`UInt32`, `UInt64`, `Float`, `Bool`…) unboxed;
+  - objects as `lean_obj_arg`, or `b_lean_obj_arg` when borrowed with `@&`;
+  - the world argument and `lean_io_result_mk_ok` for `IO`.
+
+  *New C Binding…* writes both sides from a name and a type. The tests compile these stubs with Lean's own C compiler, with `-Wall -Werror`.
+- **clangd for the C files**, when it's installed. It adds errors as you type, hover, completion and go to definition. Lean's headers are on its include path, so `#include <lean/lean.h>` just works, and nothing is written into your project.
+
+![A C file checked by clangd, and a binding without its C function in Problems](docs/images/ffi-c.png)
+
 ### A tactic state that follows every step
 
 The panel on the right always shows the goals at the cursor, **with Lean's own diff of the tactic you're on**:
@@ -275,6 +291,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `export_walkthrough` | Writes a step-by-step proof walkthrough web page, and returns a Lean 4 web editor link. |
 | `extract_lemma` | Turns the goal at a `sorry` into a lemma of its own, with the hypotheses it needs, and uses it there. |
 | `project_map` | The project's proof state, and the sorries and axioms the most declarations depend on. |
+| `ffi_bindings` | Every `@[extern]` and the C function behind it, what doesn't match, and C stubs for the missing ones. |
 | `project_info`, `toolchains` | The project's layout, toolchain and build state. |
 | `studio_context` | What *you* are looking at in Lean Studio: file, cursor, selection, goals, messages. |
 | `studio_show` | Opens a file at a line in your Lean Studio window, so you can review what it did. |
@@ -412,7 +429,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **0.4**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.5**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - ProofWidgets and other user widgets aren't rendered. Goals are Lean's interactive text, and you can hover into subterms, but there are no custom widget views.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.

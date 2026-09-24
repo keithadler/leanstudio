@@ -605,6 +605,57 @@ internal static class Scenario
         window.SetTheme("Dark");
         await Task.Delay(300);
 
+        Console.WriteLine("C and the FFI");
+        string nativeLean = Path.Combine(proofsDir, "Native.lean");
+        string cDir = Path.Combine(repo, "samples", "Proofs", "c");
+        string nativeC = Path.Combine(cDir, "native.c");
+        try
+        {
+            Directory.CreateDirectory(cDir);
+            await File.WriteAllTextAsync(nativeC, "#include <lean/lean.h>\n\nLEAN_EXPORT uint32_t proofs_add(uint32_t a, uint32_t b) {\n    return a + b;\n}\n");
+            await File.WriteAllTextAsync(nativeLean, "/-- Adds in C. -/\n@[extern \"proofs_add\"]\nopaque add (a b : UInt32) : UInt32\n\n@[extern \"proofs_twice\"]\nopaque twice (s : @& String) : IO UInt64\n");
+            DocumentViewModel nl = (await vm.OpenFileAsync(nativeLean))!;
+            IReadOnlyList<LeanStudio.Core.Workflow.FfiProblem> ffi = await vm.CheckFfiNowAsync();
+            Check(ffi.Count == 1 && ffi[0].Message.Contains("No C function proofs_twice", StringComparison.Ordinal)
+                && vm.Problems.Any(p => p.Diagnostic.Source == "ffi"), "an @[extern] without its C function shows in Problems");
+            nl.Reveal(2, 8);
+            await vm.GoToDefinitionCommand.ExecuteAsync(null);
+            Check(await WaitFor(() => vm.ActiveDocument?.Path == nativeC && vm.ActiveDocument.CaretLine == 2, 10), "go to definition on an @[extern] opens its C function");
+            DocumentViewModel nc = vm.ActiveDocument!;
+            if (LeanStudio.Lsp.CLanguageServer.Find() is not null)
+            {
+                Check(await WaitFor(() => vm.CServer?.IsRunning == true, 30), "clangd serves the C file, with Lean's headers");
+                nc.Document.Insert(nc.Document.TextLength, "\nint broken(void) { return nope; }\n");
+                Check(await WaitFor(() => nc.Diagnostics.Any(d => d.Message.Contains("nope", StringComparison.Ordinal)), 30)
+                    && !nc.Diagnostics.Any(d => d.Message.Contains("lean.h", StringComparison.Ordinal)), "and reports C errors (and finds lean.h)");
+                Snap(window, outDir, "27-ffi-c");
+                nc.Document.UndoStack.Undo();
+            }
+            nc.Reveal(2, 25);
+            await vm.GoToDefinitionCommand.ExecuteAsync(null);
+            Check(await WaitFor(() => vm.ActiveDocument?.Path == nativeLean && vm.ActiveDocument.CaretLine == 1, 10), "and from the C function back to the Lean declaration");
+            nl.Reveal(5, 8);
+            await vm.WriteCStubCommand.ExecuteAsync(null);
+            Check(await WaitFor(() => File.ReadAllText(nativeC).Contains("LEAN_EXPORT lean_obj_res proofs_twice(b_lean_obj_arg s, lean_obj_arg world)", StringComparison.Ordinal), 10),
+                "Write C Stub writes the function with the signature Lean expects");
+            Check((await vm.CheckFfiNowAsync()).Count == 0, "and then every binding has its C function");
+            foreach (DocumentViewModel d in vm.Documents.Where(d => d.Path == nativeC || d.Path == nativeLean).ToList())
+            {
+                await d.SaveAsync();
+                await vm.CloseDocumentCommand.ExecuteAsync(d);
+            }
+        }
+        finally
+        {
+            File.Delete(nativeLean);
+            if (Directory.Exists(cDir))
+            {
+                Directory.Delete(cDir, true);
+            }
+            await vm.CheckFfiNowAsync();
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
         void OnDialog(Window d) => Dispatcher.UIThread.Post(async () =>
