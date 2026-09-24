@@ -15,6 +15,7 @@ namespace LeanStudio.App.Editor;
 public sealed class SemanticColorizer : DocumentColorizingTransformer
 {
     private List<(int Offset, int Length, string Type, bool Deprecated)> _tokens = [];
+    private List<(int Offset, int Length)> _struck = [];
     private bool _dark = true;
 
     /// <summary>Whether to draw at all.</summary>
@@ -47,8 +48,39 @@ public sealed class SemanticColorizer : DocumentColorizingTransformer
         _tokens = list;
     }
 
+    /// <summary>
+    /// Strike through the uses of deprecated names Lean warned about. Lean sends a semantic token only for some
+    /// names, so its "`x` has been deprecated" warnings say where the rest are.
+    /// </summary>
+    public void SetDeprecated(TextDocument doc, IEnumerable<Diagnostic> diagnostics)
+    {
+        var list = new List<(int, int)>();
+        foreach (Diagnostic d in diagnostics.Where(d => d.IsDeprecated))
+        {
+            Lsp.Range r = d.Range.Start == d.Range.End ? d.Extent : d.Range;
+            if (r.Start.Line >= doc.LineCount || r.End.Line >= doc.LineCount)
+            {
+                continue;
+            }
+            int start = doc.GetLineByNumber(r.Start.Line + 1).Offset + r.Start.Character;
+            int end = doc.GetLineByNumber(r.End.Line + 1).Offset + r.End.Character;
+            if (start < end && end <= doc.TextLength)
+            {
+                list.Add((start, end - start));
+            }
+        }
+        _struck = list;
+    }
+
+    /// <summary>How many uses of deprecated names are struck through.</summary>
+    public int StruckCount => _struck.Count + _tokens.Count(t => t.Deprecated);
+
     /// <summary>Forget every token (a different document).</summary>
-    public void Clear() => _tokens = [];
+    public void Clear()
+    {
+        _tokens = [];
+        _struck = [];
+    }
 
     /// <summary>How many tokens are coloured.</summary>
     public int Count => _tokens.Count;
@@ -56,11 +88,13 @@ public sealed class SemanticColorizer : DocumentColorizingTransformer
     /// <summary>Move tokens after an edit, and drop the ones it touched.</summary>
     public void Shift(DocumentChangeEventArgs e)
     {
+        int delta = e.InsertionLength - e.RemovalLength;
+        _struck = _struck.Where(s => s.Offset + s.Length <= e.Offset || s.Offset >= e.Offset + e.RemovalLength)
+                         .Select(s => s.Offset >= e.Offset + e.RemovalLength ? (s.Offset + delta, s.Length) : s).ToList();
         if (_tokens.Count == 0)
         {
             return;
         }
-        int delta = e.InsertionLength - e.RemovalLength;
         var next = new List<(int, int, string, bool)>(_tokens.Count);
         foreach (var t in _tokens)
         {
@@ -90,6 +124,14 @@ public sealed class SemanticColorizer : DocumentColorizingTransformer
     /// <inheritdoc />
     protected override void ColorizeLine(DocumentLine line)
     {
+        foreach ((int offset, int length) in _struck)
+        {
+            int from = Math.Max(offset, line.Offset), to = Math.Min(offset + length, line.EndOffset);
+            if (from < to)
+            {
+                ChangeLinePart(from, to, el => el.TextRunProperties.SetTextDecorations(TextDecorations.Strikethrough));
+            }
+        }
         if (!Enabled || _tokens.Count == 0)
         {
             return;

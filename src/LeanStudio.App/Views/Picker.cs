@@ -40,6 +40,7 @@ internal static class Picker
         });
         var w = new Window
         {
+            Title = placeholder,
             Width = 620,
             SizeToContent = SizeToContent.Height,
             WindowDecorations = WindowDecorations.BorderOnly,
@@ -114,6 +115,7 @@ internal static class Picker
         w.Deactivated += (_, _) => w.Close();
         w.Opened += (_, _) =>
         {
+            DialogHooks.Raise(w);
             box.Focus();
             box.CaretIndex = box.Text?.Length ?? 0;
             _ = Refresh();

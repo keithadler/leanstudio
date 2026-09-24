@@ -58,6 +58,22 @@ public sealed partial class LeanServer : IAsyncDisposable
     /// <param name="command">How to start the server process.</param>
     public LeanServer(LeanServerCommand command) => _command = command;
 
+    /// <summary>The server process's id while it runs, or null (for checks, and Lean's Processes).</summary>
+    public int? ProcessId
+    {
+        get
+        {
+            try
+            {
+                return _process is { HasExited: false } p ? p.Id : null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+    }
+
     /// <summary>How the server is started.</summary>
     public LeanServerCommand Command => _command;
     /// <summary>Where the server is in its life; <see cref="StateChanged"/> reports each change.</summary>

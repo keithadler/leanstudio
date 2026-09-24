@@ -347,6 +347,69 @@ public sealed class ProTests
     }
 
     [Fact]
+    public async Task TenetRejectsAProofLeansKernelWasToldToSkip()
+    {
+        // `debug.skipKernelTC` lets a module add `False`, "proved" by `True.intro`, without Lean's kernel checking
+        // it. Tenet's own kernel must refuse it, and say why, while the honest theorem beside it is verified.
+        Lean.RequireLean();
+        string root = Directory.CreateTempSubdirectory("leanstudio-reject").FullName;
+        File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+        File.WriteAllText(Path.Combine(root, "lakefile.toml"), "name = \"Bad\"\ndefaultTargets = [\"Bad\"]\n\n[[lean_lib]]\nname = \"Bad\"\n");
+        File.WriteAllText(Path.Combine(root, "Bad.lean"), """
+            import Lean
+            open Lean Elab Command
+
+            set_option debug.skipKernelTC true in
+            run_cmd liftCoreM do
+              addDecl (.thmDecl { name := `Bad.oops, levelParams := [], type := mkConst ``False, value := mkConst ``True.intro })
+
+            theorem Bad.fine : 1 + 1 = 2 := rfl
+            """);
+        var project = new LeanProject(root);
+        try
+        {
+            var build = await Lake.BuildAsync(project, ct: TestContext.Current.CancellationToken);
+            Assert.True(build.Success, build.Output);
+            using var ws = Core.Verification.TenetWorkspace.Open(project);
+            var report = await ws.VerifyAsync(ct: TestContext.Current.CancellationToken);
+            var verdicts = report.Declarations.ToDictionary(d => d.Name);
+            Assert.Equal(Core.Verification.VerificationStatus.Rejected, verdicts["Bad.oops"].Status);
+            Assert.False(string.IsNullOrWhiteSpace(verdicts["Bad.oops"].Message));
+            Assert.Equal(Core.Verification.VerificationStatus.Verified, verdicts["Bad.fine"].Status);
+            Assert.Equal(1, report.Rejected);
+        }
+        finally
+        {
+            Lean.DeleteTree(root);
+        }
+    }
+
+    [Fact]
+    public async Task TenetLeavesOutAModuleWhoseSourceWasDeleted()
+    {
+        // Lake leaves a deleted module's build behind; Tenet must not count it as part of the project.
+        Lean.RequireLean();
+        LeanProject project = await BuiltProjectAsync("Gone", ("Gone.lean", "import Gone.Keep\nimport Gone.Old\n"),
+            ("Gone/Keep.lean", "theorem Gone.kept : True := trivial\n"), ("Gone/Old.lean", "theorem Gone.old : True := trivial\n"));
+        try
+        {
+            File.Delete(Path.Combine(project.Root, "Gone", "Old.lean"));
+            File.WriteAllText(Path.Combine(project.Root, "Gone.lean"), "import Gone.Keep\n");
+            Assert.True(File.Exists(Path.Combine(project.Root, ".lake", "build", "lib", "lean", "Gone", "Old.olean")));
+            using var ws = Core.Verification.TenetWorkspace.Open(project);
+            Assert.DoesNotContain(ws.OwnModules, m => m.ToString() == "Gone.Old");
+            Assert.Contains(ws.OwnModules, m => m.ToString() == "Gone.Keep");
+            var report = await ws.VerifyAsync(ct: TestContext.Current.CancellationToken);
+            Assert.DoesNotContain(report.Declarations, d => d.Name == "Gone.old");
+            Assert.Contains(report.Declarations, d => d.Name == "Gone.kept");
+        }
+        finally
+        {
+            Lean.DeleteTree(project.Root);
+        }
+    }
+
+    [Fact]
     public void KnowsWhatImportsWhat()
     {
         string root = Directory.CreateTempSubdirectory("leanstudio-graph").FullName;
@@ -590,6 +653,7 @@ public sealed class ProTests
                 "theorem Lib.bar (n : Nat) : n + 0 = n := rfl\n@[deprecated Lib.bar (since := \"2026-09-24\")] theorem Lib.foo (n : Nat) : n + 0 = n := rfl\n");
             await Git(lib, "commit", "-q", "-am", "v2");
 
+            string manifestBefore = File.ReadAllText(project.ManifestPath); // what Update Mathlib backs up
             ProcessResult update = await Lake.UpdateAsync(project, ct: ct, package: "Lib");
             Assert.True(update.Success, update.Output);
             string? after = DependencyBump.ManifestRev(project, "Lib");
@@ -599,6 +663,14 @@ public sealed class ProTests
             DeprecatedUse use = Assert.Single(DependencyBump.DeprecatedUses(LakeOutput.Parse(build.Output, root)));
             Assert.Equal(("Lib.foo", "Lib.bar"), (use.Old, use.New));
             Assert.Equal(Lint.RealPath(Path.Combine(root, "App.lean")), Lint.RealPath(use.File));
+
+            // Undo Last Dependency Update puts the manifest back and builds: Lake must move Lib back to v1.
+            File.WriteAllText(project.ManifestPath, manifestBefore);
+            ProcessResult undone = await Lake.BuildAsync(project, ct: ct);
+            Assert.True(undone.Success, undone.Output);
+            Assert.Equal(before, DependencyBump.ManifestRev(project, "Lib"));
+            Assert.DoesNotContain("deprecated", undone.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Lib.bar", File.ReadAllText(Path.Combine(project.PackagesDirectory, "Lib", "Lib.lean")), StringComparison.Ordinal);
         }
         finally
         {
@@ -626,10 +698,22 @@ public sealed class ProTests
             IReadOnlyList<BlueprintCheck> checks = Blueprint.Check(Blueprint.Read(Blueprint.SourceFolder(project.Root)!), ws.BlueprintStatus);
             Assert.Equal([("lem:good", false), ("lem:pending", true), ("lem:gone", false)], checks.Select(c => (c.Node.Label, c.Disagrees)));
             Assert.Equal("proof marked \\leanok, but Blue.pending rests on sorry", checks[1].Verdict);
+
+            // The same through the MCP tool, for assistants.
+            await using var bench = new Core.Agents.Workbench(project.Root);
+            Mcp.McpServer server = Mcp.LeanTools.Create(bench, "test");
+            var r = await server.HandleAsync(new System.Text.Json.Nodes.JsonObject
+            {
+                ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = "tools/call",
+                ["params"] = new System.Text.Json.Nodes.JsonObject { ["name"] = "blueprint", ["arguments"] = new System.Text.Json.Nodes.JsonObject() },
+            }, TestContext.Current.CancellationToken);
+            string text = r!["result"]!["content"]![0]!["text"]!.GetValue<string>();
+            Assert.StartsWith("1 of 3 done; 1 disagree with Lean.", text, StringComparison.Ordinal);
+            Assert.Contains("DISAGREES lem:pending", text, StringComparison.Ordinal);
         }
         finally
         {
-            Directory.Delete(project.Root, true);
+            Lean.DeleteTree(project.Root);
         }
     }
 

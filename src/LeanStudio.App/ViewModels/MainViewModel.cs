@@ -92,6 +92,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _buildCts;
     private TenetWorkspace? _tenet;
 
+    /// <summary>The Lean server's process id while it runs, or null (for checks).</summary>
+    public int? ServerProcessId => _server?.ProcessId;
+
     /// <summary>The project's build opened with Tenet, once it has been (for scripts and checks).</summary>
     public TenetWorkspace? TenetBuild => _tenet;
     private LeanServer? _server;
@@ -1315,9 +1318,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await ReopenTenetAsync();
     });
 
-    /// <summary>Cancel the running long task (a build, a clone…).</summary>
+    /// <summary>Cancel the running long task: a build, a cache fetch, a task from the Tasks menu, or Tenet's verification.</summary>
     [RelayCommand]
-    private void CancelTask() => _buildCts?.Cancel();
+    private void CancelTask()
+    {
+        _buildCts?.Cancel();
+        _taskCts?.Cancel();
+        _verifyCts?.Cancel();
+    }
+
+    private CancellationTokenSource? _verifyCts;
+
+    /// <summary>
+    /// Let the output lines already printed reach the Output panel and the progress reader. They are posted to the
+    /// UI thread as they arrive; a task that has just ended must not be summed up before its last lines are read.
+    /// </summary>
+    private static Task DrainOutputAsync() => Dispatcher.UIThread.InvokeAsync(static () => { }, DispatcherPriority.Background).GetTask();
 
     private async Task RunBusyAsync(string what, Func<CancellationToken, Task> action)
     {
@@ -1332,6 +1348,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             await action(cts.Token);
+            await DrainOutputAsync();
         }
         catch (OperationCanceledException)
         {
@@ -1413,15 +1430,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             BusyDetail = $"module {p.ModuleIndex + 1} of {p.ModuleCount} · {p.Module}{left}";
             BusyElapsed = "Running for " + Core.Workflow.TaskProgress.Format(elapsed);
         });
+        _verifyCts?.Cancel();
+        var verifyCts = new CancellationTokenSource();
+        _verifyCts = verifyCts;
+        bool stopped = false;
         try
         {
-            VerificationReport r = await ws.VerifyAsync(progress: progress);
+            VerificationReport r = await ws.VerifyAsync(progress: progress, ct: verifyCts.Token);
             Verification.Show(r);
             Log($"Tenet: {r.Verified} verified, {r.Conditional} resting on an assumption, {r.Rejected} rejected ({r.Elapsed.TotalSeconds:F1}s)");
             foreach (DocumentViewModel d in Documents)
             {
                 ApplyVerdicts(d);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            stopped = true;
+            Verification.Summary = "Verification was cancelled.";
+            Log("Tenet: cancelled.");
         }
         catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)
         {
@@ -1432,7 +1459,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Verification.IsRunning = false;
             Verification.ProgressText = "";
-            EndProgress("Tenet's verification", cancelled: false);
+            EndProgress("Tenet's verification", cancelled: stopped);
             IsBusy = false;
             BusyText = "";
         }

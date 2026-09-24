@@ -47,4 +47,29 @@ public sealed class ProjectTests
     [InlineData("", false)]
     [InlineData("a b", false)]
     public void ValidatesProjectNames(string name, bool ok) => Assert.Equal(ok, Lake.IsValidName(name));
+
+    [Theory]
+    [InlineData(ProjectTemplate.Standard)]
+    [InlineData(ProjectTemplate.Library)]
+    [InlineData(ProjectTemplate.Executable)]
+    public async Task EachTemplateMakesAProjectThatBuilds(ProjectTemplate template)
+    {
+        Lean.RequireLean();
+        string parent = Directory.CreateTempSubdirectory("leanstudio-new").FullName;
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            var (result, project) = await Lake.NewAsync(parent, "fresh_" + template.ToString().ToLowerInvariant(), template, Lean.Toolchain, ct: ct);
+            Assert.True(result.Success, result.Output);
+            Assert.NotNull(project);
+            Assert.Equal(Lean.Toolchain, project.Toolchain);
+            Assert.True(project.IsLakeProject);
+            var build = await Lake.BuildAsync(project, ct: ct);
+            Assert.True(build.Success, build.Output);
+        }
+        finally
+        {
+            Lean.DeleteTree(parent);
+        }
+    }
 }

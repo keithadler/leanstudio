@@ -90,4 +90,69 @@ public sealed class GitTests
         Assert.Contains("leanprover/lean-action", File.ReadAllText(workflow), StringComparison.Ordinal);
         Assert.Null(GitHub.AddLeanWorkflow(dir)); // only once
     }
+
+    [Fact]
+    public async Task StagesDiscardsSwitchesPushesAndPullsWithARemote()
+    {
+        Assert.SkipWhen(!GitRepository.IsGitInstalled, "git is not installed");
+        string dir = Directory.CreateTempSubdirectory("leanstudio-remote").FullName;
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            // A remote (a bare repository) and two clones of it: one pushes, the other pulls.
+            string remote = Path.Combine(dir, "proofs.git");
+            Directory.CreateDirectory(remote);
+            Assert.True((await Core.Processes.ProcessRunner.RunAsync("git", ["init", "--bare", "-b", "main"], remote, ct: ct)).Success);
+            async Task<GitRepository> CloneAs(string who)
+            {
+                var (clone, path) = await GitRepository.CloneAsync(remote, Path.Combine(dir, who), ct: ct);
+                Assert.True(clone.Success, clone.Output);
+                GitRepository r = GitRepository.Find(path!)!;
+                await r.RunAsync(["config", "user.email", "test@example.com"], ct: ct);
+                await r.RunAsync(["config", "user.name", "Test"], ct: ct);
+                await r.RunAsync(["config", "commit.gpgsign", "false"], ct: ct);
+                await r.RunAsync(["checkout", "-B", "main"], ct: ct);
+                return r;
+            }
+            GitRepository a = await CloneAs("a");
+            string file = Path.Combine(a.Root, "A.lean");
+            await File.WriteAllTextAsync(file, "def a := 1\n", ct);
+            Assert.True((await a.CommitAsync("first", ct)).Success);
+            var push = await a.PushAsync(ct: ct); // no upstream yet: published to origin and tracked
+            Assert.True(push.Success, push.Output);
+            Assert.Equal("origin/main", (await a.StatusAsync(ct)).Upstream);
+
+            // Stage, unstage, discard.
+            await File.WriteAllTextAsync(file, "def a := 2\n", ct);
+            await a.StageAsync(["A.lean"], ct);
+            Assert.True(Assert.Single((await a.StatusAsync(ct)).Changes).IsStaged);
+            await a.UnstageAsync(["A.lean"], ct);
+            Assert.False(Assert.Single((await a.StatusAsync(ct)).Changes).IsStaged);
+            await a.DiscardAsync(Assert.Single((await a.StatusAsync(ct)).Changes), ct);
+            Assert.Equal("def a := 1\n", (await File.ReadAllTextAsync(file, ct)).Replace("\r\n", "\n", StringComparison.Ordinal));
+            await File.WriteAllTextAsync(Path.Combine(a.Root, "Scratch.lean"), "-- scratch\n", ct);
+            await a.DiscardAsync(Assert.Single((await a.StatusAsync(ct)).Changes), ct); // untracked: deleted
+            Assert.False(File.Exists(Path.Combine(a.Root, "Scratch.lean")));
+            Assert.True((await a.StatusAsync(ct)).IsClean);
+
+            // Switch branches, and back.
+            Assert.True((await a.CreateBranchAsync("feature", ct)).Success);
+            Assert.Equal("feature", (await a.StatusAsync(ct)).Branch);
+            Assert.True((await a.CheckoutAsync("main", ct)).Success);
+            Assert.Equal("main", (await a.StatusAsync(ct)).Branch);
+
+            // The other clone pulls what was pushed.
+            GitRepository b = await CloneAs("b");
+            await File.WriteAllTextAsync(file, "def a := 1\ndef b := 2\n", ct);
+            Assert.True((await a.CommitAsync("second", ct)).Success);
+            Assert.True((await a.PushAsync(ct: ct)).Success);
+            var pull = await b.PullAsync(ct: ct);
+            Assert.True(pull.Success, pull.Output);
+            Assert.Contains("def b := 2", await File.ReadAllTextAsync(Path.Combine(b.Root, "A.lean"), ct), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Lean.DeleteTree(dir);
+        }
+    }
 }

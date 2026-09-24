@@ -211,6 +211,15 @@ public sealed class AssistTests
 
         r = await repl.EvalAsync(server, path, context, "example : double 2 = 4 := rfl", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         Assert.Equal("✓ accepted", r.Output);
+
+        // Inside a namespace, with a `variable` above the cursor: both are in scope.
+        const string scoped = "namespace Foo\n\nvariable (k : Nat)\n\ndef triple : Nat := 3 * k\n\ntheorem t : triple 1 = 3 := rfl\n\nend Foo\n";
+        string inside = LeanRepl.Context(scoped, 6);
+        r = await repl.EvalAsync(server, path, inside, "triple 2", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.False(r.IsError, r.Output);
+        Assert.Equal("6", r.Output);
+        r = await repl.EvalAsync(server, path, inside, "#check k", TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Contains("k : Nat", r.Output, StringComparison.Ordinal);
         await repl.CloseAsync(server);
     }
 

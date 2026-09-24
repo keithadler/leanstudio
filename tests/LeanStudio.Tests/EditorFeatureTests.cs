@@ -87,6 +87,49 @@ public sealed class EditorFeatureTests
     }
 
     [Fact]
+    public async Task CompletesNamesFollowsCallsOutAndMarksDeprecatedNames()
+    {
+        Lean.RequireLean();
+        var (server, uri) = await OpenAsync();
+        await using var _ = server;
+        var ct = TestContext.Current.CancellationToken;
+        string[] lines = Source.Split('\n');
+
+        // What usesSquare uses: the other half of Who Uses This / What This Uses.
+        CallHierarchyItem usesSquare = Assert.Single(await server.PrepareCallHierarchyAsync(uri, new Position(5, 5), ct));
+        IReadOnlyList<CallSite> callees = await server.OutgoingCallsAsync(usesSquare, ct);
+        Assert.Contains(callees, c => c.Item.Name == "square");
+
+        // The expected type of the term under the cursor (the Tactic State outside a tactic proof).
+        PlainTermGoal? term = await server.PlainTermGoalAsync(uri, new Position(5, lines[5].IndexOf("square 3", StringComparison.Ordinal) + 7), ct);
+        Assert.NotNull(term);
+        Assert.Contains("Nat", term.Goal, StringComparison.Ordinal);
+
+        // Completion after a dot, and a deprecated name marked as such where it is used.
+        string more = Source + """
+
+
+            @[deprecated square (since := "2026-01-01")] def oldSquare (n : Nat) : Nat := square n
+
+            def usesOld := oldSquare 2
+
+            example := Nat.add_co
+            """;
+        await server.ChangeAsync(uri, more);
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+        string[] now = more.Split('\n');
+        int completeLine = now.Length - 1;
+        IReadOnlyList<CompletionItem> items = await server.CompletionAsync(uri, new Position(completeLine, now[completeLine].Length), ct);
+        Assert.Contains(items, i => i.Label == "add_comm");
+
+        int useLine = Array.FindIndex(now, l => l.StartsWith("def usesOld", StringComparison.Ordinal));
+        // Lean sends no token for a use of a deprecated function, only its warning: that is what is struck through.
+        Diagnostic deprecated = Assert.Single(server.DiagnosticsOf(uri), d => d.IsDeprecated);
+        Assert.Equal(useLine, deprecated.Range.Start.Line);
+        Assert.Equal("oldSquare", now[useLine][deprecated.Range.Start.Character..deprecated.Range.End.Character]);
+    }
+
+    [Fact]
     public async Task FindsTheUserWidgetsAtAPosition()
     {
         Lean.RequireLean();

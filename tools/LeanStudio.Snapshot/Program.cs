@@ -1196,6 +1196,165 @@ internal static class Scenario
                 $"Lean's processes shows the worker for each open file, with its memory ({string.Join(", ", workers.Select(w => Path.GetFileName(w.File) + " " + w.Memory))})");
         }
 
+        Console.WriteLine("every shortcut does its job");
+        {
+            vm.ActiveDocument = doc;
+            await WaitFor(() => false, 0.3);
+            var cmdKey = OperatingSystem.IsMacOS() ? Avalonia.Input.KeyModifiers.Meta : Avalonia.Input.KeyModifiers.Control;
+            const Avalonia.Input.KeyModifiers Shift = Avalonia.Input.KeyModifiers.Shift, Alt = Avalonia.Input.KeyModifiers.Alt, None = Avalonia.Input.KeyModifiers.None;
+            string? opened = null;
+            void Grab(Window d)
+            {
+                opened = d.Title;
+                Dispatcher.UIThread.Post(d.Close);
+            }
+            DialogHooks.Opened += Grab;
+            var textArea = window.MainEditorControl.TextEditor.TextArea;
+            // Real key presses, through the platform's input, with the editor focused, as when someone types them.
+            void Key(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods, bool inEditor = false)
+            {
+                textArea.Focus();
+                var raw = Avalonia.Input.RawInputModifiers.None;
+                raw |= mods.HasFlag(Avalonia.Input.KeyModifiers.Meta) ? Avalonia.Input.RawInputModifiers.Meta : 0;
+                raw |= mods.HasFlag(Avalonia.Input.KeyModifiers.Control) ? Avalonia.Input.RawInputModifiers.Control : 0;
+                raw |= mods.HasFlag(Avalonia.Input.KeyModifiers.Shift) ? Avalonia.Input.RawInputModifiers.Shift : 0;
+                raw |= mods.HasFlag(Avalonia.Input.KeyModifiers.Alt) ? Avalonia.Input.RawInputModifiers.Alt : 0;
+                window.KeyPress(key, raw, Avalonia.Input.PhysicalKey.None, null);
+                window.KeyRelease(key, raw, Avalonia.Input.PhysicalKey.None, null);
+                Dispatcher.UIThread.RunJobs();
+            }
+            async Task Opens(string what, Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods, Func<string?, bool> title)
+            {
+                opened = null;
+                Key(key, mods);
+                Check(await WaitFor(() => opened is not null, 5) && title(opened), $"{what} opens ({opened ?? "nothing"})");
+                await WaitFor(() => false, 0.3);
+            }
+            await Opens("⌘⇧P, the command palette,", Avalonia.Input.Key.P, cmdKey | Shift, t => t == "Type a command");
+            await Opens("⌘P, Go to File,", Avalonia.Input.Key.P, cmdKey, t => t == "Go to file");
+            await Opens("⌘T, Go to Symbol,", Avalonia.Input.Key.T, cmdKey, t => t?.StartsWith("Go to symbol", StringComparison.Ordinal) == true);
+            await Opens(OperatingSystem.IsMacOS() ? "⌘L, Go to Line," : "Ctrl+G, Go to Line,", OperatingSystem.IsMacOS() ? Avalonia.Input.Key.L : Avalonia.Input.Key.G, cmdKey, t => t == "Go to line");
+            doc.Reveal(1, 5); // on `double`
+            await WaitFor(() => false, 0.3);
+            await Opens("F2, Rename,", Avalonia.Input.Key.F2, None, t => t?.Contains("Rename", StringComparison.OrdinalIgnoreCase) == true);
+            await Opens("⌘, (Preferences)", Avalonia.Input.Key.OemComma, cmdKey, t => t?.Contains("Preferences", StringComparison.Ordinal) == true);
+
+            Key(Avalonia.Input.Key.F, cmdKey | Shift);
+            Check(vm.BottomTab == MainViewModel.SearchPanel, "⌘⇧F opens Find in Files");
+
+            // Layout: each toggle hides its part, and the same key brings it back.
+            var mainGrid = window.FindControl<Grid>("MainGrid")!;
+            var centerGrid = window.FindControl<Grid>("CenterGrid")!;
+            bool Hidden(GridLength g) => g.IsAbsolute && g.Value < 1;
+            foreach ((string what, Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods, Func<bool> hidden) in new (string, Avalonia.Input.Key, Avalonia.Input.KeyModifiers, Func<bool>)[]
+            {
+                ("⌘J hides the bottom panel", Avalonia.Input.Key.J, cmdKey, () => Hidden(centerGrid.RowDefinitions[3].Height)),
+                ("⌘⌥B hides the sidebar", Avalonia.Input.Key.B, cmdKey | Alt, () => Hidden(mainGrid.ColumnDefinitions[0].Width)),
+                ("⌘⌥I hides the goals", Avalonia.Input.Key.I, cmdKey | Alt, () => Hidden(mainGrid.ColumnDefinitions[4].Width)),
+                ("⌘⌥Z, zen mode, hides the sidebar and the panel", Avalonia.Input.Key.Z, cmdKey | Alt, () => Hidden(mainGrid.ColumnDefinitions[0].Width) && Hidden(centerGrid.RowDefinitions[3].Height)),
+            })
+            {
+                Key(key, mods);
+                bool gone = hidden();
+                Key(key, mods);
+                Check(gone && !hidden(), what + ", and shows it again");
+            }
+            bool wrap = vm.Settings.WordWrap;
+            Key(Avalonia.Input.Key.Z, Alt);
+            Check(vm.Settings.WordWrap != wrap && window.MainEditorControl.TextEditor.WordWrap == !wrap, "⌥Z turns word wrap " + (wrap ? "off" : "on"));
+            Key(Avalonia.Input.Key.Z, Alt);
+
+            // ⌘⇧D: the name at the cursor in the Library.
+            doc.Reveal(1, 5);
+            await WaitFor(() => false, 0.3);
+            Key(Avalonia.Input.Key.D, cmdKey | Shift);
+            Check(await WaitFor(() => vm.SidebarTab == MainViewModel.LibraryTab && vm.Navigator.Details?.Name == "double", 10),
+                $"⌘⇧D shows the declaration at the cursor in the Library ({vm.Navigator.Details?.Name})");
+            vm.SidebarTab = 0;
+
+            // F8: the next problem.
+            doc.Reveal(0, 0);
+            int problemLine = doc.Diagnostics.Where(d => d.Severity <= LeanStudio.Lsp.DiagnosticSeverity.Warning).Min(d => d.Range.Start.Line);
+            Key(Avalonia.Input.Key.F8, None);
+            Check(await WaitFor(() => doc.CaretLine == problemLine, 5), $"F8 goes to the next problem (line {problemLine + 1}, caret on {doc.CaretLine + 1})");
+
+            // In the editor: ⌘/ comments a line and uncomments it; ⌘F opens find; Ctrl+Space completes.
+            doc.Reveal(1, 0);
+            await WaitFor(() => false, 0.3);
+            string uncommented = doc.Document.Text;
+            Key(Avalonia.Input.Key.OemQuestion, cmdKey, inEditor: true);
+            bool commented = doc.Document.GetText(doc.Document.GetLineByNumber(2)).StartsWith("--", StringComparison.Ordinal);
+            Key(Avalonia.Input.Key.OemQuestion, cmdKey, inEditor: true);
+            Check(commented && doc.Document.Text == uncommented, "⌘/ comments the line out, and back in");
+            Key(Avalonia.Input.Key.F, cmdKey, inEditor: true);
+            Check(window.MainEditorControl.TextEditor.SearchPanel.IsOpened, "⌘F opens find and replace in the file");
+            window.MainEditorControl.TextEditor.SearchPanel.Close();
+            int end = doc.Document.TextLength;
+            doc.Document.Insert(end, "\n#check Nat.add_c");
+            window.MainEditorControl.TextEditor.CaretOffset = doc.Document.TextLength;
+            Key(Avalonia.Input.Key.Space, Avalonia.Input.KeyModifiers.Control, inEditor: true);
+            Check(await WaitFor(() => window.MainEditorControl.CompletionCount > 0, 30), $"Ctrl+Space lists Lean's completions ({window.MainEditorControl.CompletionCount})");
+            Key(Avalonia.Input.Key.Escape, None, inEditor: true);
+            doc.Document.Remove(end, doc.Document.TextLength - end);
+            await vm.SaveCommand.ExecuteAsync(null);
+
+            // ⌘⇧R restarts Lean, and ⌘B builds.
+            int? pid = vm.ServerProcessId;
+            Key(Avalonia.Input.Key.R, cmdKey | Shift);
+            Check(await WaitFor(() => vm.ServerProcessId is int p && p != pid && vm.ServerStatus == "Lean: ready", 60), "⌘⇧R restarts Lean");
+            Key(Avalonia.Input.Key.B, cmdKey);
+            Check(await WaitFor(() => vm.IsBusy, 5) && await WaitFor(() => !vm.IsBusy && !vm.Verification.IsRunning, 180), "⌘B builds");
+            DialogHooks.Opened -= Grab;
+        }
+
+        Console.WriteLine("the things only the app does");
+        {
+            // Lean crashing is noticed, and it is started again.
+            int? pid = vm.ServerProcessId;
+            System.Diagnostics.Process.GetProcessById(pid!.Value).Kill(entireProcessTree: true);
+            Check(await WaitFor(() => vm.ServerProcessId is int p && p != pid && vm.ServerStatus == "Lean: ready", 60) && vm.Output.Text.Contains("Lean stopped unexpectedly; starting it again.", StringComparison.Ordinal),
+                "when Lean crashes, it is started again");
+
+            // A change on disk to a file with unsaved edits leaves the edits alone.
+            vm.ActiveDocument = doc;
+            string onDisk = await File.ReadAllTextAsync(doc.Path);
+            doc.Document.Insert(0, "-- mine, unsaved\n");
+            await File.WriteAllTextAsync(doc.Path, "-- someone else's\n" + onDisk);
+            await WaitFor(() => false, 3);
+            Check(doc.Document.Text.StartsWith("-- mine, unsaved\n", StringComparison.Ordinal) && doc.IsDirty, "an outside change doesn't overwrite unsaved edits");
+            doc.Document.Remove(0, "-- mine, unsaved\n".Length);
+            await File.WriteAllTextAsync(doc.Path, onDisk);
+            await WaitFor(() => doc.Document.Text == onDisk, 10);
+            await vm.SaveCommand.ExecuteAsync(null);
+
+            // Uses of a deprecated name are struck through.
+            string deprecatedFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "Old.lean");
+            await File.WriteAllTextAsync(deprecatedFile, "@[deprecated Nat.add_comm (since := \"2026-01-01\")] theorem old_comm (a b : Nat) : a + b = b + a := Nat.add_comm a b\n\nexample : 1 + 2 = 2 + 1 := old_comm 1 2\n");
+            try
+            {
+                DocumentViewModel? old = await vm.OpenFileAsync(deprecatedFile);
+                Check(await WaitFor(() => window.MainEditorControl.StruckThroughCount == 1, 60), $"a use of a deprecated name is struck through ({window.MainEditorControl.StruckThroughCount})");
+                await vm.CloseDocumentCommand.ExecuteAsync(old);
+            }
+            finally
+            {
+                File.Delete(deprecatedFile);
+            }
+            vm.ActiveDocument = doc;
+
+            // A long task can be cancelled; one that runs 30 s or more ends with a note, and a nudge if the app is behind.
+            var slow = new LeanStudio.Core.Workflow.ProjectTask("Long task", "", "/bin/sh", ["-c", "echo '✔ [1/2] Built A (1s)'; sleep 60"]);
+            Task cancelled = vm.RunTaskAsync(slow);
+            await WaitFor(() => vm.IsBusy, 5);
+            vm.CancelTaskCommand.Execute(null);
+            Check(await WaitFor(() => cancelled.IsCompleted && !vm.IsBusy, 10) && vm.Output.Text.Contains("■ Stopped.", StringComparison.Ordinal), "Cancel stops a running task");
+            int nudges = window.Taskbar.AttentionRequests;
+            await vm.RunTaskAsync(new LeanStudio.Core.Workflow.ProjectTask("Thirty seconds", "", "/bin/sh", ["-c", "echo '✔ [1/2] Built A (1s)'; sleep 31; echo 'warning: A.lean:1:1: declaration uses sorry'"]));
+            Check(vm.DoneNotice.StartsWith("✓ Thirty seconds took 3", StringComparison.Ordinal) && vm.DoneNotice.EndsWith(": 1 warning", StringComparison.Ordinal),
+                $"a long task ends with a note of how long it took and what it found ({vm.DoneNotice})");
+            Check(window.Taskbar.AttentionRequests == nudges + 1, "and asks for attention on the Dock or taskbar");
+        }
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
         var unnamedInDialogs = new List<string>();

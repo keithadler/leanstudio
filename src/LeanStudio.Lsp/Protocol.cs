@@ -72,9 +72,16 @@ public enum DiagnosticSeverity
 /// <param name="FullRange">Lean's extension: the whole extent of the syntax the message is about, or null when not given.</param>
 /// <param name="IsSilent">Lean's extension: not a message to show (such as "Goals accomplished!").</param>
 /// <param name="LeanTags">Lean's extension: what kind of message it is (1 unsolved goals, 2 goals accomplished).</param>
+/// <param name="Tags">LSP's tags: 1 unnecessary code, 2 deprecated.</param>
 public sealed record Diagnostic(Range Range, DiagnosticSeverity Severity, string Message, string? Source = null, Range? FullRange = null,
-    bool? IsSilent = null, IReadOnlyList<int>? LeanTags = null)
+    bool? IsSilent = null, IReadOnlyList<int>? LeanTags = null, IReadOnlyList<int>? Tags = null)
 {
+    /// <summary>
+    /// A use of a deprecated name: tagged so, or Lean's "`x` has been deprecated" warning (Lean sends no semantic
+    /// token for most names, so this is how the editor knows to strike one through).
+    /// </summary>
+    public bool IsDeprecated => Tags?.Contains(2) == true || Message.Contains("` has been deprecated", StringComparison.Ordinal);
+
     /// <summary>Lean reports a narrow range for the squiggle and the whole extent in fullRange.</summary>
     public Range Extent => FullRange ?? Range;
 

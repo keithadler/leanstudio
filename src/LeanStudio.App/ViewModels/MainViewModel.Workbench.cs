@@ -266,6 +266,7 @@ public sealed partial class MainViewModel
         try
         {
             ProcessResult r = await ProcessRunner.RunAsync(task.FileName, task.Arguments, Project.Root, Log, ct: cts.Token);
+            await DrainOutputAsync();
             Log(r.Success ? "■ Done." : $"■ Exited with code {r.ExitCode}.");
             if (task.Arguments.FirstOrDefault() == "build")
             {

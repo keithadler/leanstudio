@@ -229,7 +229,15 @@ public sealed class LocalHistory(string folder)
         {
             return; // unchanged since the last save
         }
-        string name = DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmssfff", CultureInfo.InvariantCulture) + ".snap";
+        // Named by the time, to the millisecond; two saves in the same millisecond take the next free one.
+        DateTime at = DateTime.UtcNow;
+        string last = existing.Length > 0 ? System.IO.Path.GetFileName(existing[^1]) : "";
+        string name;
+        while (string.CompareOrdinal(name = at.ToString("yyyyMMdd'T'HHmmssfff", CultureInfo.InvariantCulture) + ".snap", last) <= 0
+               || File.Exists(System.IO.Path.Combine(dir, name)))
+        {
+            at = at.AddMilliseconds(1);
+        }
         File.WriteAllText(System.IO.Path.Combine(dir, name), text);
         foreach (string old in existing.Take(Math.Max(0, existing.Length + 1 - Keep)))
         {

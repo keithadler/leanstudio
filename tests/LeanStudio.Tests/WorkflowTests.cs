@@ -82,6 +82,18 @@ public sealed class WorkflowTests
         Assert.Equal("two", File.ReadAllText(versions[0].SnapshotFile));
         Assert.Equal("one", File.ReadAllText(versions[1].SnapshotFile));
         Assert.Empty(history.Versions(Path.Combine(dir, "Other.lean")));
+
+        // Only the last 40 are kept, even when saves come faster than the clock's millisecond.
+        string busy = Path.Combine(dir, "Busy.lean");
+        for (int i = 0; i < 45; i++)
+        {
+            history.Record(busy, "version " + i);
+        }
+        var kept = history.Versions(busy);
+        Assert.Equal(LocalHistory.Keep, kept.Count);
+        Assert.Equal("version 44", File.ReadAllText(kept[0].SnapshotFile));
+        Assert.Equal("version 5", File.ReadAllText(kept[^1].SnapshotFile));
+        Lean.DeleteTree(dir);
     }
 
     [Fact]

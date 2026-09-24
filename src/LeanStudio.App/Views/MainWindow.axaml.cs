@@ -163,6 +163,9 @@ public sealed partial class MainWindow : Window, IDialogs
     /// <summary>Both editor sides, for settings and events that apply to each.</summary>
     private IEnumerable<LeanEditor> Editors => [Editor, SplitEditor];
 
+    /// <summary>The main (left) editor (for checks).</summary>
+    public LeanEditor MainEditorControl => Editor;
+
     /// <summary>The split (right) editor (for checks).</summary>
     public LeanEditor SplitEditorControl => SplitEditor;
 

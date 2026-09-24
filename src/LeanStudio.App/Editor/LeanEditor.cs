@@ -148,6 +148,9 @@ public sealed class LeanEditor : UserControl
     /// <summary>The AvaloniaEdit editor inside, for commands that act on it directly (find, undo, selection).</summary>
     public TextEditor TextEditor => _editor;
 
+    /// <summary>How many entries the open completion list has; 0 when none is open (for checks).</summary>
+    public int CompletionCount => _completion?.CompletionList.CompletionData.Count ?? 0;
+
     /// <summary>The lightbulb was clicked: show Lean's fixes for this (0-based) line.</summary>
     public event Action<int>? QuickFixAtLineRequested;
 
@@ -293,6 +296,7 @@ public sealed class LeanEditor : UserControl
         ScheduleSemantic(doc, 0);
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
+        _semantic.SetDeprecated(doc.Document, doc.Diagnostics);
         _inline.Update(doc.Diagnostics);
         _proofMarks.Update(doc.ProofMarks);
         _timings.Update(doc.Timings);
@@ -322,6 +326,8 @@ public sealed class LeanEditor : UserControl
         {
             case nameof(DocumentViewModel.Diagnostics):
                 _diagnostics.Update(_current.Diagnostics);
+                _semantic.SetDeprecated(_current.Document, _current.Diagnostics);
+                _editor.TextArea.TextView.Redraw();
                 _inline.Update(_current.Diagnostics);
                 UpdateBulbs();
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
@@ -673,6 +679,9 @@ public sealed class LeanEditor : UserControl
 
     /// <summary>How many tokens Lean's semantic highlighting colours.</summary>
     public int SemanticTokenCount => _semantic.Count;
+
+    /// <summary>How many uses of deprecated names are struck through (for checks).</summary>
+    public int StruckThroughCount => _semantic.StruckCount;
 
     /// <summary>The inlay hints shown.</summary>
     public IReadOnlyList<string> InlayHintLabels => _hints.Labels;

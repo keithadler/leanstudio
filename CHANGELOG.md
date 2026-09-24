@@ -8,6 +8,12 @@
 - Problems groups repeated messages: 205 uses of one deprecated lemma are one row, "205 × … in 12 files", which opens to list them.
 - The progress banner no longer misses the last lines of a burst (a warning printed right after a module).
 
+**Fixes, found by checking every feature against what it says**:
+- Uses of deprecated names are struck through again. Lean sends no semantic token for most names, so the strike-through now comes from Lean's "has been deprecated" warning.
+- Cancel stops every long task: a task from the Tasks menu or a project command, and Tenet's verification, not only builds and cache fetches.
+- A long task's closing note counts the warnings it printed at the very end.
+- Local history keeps every version when two saves land in the same millisecond.
+
 ## 0.8.0
 
 **For Mathlib contributors and everyone who writes a lot of Lean**:

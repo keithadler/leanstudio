@@ -117,6 +117,48 @@ public sealed class McpTests
     }
 
     [Fact]
+    public async Task AnswersTheOtherQuestionsAboutAProject()
+    {
+        Lean.RequireLean();
+        await using var bench = new Workbench(Lean.Sample("Proofs"));
+        McpServer server = LeanTools.Create(bench, "test");
+
+        var (info, _) = await CallAsync(server, "project_info", new JsonObject());
+        Assert.Contains("Proofs", info, StringComparison.Ordinal);
+        Assert.Contains(Lean.Toolchain, info, StringComparison.Ordinal);
+
+        var (toolchains, _) = await CallAsync(server, "toolchains", new JsonObject());
+        Assert.Contains(Lean.Toolchain, toolchains, StringComparison.Ordinal);
+
+        var (hover, _) = await CallAsync(server, "hover", new JsonObject { ["path"] = "Proofs/Basic.lean", ["line"] = 2, ["column"] = 6 });
+        Assert.Contains("double (n : Nat) : Nat", hover, StringComparison.Ordinal);
+        Assert.Contains("Doubling a number", hover, StringComparison.Ordinal);
+
+        var (build, buildErr) = await CallAsync(server, "build", new JsonObject());
+        Assert.False(buildErr, build);
+        var (decl, _) = await CallAsync(server, "declaration", new JsonObject { ["name"] = "double_eq_two_mul" });
+        Assert.Contains("module: Proofs.Basic", decl, StringComparison.Ordinal);
+        Assert.Contains("theorem double_eq_two_mul", decl, StringComparison.Ordinal);
+        Assert.Contains("Eq.{1} Nat (double n)", decl, StringComparison.Ordinal); // the type, in the kernel's form
+        Assert.Contains("Basic.lean:4", decl.Replace('\\', '/'), StringComparison.Ordinal);
+        Assert.Matches(@"uses \(\d+\): .*\bdouble\b", decl);
+        var (missing, missingErr) = await CallAsync(server, "declaration", new JsonObject { ["name"] = "no_such_thing" });
+        Assert.True(missingErr, missing);
+
+        var (beats, _) = await CallAsync(server, "heartbeats", new JsonObject { ["path"] = "Proofs/Basic.lean" });
+        Assert.Contains("of the default limit", beats, StringComparison.Ordinal);
+        Assert.Contains("theorem double_eq_two_mul", beats, StringComparison.Ordinal);
+
+        var (inst, _) = await CallAsync(server, "instances", new JsonObject { ["path"] = "Proofs/Basic.lean", ["class"] = "Inhabited" });
+        Assert.Matches(@"^\d+ instances of Inhabited:", inst);
+        Assert.Contains("instInhabitedNat", inst, StringComparison.Ordinal);
+
+        var (noBlueprint, noBlueprintErr) = await CallAsync(server, "blueprint", new JsonObject());
+        Assert.True(noBlueprintErr);
+        Assert.Contains("no blueprint folder", noBlueprint, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SuggestionsAreListedAndApplied()
     {
         Lean.RequireLean();
