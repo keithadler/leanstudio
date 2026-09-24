@@ -52,6 +52,9 @@ public sealed class MathlibTests
 
             theorem false_one (n : ℕ) (h : 3 < n) : n ^ 2 < 20 := by
               sorry
+
+            theorem false_list (xs : List ℕ) : xs.reverse = xs := by
+              sorry
             """);
         try
         {
@@ -62,6 +65,9 @@ public sealed class MathlibTests
             Assert.Contains("best: linarith", prove, StringComparison.Ordinal);
             Assert.Contains("best: ring", prove, StringComparison.Ordinal);
             Assert.Contains("FALSE as stated: counterexample n = 5", prove, StringComparison.Ordinal);
+            // A list is beyond the small Nat, Int and Bool values tried first: Plausible, which Mathlib brings, finds one.
+            string list = prove[prove.IndexOf("false_list", StringComparison.Ordinal)..];
+            Assert.Matches(@"FALSE as stated: counterexample xs = \[\d+, \d+", list);
 
             string profile = await CallAsync(server, "profile", new JsonObject { ["path"] = file });
             Assert.Contains("in total", profile, StringComparison.Ordinal);

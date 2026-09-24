@@ -273,9 +273,15 @@ public static partial class ProofSearch
                   withoutRecover <| evalTactic stx
                   return none
                 catch e =>
+                  -- Plausible's message starts with a rule of `=`, then "Found a counter-example!" and a line
+                  -- `x := value` for each variable: report those as `x = value`, like the small-value search does.
                   let msg := (← e.toMessageData.toString)
-                  if msg.startsWith "Found a counter-example" || msg.startsWith "Found problems" then
-                    return some (msg.replace "\n" " ")
+                  if (msg.splitOn "Found a counter-example").length > 1 then
+                    let assigns := (msg.splitOn "\n").filter fun l => (l.splitOn " := ").length == 2
+                    if assigns.isEmpty then return some (msg.trim.replace "\n" " ")
+                    return some (", ".intercalate (assigns.map fun l => l.trim.replace " := " " = "))
+                  if (msg.splitOn "Found problems").length > 1 then
+                    return some (msg.trim.replace "\n" " ")
                   return none
 
             open Lean Elab Tactic Meta in
