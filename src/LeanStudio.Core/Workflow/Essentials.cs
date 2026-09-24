@@ -45,20 +45,39 @@ public static class ElanInstaller
 public static class FileOps
 {
     /// <summary>
-    /// Move a file or folder to the system's trash: through Finder on macOS, the Recycle Bin on Windows, and
-    /// <c>gio trash</c> elsewhere. False when the platform offers no way to or it did not work; does not throw.
+    /// Move a file or folder to the system's trash: the Trash on macOS (as Finder's Move to Trash does, and with
+    /// Put Back), the Recycle Bin on Windows, and <c>gio trash</c> elsewhere. False when the platform offers no way
+    /// to or it did not work; does not throw.
     /// </summary>
-    public static async Task<bool> MoveToTrashAsync(string path)
+    public static async Task<bool> MoveToTrashAsync(string path) => await MoveToTrashWhereAsync(path).ConfigureAwait(false) is not null;
+
+    /// <summary>
+    /// <see cref="MoveToTrashAsync"/>, returning where the item went in the trash when the platform says (macOS),
+    /// the empty string when it doesn't, and null when it failed.
+    /// </summary>
+    public static async Task<string?> MoveToTrashWhereAsync(string path)
+    {
+        string full = Path.GetFullPath(path);
+        if (OperatingSystem.IsMacOS())
+        {
+            // NSFileManager's trashItemAtURL, not Finder through AppleScript, which needs permission to control Finder.
+            try
+            {
+                return MacTrash.Move(full) is string where && !Exists(full) ? where : null;
+            }
+            catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException)
+            {
+                return null;
+            }
+        }
+        return await OtherTrashAsync(full).ConfigureAwait(false) ? "" : null;
+    }
+
+    private static async Task<bool> OtherTrashAsync(string path)
     {
         string full = Path.GetFullPath(path);
         try
         {
-            if (OperatingSystem.IsMacOS())
-            {
-                string escaped = full.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
-                ProcessResult r = await ProcessRunner.RunAsync("osascript", ["-e", $"tell application \"Finder\" to delete POSIX file \"{escaped}\""]).ConfigureAwait(false);
-                return r.Success && !Exists(full);
-            }
             if (OperatingSystem.IsWindows())
             {
                 if (Directory.Exists(full))
@@ -81,6 +100,60 @@ public static class FileOps
     }
 
     private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
+
+    /// <summary>The macOS Trash, through Foundation's NSFileManager and the Objective-C runtime.</summary>
+    private static class MacTrash
+    {
+        private const string ObjC = "/usr/lib/libobjc.A.dylib";
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "objc_getClass")]
+        private static extern IntPtr GetClass([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string name);
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "sel_registerName")]
+        private static extern IntPtr Selector([System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string name);
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr Send(IntPtr receiver, IntPtr selector);
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr SendString(IntPtr receiver, IntPtr selector, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPUTF8Str)] string arg);
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "objc_msgSend")]
+        private static extern IntPtr Send(IntPtr receiver, IntPtr selector, IntPtr arg);
+
+        [System.Runtime.InteropServices.DllImport(ObjC, EntryPoint = "objc_msgSend")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.I1)]
+        private static extern bool Trash(IntPtr receiver, IntPtr selector, IntPtr url, out IntPtr resulting, out IntPtr error);
+
+        private static readonly Lazy<bool> Foundation = new(() =>
+            System.Runtime.InteropServices.NativeLibrary.TryLoad("/System/Library/Frameworks/Foundation.framework/Foundation", out _));
+
+        /// <summary>Move <paramref name="path"/> to the Trash; where it went, or null when it couldn't be.</summary>
+        public static string? Move(string path)
+        {
+            if (!Foundation.Value)
+            {
+                return null;
+            }
+            IntPtr pool = Send(Send(GetClass("NSAutoreleasePool"), Selector("alloc")), Selector("init"));
+            try
+            {
+                IntPtr text = SendString(GetClass("NSString"), Selector("stringWithUTF8String:"), path);
+                IntPtr url = Send(GetClass("NSURL"), Selector("fileURLWithPath:"), text);
+                IntPtr manager = Send(GetClass("NSFileManager"), Selector("defaultManager"));
+                if (!Trash(manager, Selector("trashItemAtURL:resultingItemURL:error:"), url, out IntPtr resulting, out _) || resulting == IntPtr.Zero)
+                {
+                    return null;
+                }
+                IntPtr where = Send(resulting, Selector("path"));
+                return where == IntPtr.Zero ? "" : System.Runtime.InteropServices.Marshal.PtrToStringUTF8(Send(where, Selector("UTF8String"))) ?? "";
+            }
+            finally
+            {
+                Send(pool, Selector("drain"));
+            }
+        }
+    }
 
     /// <summary>
     /// Open the platform's terminal in a folder, trying each likely terminal in turn without waiting for it. False

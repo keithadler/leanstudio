@@ -52,4 +52,24 @@ public sealed class EssentialsTests
         Assert.Equal("import Std\ndef x := 1", ImportFinder.AddImport("def x := 1", "Std"));
         Assert.StartsWith("import Std\n/-! doc -/", ImportFinder.AddImport("/-! doc -/\ndef x := 1", "Std"), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task MovesAFileToTheTrash()
+    {
+        Assert.SkipWhen(OperatingSystem.IsLinux() && Core.Toolchains.Elan.FindExecutable("gio") is null, "no gio on this Linux");
+        string dir = Directory.CreateTempSubdirectory("leanstudio-trash").FullName;
+        string file = Path.Combine(dir, $"leanstudio-trash-test-{Guid.NewGuid():N}.lean");
+        File.WriteAllText(file, "-- to the trash\n");
+        string? where = await Core.Workflow.FileOps.MoveToTrashWhereAsync(file);
+        Assert.NotNull(where);
+        Assert.False(File.Exists(file));
+        if (OperatingSystem.IsMacOS())
+        {
+            // In the Trash, where Put Back can find it; then gone for good, as it is only a test's file.
+            Assert.EndsWith(Path.GetFileName(file), where, StringComparison.Ordinal);
+            Assert.True(File.Exists(where), where);
+            File.Delete(where);
+        }
+        Directory.Delete(dir, true);
+    }
 }

@@ -680,6 +680,9 @@ public sealed class LeanEditor : UserControl
     /// <summary>How many tokens Lean's semantic highlighting colours.</summary>
     public int SemanticTokenCount => _semantic.Count;
 
+    /// <summary>Whether the ✔ and "⊢ goals left" marks at the end of proofs are drawn (for checks).</summary>
+    public bool ProofMarksShown => _proofMarks.Enabled;
+
     /// <summary>How many uses of deprecated names are struck through (for checks).</summary>
     public int StruckThroughCount => _semantic.StruckCount;
 

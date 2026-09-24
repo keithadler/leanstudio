@@ -853,15 +853,7 @@ public sealed partial class MainWindow : Window, IDialogs
         }
     }
 
-    private async void OnPreferences(object? sender, RoutedEventArgs e)
-    {
-        await Dialogs.PreferencesAsync(this, _vm.Settings);
-        if (Avalonia.Application.Current is { } app)
-        {
-            app.RequestedThemeVariant = _vm.Settings.Theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
-        }
-        ApplySettings();
-    }
+    private async void OnPreferences(object? sender, RoutedEventArgs e) => await ShowPreferencesAsync();
     private void OnShowLearn(object? sender, RoutedEventArgs e) => _vm.SidebarTab = MainViewModel.LearnTab;
     private void OnInsertSnippet(object? sender, RoutedEventArgs e) => _ = InsertSnippetAsync();
 
@@ -1353,6 +1345,14 @@ public sealed partial class MainWindow : Window, IDialogs
     /// <summary>Show how to connect AI assistants to Lean Studio's MCP server, with one-click setup where possible.</summary>
     public Task ShowConnectAssistantAsync() => Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);
 
-    /// <summary>Show the Preferences dialog; the settings are saved if OK is pressed.</summary>
-    public Task ShowPreferencesAsync() => Dialogs.PreferencesAsync(this, _vm.Settings);
+    /// <summary>Show the Preferences dialog; if OK is pressed, the settings are saved and applied to the window.</summary>
+    public async Task ShowPreferencesAsync()
+    {
+        await Dialogs.PreferencesAsync(this, _vm.Settings);
+        if (Avalonia.Application.Current is { } app)
+        {
+            app.RequestedThemeVariant = _vm.Settings.Theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
+        }
+        ApplySettings();
+    }
 }

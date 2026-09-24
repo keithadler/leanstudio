@@ -1355,6 +1355,137 @@ internal static class Scenario
             Check(window.Taskbar.AttentionRequests == nudges + 1, "and asks for attention on the Dock or taskbar");
         }
 
+        Console.WriteLine("the rest of the app");
+        {
+            string sourceDir = Path.Combine(repo, "samples", "Proofs", "Proofs");
+            vm.ActiveDocument = doc;
+
+            // The Tactic State as the plain text Lean prints, with the Plain toggle.
+            doc.Reveal(16, 14);
+            await WaitFor(() => vm.Info.HasGoals, 30);
+            vm.Info.PlainText = true;
+            Check(await WaitFor(() => vm.Info.PlainGoals.Contains("⊢ p", StringComparison.Ordinal), 10), "Plain shows the goals as the text Lean prints");
+            vm.Info.PlainText = false;
+
+            // Proof Steps: a step that fails is marked, and a click on a step goes to it.
+            string stepsFile = Path.Combine(sourceDir, "Steps.lean");
+            await File.WriteAllTextAsync(stepsFile, "theorem steps (n : Nat) : n + 0 = n := by\n  simp\n  exact foo\n");
+            try
+            {
+                DocumentViewModel? steps = await vm.OpenFileAsync(stepsFile);
+                steps!.Reveal(1, 2);
+                Check(await WaitFor(() => vm.Info.Steps.Count == 2 && vm.Info.Steps[1].HasError && !vm.Info.Steps[0].HasError, 60),
+                    "Proof Steps marks the step that fails, and only it");
+                vm.Info.GoToStepCommand.Execute(vm.Info.Steps[1]);
+                Check(await WaitFor(() => steps.CaretLine == 2, 5), "and a click on a step goes to it");
+                await vm.CloseDocumentCommand.ExecuteAsync(steps);
+            }
+            finally
+            {
+                File.Delete(stepsFile);
+            }
+            vm.ActiveDocument = doc;
+
+            // The REPL remembers what was typed: ↑ and ↓ go through it.
+            doc.Reveal(1, 0);
+            vm.ReplInput = "double 2";
+            await vm.RunReplAsync();
+            vm.ReplInput = "double 5";
+            await vm.RunReplAsync();
+            Check(vm.ReplEntries.Count >= 2 && vm.ReplEntries[^1].Output == "10" && vm.ReplEntries[^2].Output == "4", $"the REPL evaluates in the file ({vm.ReplEntries[^1].Output})");
+            vm.ReplHistory(-1);
+            string up1 = vm.ReplInput;
+            vm.ReplHistory(-1);
+            string up2 = vm.ReplInput;
+            vm.ReplHistory(+1);
+            Check(up1 == "double 5" && up2 == "double 2" && vm.ReplInput == "double 5", "↑ and ↓ bring back earlier inputs");
+            vm.ReplInput = "";
+
+            // Auto-save: with it on, leaving the window saves what is unsaved.
+            vm.Settings.AutoSave = true;
+            string saved = await File.ReadAllTextAsync(doc.Path);
+            doc.Document.Insert(doc.Document.TextLength, "\n-- auto\n");
+            await vm.SaveAllIfAutoSaveAsync();
+            Check(!doc.IsDirty && (await File.ReadAllTextAsync(doc.Path)).EndsWith("-- auto\n", StringComparison.Ordinal), "with auto-save on, unsaved files are saved when the window loses focus");
+            doc.Document.Remove(doc.Document.TextLength - "\n-- auto\n".Length, "\n-- auto\n".Length);
+            await vm.SaveCommand.ExecuteAsync(null);
+            vm.Settings.AutoSave = false;
+            Check((await File.ReadAllTextAsync(doc.Path)) == saved, "(and put back)");
+            Check(!new Settings().AutoApplyFixes, "automatic fixes are off unless turned on");
+
+            // Move to the trash: the file goes, and so does its tab.
+            if (!OperatingSystem.IsLinux() || LeanStudio.Core.Toolchains.Elan.FindExecutable("gio") is not null)
+            {
+                string trashFile = Path.Combine(sourceDir, $"TrashMe{Environment.ProcessId}.lean");
+                await File.WriteAllTextAsync(trashFile, "-- a file to throw away\n");
+                DocumentViewModel? trash = await vm.OpenFileAsync(trashFile);
+                string? problem = await vm.TrashAsync(trashFile);
+                Check(problem is null && !File.Exists(trashFile) && !vm.Documents.Contains(trash!), "Move to Trash takes the file away, and closes its tab" + (problem is null ? "" : ": " + problem));
+                string inTrash = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".Trash", Path.GetFileName(trashFile));
+                if (OperatingSystem.IsMacOS() && File.Exists(inTrash))
+                {
+                    File.Delete(inTrash); // only the check's own file
+                }
+                vm.ActiveDocument = doc;
+            }
+
+            // The command palette runs what is chosen: type part of a name, press Enter.
+            void Choose(Window w) => Dispatcher.UIThread.Post(async () =>
+            {
+                if (w.Title != "Type a command")
+                {
+                    return;
+                }
+                TextBox? box = null;
+                await WaitFor(() => (box = w.GetVisualDescendants().OfType<TextBox>().FirstOrDefault()) is not null, 5);
+                box!.Text = "list loaded plugins";
+                await WaitFor(() => false, 0.5);
+                w.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
+            });
+            DialogHooks.Opened += Choose;
+            window.MainEditorControl.TextEditor.TextArea.Focus();
+            window.KeyPress(Avalonia.Input.Key.P, (OperatingSystem.IsMacOS() ? Avalonia.Input.RawInputModifiers.Meta : Avalonia.Input.RawInputModifiers.Control) | Avalonia.Input.RawInputModifiers.Shift, Avalonia.Input.PhysicalKey.None, null);
+            Check(await WaitFor(() => vm.Output.Text.Contains("Plugin: Hello Lean (" + Path.Combine(PluginHost.Folder, "HelloLean", "HelloLean.dll") + ")", StringComparison.Ordinal), 10),
+                "the command palette runs the command chosen in it (Plugins: List Loaded Plugins)");
+            DialogHooks.Opened -= Choose;
+
+            // Preferences turn the proof-end marks off, and on again.
+            async Task SetMarks(bool on)
+            {
+                void Toggle(Window w) => Dispatcher.UIThread.Post(async () =>
+                {
+                    Button? ok = null;
+                    await WaitFor(() => (ok = w.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault)) is not null, 10);
+                    if (w.GetVisualDescendants().OfType<CheckBox>().FirstOrDefault(c => (c.Content as string)?.StartsWith("Mark the end of each proof", StringComparison.Ordinal) == true) is CheckBox box)
+                    {
+                        box.IsChecked = on;
+                    }
+                    ok?.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                });
+                DialogHooks.Opened += Toggle;
+                await window.ShowPreferencesAsync();
+                DialogHooks.Opened -= Toggle;
+            }
+            await SetMarks(false);
+            bool off = !vm.Settings.ShowProofMarks && !window.MainEditorControl.ProofMarksShown;
+            await SetMarks(true);
+            Check(off && vm.Settings.ShowProofMarks && window.MainEditorControl.ProofMarksShown, "Preferences turn the proof-end marks off, and on again");
+
+            // Session restore: a new window starts where this one is, with the same files open.
+            string? active = vm.ActiveDocument?.Path;
+            var openFiles = vm.Documents.Where(d => !d.IsVirtual).Select(d => d.Path).ToHashSet();
+            var again = new MainWindow(Settings.Load()) { Width = 1200, Height = 800 };
+            again.Taskbar.UseNative = false;
+            again.Show();
+            MainViewModel vm2 = again.ViewModel;
+            Check(await WaitFor(() => vm2.Project?.Root == vm.Project?.Root && vm2.ActiveDocument?.Path == active, 60)
+                && vm2.Documents.Select(d => d.Path).ToHashSet().SetEquals(openFiles),
+                $"starting again reopens the project, its files, and the one you were on ({Path.GetFileName(vm2.ActiveDocument?.Path)}, {vm2.Documents.Count} files)");
+            await vm2.DisposeAsync();
+            again.Close();
+            vm.ActiveDocument = doc;
+        }
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
         var unnamedInDialogs = new List<string>();
@@ -1413,6 +1544,10 @@ internal static class Scenario
                 Check(await WaitFor(() => remoteDoc!.Diagnostics.Any(x => x.Message.Contains("sorry", StringComparison.Ordinal)) && !vm.IsBusy, 180),
                     "Lean, running on the other machine, checks the mounted file and its messages land in the editor");
                 Check(vm.ToolchainLabel.EndsWith("on me@box", StringComparison.Ordinal), "the status bar says where Lean runs");
+                await vm.BuildCommand.ExecuteAsync(null); // Lake on the other machine; then Tenet, reading the build through the mount
+                Check(File.Exists(Path.Combine(remoteRoot, ".lake", "build", "lib", "lean", "Proofs", "Basic.olean"))
+                    && await WaitFor(() => vm.Verification.Report is { Verified: >= 3 } && !vm.Verification.IsRunning, 120),
+                    $"a remote build is verified by Tenet through the mount ({vm.Verification.Report?.Verified} verified)");
                 await WaitFor(() => false, 1);
                 Snap(window, outDir, "36-remote");
                 await vm.ForgetRemoteCommand.ExecuteAsync(null);
