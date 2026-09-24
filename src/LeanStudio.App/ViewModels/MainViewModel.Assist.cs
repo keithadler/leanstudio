@@ -9,18 +9,38 @@ using LeanStudio.Lsp;
 namespace LeanStudio.App.ViewModels;
 
 /// <summary>A declaration's time in the Timing panel.</summary>
+/// <param name="Timing">The declaration's time, from Lean's profiler.</param>
+/// <param name="Slowest">
+/// The slowest declaration's time in the same profile, in seconds, which gets the full-width bar.
+/// </param>
+/// <param name="Document">The file profiled, to go to the declaration in.</param>
 public sealed record TimingItem(DeclarationTiming Timing, double Slowest, DocumentViewModel Document)
 {
+    /// <summary>The declaration's 1-based line, as <c>line N</c>.</summary>
     public string Where => $"line {Timing.Line + 1}";
+    /// <summary>How long Lean took to check it, formatted.</summary>
     public string Time => Timing.Time;
+    /// <summary>The declaration's name.</summary>
     public string Declaration => Timing.Declaration;
+    /// <summary>
+    /// The step inside the declaration that took longest, and its time; empty when the profile names none.
+    /// </summary>
     public string HotSpot => Timing.HotSpot is string h ? $"slowest part: {h} ({DeclarationTiming.Format(Timing.HotSpotSeconds)})" : "";
+    /// <summary>It took a second or more.</summary>
     public bool IsHot => Timing.Heat == 2;
+    /// <summary>It took from a tenth of a second up to a second.</summary>
     public bool IsWarm => Timing.Heat == 1;
+    /// <summary>The bar's width in pixels: up to 120, in proportion to the slowest, and at least 2.</summary>
     public double BarWidth => Math.Max(2, 120 * Timing.Seconds / Math.Max(Slowest, 1e-9));
 }
 
 /// <summary>One REPL input and its result.</summary>
+/// <param name="Input">What was typed.</param>
+/// <param name="Output">Lean's answer, or why there was none.</param>
+/// <param name="IsError">The answer is an error.</param>
+/// <param name="Where">
+/// The file and 1-based line whose context it ran in, as <c>File.lean:12</c>; empty if it did not run.
+/// </param>
 public sealed record ReplEntry(string Input, string Output, bool IsError, string Where);
 
 /// <summary>
@@ -31,6 +51,7 @@ public sealed record ReplEntry(string Input, string Output, bool IsError, string
 /// </summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>The Timing and REPL panels' indices in <see cref="BottomTab"/>.</summary>
     public const int TimingPanel = 6, ReplPanel = 7;
 
     private CancellationTokenSource? _proveCts;
@@ -48,13 +69,21 @@ public sealed partial class MainViewModel
 
     // ---- Prove It ----
 
+    /// <summary>Run Prove It on the sorry at the caret.</summary>
     [RelayCommand]
     private Task ProveItAsync() => ProveAsync(false);
 
+    /// <summary>Run Prove It on every sorry in the active file.</summary>
     [RelayCommand]
     private Task ProveAllSorriesAsync() => ProveAsync(true);
 
     /// <summary>Try the portfolio on the sorry at the caret, or on every sorry in the file.</summary>
+    /// <remarks>
+    /// Shows the Prove It card and reports there, including when there is no Lean file, no server or no sorry. The
+    /// search runs in Lean on a copy of the file, so the file itself is not changed; a newer search cancels an older
+    /// one, and a search stops after five minutes.
+    /// </remarks>
+    /// <param name="all">True for every sorry in the file; false for the one at the caret.</param>
     public async Task ProveAsync(bool all)
     {
         ProofSearchViewModel ps = Info.Search;
@@ -182,14 +211,23 @@ public sealed partial class MainViewModel
     private readonly List<string> _replHistory = [];
     private int _replHistoryAt;
 
+    /// <summary>The REPL panel's inputs and results, oldest first.</summary>
     public ObservableList<ReplEntry> ReplEntries { get; } = new();
 
+    /// <summary>The REPL's input box.</summary>
     [ObservableProperty]
     private string _replInput = "";
 
+    /// <summary>Lean is evaluating a REPL input; another is not accepted until it answers.</summary>
     [ObservableProperty]
     private bool _replBusy;
 
+    /// <summary>
+    /// Evaluate <see cref="ReplInput"/> in the context of the active Lean file at the caret (its text up to the end
+    /// of the declaration there, so its imports and definitions are in scope), add the result to
+    /// <see cref="ReplEntries"/>, and remember the input for <see cref="ReplHistory"/>. Gives up after two minutes.
+    /// The file is not changed.
+    /// </summary>
     [RelayCommand]
     public async Task RunReplAsync()
     {
@@ -226,6 +264,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Step through earlier inputs (-1 older, +1 newer), as a shell does with the arrow keys.</summary>
+    /// <param name="delta">-1 for the previous input, +1 for the next; past the newest the box is emptied.</param>
     public void ReplHistory(int delta)
     {
         if (_replHistory.Count == 0)
@@ -236,11 +275,13 @@ public sealed partial class MainViewModel
         ReplInput = _replHistoryAt < _replHistory.Count ? _replHistory[_replHistoryAt] : "";
     }
 
+    /// <summary>Clear the REPL panel.</summary>
     [RelayCommand]
     private void ClearRepl() => ReplEntries.Reset([]);
 
     // ---- extract a goal as a lemma ----
 
+    /// <summary>Extract the goal at the sorry at the caret as a lemma, asking for its name.</summary>
     [RelayCommand]
     private async Task ExtractLemmaAsync() => await ExtractLemmaAtAsync(null);
 
@@ -248,6 +289,12 @@ public sealed partial class MainViewModel
     /// Turn the goal at the sorry nearest the caret into a lemma above the declaration, and use it there. Asks
     /// for the lemma's name unless one is given. Returns what went wrong, or null.
     /// </summary>
+    /// <remarks>
+    /// Lean works out the lemma's statement from the goal (for up to three minutes); the file is then edited in one
+    /// undoable step and left unsaved. If the file changes while Lean works, nothing is edited.
+    /// </remarks>
+    /// <param name="name">The lemma's name, or null to ask for one.</param>
+    /// <param name="at">The sorry to use, or null for the one at the caret.</param>
     public async Task<string?> ExtractLemmaAtAsync(string? name, SorrySite? at = null)
     {
         if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } server)
@@ -321,6 +368,9 @@ public sealed partial class MainViewModel
 
     // ---- why a theorem is not fully proved ----
 
+    /// <summary>
+    /// Explain why the declaration at the caret is not fully proved (see <see cref="WhyNotProvedAsync"/>).
+    /// </summary>
     [RelayCommand]
     private async Task WhyNotProvedAtCaretAsync()
     {
@@ -336,6 +386,11 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Show, in the Tenet panel, the chains from a declaration down to each sorry or axiom it rests on.</summary>
+    /// <remarks>
+    /// Reads the last build (opening it with Tenet if needed); says so in the panel if there is none, or the
+    /// declaration is not in it.
+    /// </remarks>
+    /// <param name="name">The declaration's full name.</param>
     public async Task WhyNotProvedAsync(string name)
     {
         BottomTab = TenetPanel;
@@ -370,8 +425,14 @@ public sealed partial class MainViewModel
     // ---- the project map ----
 
     /// <summary>Raised with a computed map, for the window to show.</summary>
+    /// <remarks>Raised on the UI thread, by <see cref="ShowProjectMapAsync"/>.</remarks>
     public event Action<ProjectMap>? ProjectMapReady;
 
+    /// <summary>
+    /// Map the project's declarations and which uses which, from the last build read by Tenet, and raise
+    /// <see cref="ProjectMapReady"/> with it. Logs why instead when nothing is built yet or Tenet fails.
+    /// </summary>
+    /// <returns>The map, or null if there is none.</returns>
     [RelayCommand]
     public async Task<ProjectMap?> ShowProjectMapAsync()
     {
@@ -405,6 +466,7 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Open a declaration from the map in the editor.</summary>
+    /// <param name="n">The declaration; one without a source file is ignored.</param>
     public void OpenMapNode(MapNode n)
     {
         if (n.SourceFile is string f)
@@ -438,14 +500,22 @@ public sealed partial class MainViewModel
 
     // ---- performance heat map ----
 
+    /// <summary>The Timing panel: the last profiled file's declarations, slowest first.</summary>
     public ObservableList<TimingItem> TimingItems { get; } = new();
 
+    /// <summary>What the Timing panel says above its list: how to profile, progress, or the total.</summary>
     [ObservableProperty]
     private string _timingStatus = "Lean ▸ Profile File runs Lean's profiler over the file and shows how long each declaration takes to check, slowest first, with the step inside it that costs the most.";
 
+    /// <summary>A profile is running; another is not started until it finishes.</summary>
     [ObservableProperty]
     private bool _isProfiling;
 
+    /// <summary>
+    /// Run the active Lean file's current text through Lean's profiler (a separate <c>lean</c> process, not the server)
+    /// and show each declaration's time in the Timing panel. The times are also shown in the editor until the next edit.
+    /// Works without a project too, using the file's folder.
+    /// </summary>
     [RelayCommand]
     public async Task ProfileFileAsync()
     {
@@ -489,6 +559,8 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Go to a profiled declaration, if its file is still open.</summary>
+    /// <param name="t">The declaration; null does nothing.</param>
     [RelayCommand]
     private void OpenTiming(TimingItem? t)
     {
@@ -502,6 +574,7 @@ public sealed partial class MainViewModel
 
     // ---- walkthroughs and share links ----
 
+    /// <summary>Ask where to save the active file's proof walkthrough, write it, and open it in the browser.</summary>
     [RelayCommand]
     private async Task ExportWalkthroughAsync()
     {
@@ -517,6 +590,14 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Write the walkthrough of the active file's proofs to <paramref name="path"/>.</summary>
+    /// <remarks>
+    /// Waits for Lean to finish checking the file (up to five minutes), then builds the page from what Lean says
+    /// about each tactic proof. Problems are logged, not thrown.
+    /// </remarks>
+    /// <param name="path">The HTML file to write; replaced if it exists.</param>
+    /// <returns>
+    /// True if the page was written; false with no Lean file or server, no tactic proofs, or an error.
+    /// </returns>
     public async Task<bool> WriteWalkthroughAsync(string path)
     {
         if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } server)
@@ -550,6 +631,7 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Open the active file in the Lean 4 web editor, in the browser.</summary>
     [RelayCommand]
     private async Task OpenInWebEditorAsync()
     {
@@ -559,6 +641,7 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Copy a link that opens the active file in the Lean 4 web editor.</summary>
     [RelayCommand]
     private async Task CopyShareLinkAsync()
     {

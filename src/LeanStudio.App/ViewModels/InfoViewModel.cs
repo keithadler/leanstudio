@@ -5,27 +5,50 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.App.ViewModels;
 
+/// <summary>One hypothesis of a goal, as the Tactic State panel shows it.</summary>
+/// <param name="Names">
+/// The names it binds, separated by spaces (several hypotheses of one type are shown together).
+/// </param>
+/// <param name="Type">Its type, as text.</param>
+/// <param name="Value">Its value, for a local definition (<c>let</c>, <c>set</c>); null otherwise.</param>
+/// <param name="IsInserted">Lean marks it as added by the tactic.</param>
+/// <param name="IsRemoved">Lean marks it as removed by the tactic.</param>
+/// <param name="IsInstance">It is a type class instance.</param>
 public sealed record HypothesisView(string Names, string Type, string? Value, bool IsInserted, bool IsRemoved, bool IsInstance)
 {
     /// <summary>The type with Lean's subterm structure, for hovering into it.</summary>
     public TaggedString? Tagged { get; init; }
 
+    /// <summary>The hypothesis as Lean writes it: <c>h : type</c>, or <c>x : type := value</c>.</summary>
     public string Text => Value is null ? $"{Names} : {Type}" : $"{Names} : {Type} := {Value}";
+    /// <summary><c>+</c> if it was added, <c>−</c> if it was removed, a space otherwise.</summary>
     public string Marker => IsInserted ? "+" : IsRemoved ? "−" : " ";
 }
 
+/// <summary>One goal in the Tactic State panel.</summary>
+/// <param name="CaseName">The goal's case tag, such as <c>succ</c>, or null.</param>
+/// <param name="Hypotheses">Its hypotheses, in order.</param>
+/// <param name="Prefix">What Lean puts before the target, usually <c>⊢ </c>.</param>
+/// <param name="Target">What is to be proved, as text.</param>
+/// <param name="IsInserted">Lean marks the goal as added by the tactic.</param>
+/// <param name="IsRemoved">Lean marks the goal as closed by the tactic.</param>
 public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hypotheses, string Prefix, string Target, bool IsInserted, bool IsRemoved)
 {
     /// <summary>The target with Lean's subterm structure, for hovering into it.</summary>
     public TaggedString? TargetTagged { get; init; }
 
+    /// <summary>The goal has a case tag.</summary>
     public bool HasCase => CaseName is not null;
+    /// <summary>The case tag, as <c>case name</c>.</summary>
     public string CaseLabel => "case " + CaseName;
+    /// <summary>The target with its prefix, as Lean shows it.</summary>
     public string TargetText => Prefix + Target;
 
     /// <summary>The goal read aloud, for someone who does not read Lean yet.</summary>
     public string English => "In words: " + Core.Learn.PlainEnglish.Read(Target);
 
+    /// <summary>A view of a goal from Lean's interactive goals, keeping the tagged text for hovering.</summary>
+    /// <param name="g">The goal, as Lean's interactive goals give it.</param>
     public static GoalView From(InteractiveGoal g) => new(
         g.UserName,
         g.Hypotheses.Select(h => new HypothesisView(string.Join(' ', h.Names), h.Type.Text, h.Value?.Text, h.IsInserted, h.IsRemoved, h.IsInstance) { Tagged = h.Type }).ToList(),
@@ -39,10 +62,14 @@ public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hy
 /// <summary>A message at the cursor, with Lean's suggestions ("Try this: …") as actions that can be applied.</summary>
 public sealed partial class MessageView : ObservableObject
 {
+    /// <summary>A message with no suggestions yet; <see cref="InfoViewModel"/> fetches them.</summary>
+    /// <param name="diagnostic">Lean's message.</param>
     public MessageView(Diagnostic diagnostic) => Diagnostic = diagnostic;
 
+    /// <summary>Lean's message, with its range and severity.</summary>
     public Diagnostic Diagnostic { get; }
 
+    /// <summary>The message, starting with <c>error: </c> or <c>warning: </c> as appropriate.</summary>
     public string Text => (Diagnostic.Severity switch
     {
         DiagnosticSeverity.Error => "error: ",
@@ -50,32 +77,49 @@ public sealed partial class MessageView : ObservableObject
         _ => "",
     }) + Diagnostic.Message;
 
+    /// <summary>The message's "Try this" code actions, each shown as a button that applies it.</summary>
     public ObservableList<CodeAction> Suggestions { get; } = new();
 
     /// <summary>What the message means, in plain words, when there is a known explanation.</summary>
     public string? Explanation { get; init; }
 
+    /// <summary>There is a plain-words <see cref="Explanation"/>.</summary>
     public bool HasExplanation => Explanation is not null;
 
+    /// <summary><see cref="Suggestions"/> has any.</summary>
     [ObservableProperty]
     private bool _hasSuggestions;
 }
 
 /// <summary>A goal state kept on screen while you work elsewhere, to compare against.</summary>
+/// <param name="Where">Where the goals were, as <c>File.lean:line:column</c>.</param>
+/// <param name="Text">The goals as plain text.</param>
 public sealed record PinnedGoal(string Where, string Text);
 
+/// <summary>
+/// One tactic step of the proof at the cursor, in the Tactic State panel's step list, with the change it made to the
+/// goals. Created with <see cref="Summary"/> <c>…</c>; <see cref="InfoViewModel"/> fills in the rest when Lean answers.
+/// </summary>
 public sealed partial class ProofStepView : ObservableObject
 {
+    /// <summary>A view of a step, before its effect is known.</summary>
+    /// <param name="step">The step.</param>
+    /// <param name="index">Its 0-based position in the proof.</param>
     public ProofStepView(ProofStep step, int index)
     {
         Step = step;
         Index = index;
     }
 
+    /// <summary>The step: its text, its line, and the positions before and after it.</summary>
     public ProofStep Step { get; }
+    /// <summary>The step's 0-based position in the proof.</summary>
     public int Index { get; }
+    /// <summary>The step's 1-based number, for display.</summary>
     public string Number => (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>The step's source text.</summary>
     public string Text => Step.Text;
+    /// <summary>The step's 0-based line.</summary>
     public int Line => Step.Line;
 
     /// <summary>What the step's tactic does, for the tooltip.</summary>
@@ -83,24 +127,34 @@ public sealed partial class ProofStepView : ObservableObject
         ? $"{e.Name}: {e.Explanation}"
         : null;
 
+    /// <summary>
+    /// What the step changed, in words (or <c>continues below</c> for a tactic its next lines finish); <c>…</c> until
+    /// Lean answers.
+    /// </summary>
     [ObservableProperty]
     private string _summary = "…";
 
+    /// <summary>How many goals are left after the step; -1 until Lean answers.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GoalsLabel))]
     private int _goalsAfter = -1;
 
+    /// <summary>The goals left after the step, as <c>1 goal</c> or <c>N goals</c>; empty until known.</summary>
     public string GoalsLabel => GoalsAfter < 0 ? "" : GoalsAfter == 1 ? "1 goal" : $"{GoalsAfter} goals";
 
+    /// <summary>The caret is on this step's line.</summary>
     [ObservableProperty]
     private bool _isCurrent;
 
+    /// <summary>The step closed every goal: the proof is done there.</summary>
     [ObservableProperty]
     private bool _closesAll;
 
+    /// <summary>Lean reports an error on the step's line.</summary>
     [ObservableProperty]
     private bool _hasError;
 
+    /// <summary>The goals after the step, or null until Lean answers.</summary>
     public InteractiveGoals? After { get; set; }
 }
 
@@ -109,12 +163,20 @@ public sealed partial class ProofStepView : ObservableObject
 /// expected type of the term under the cursor, the messages there, and the whole proof as a list of steps each
 /// with the change it made.
 /// </summary>
+/// <remarks>
+/// <see cref="MainViewModel"/> calls <see cref="RefreshAsync"/> each time the caret settles in a Lean file, with the
+/// running <see cref="LeanServer"/>; everything shown comes from Lean's interactive goals, term goal and code actions
+/// at that position, and from the document's diagnostics. Used on the UI thread.
+/// </remarks>
 public sealed partial class InfoViewModel : ObservableObject
 {
     private CancellationTokenSource? _goalsCts;
     private (LeanServer Server, string Uri, Position Pos, List<string> Refs)? _held;
 
     /// <summary>What Lean says about a subterm of the goals on screen (its type, written out, and its docs).</summary>
+    /// <param name="reference">The subterm's reference, from the tagged text of a goal on screen.</param>
+    /// <param name="ct">Cancels the request.</param>
+    /// <returns>What Lean says, or null when no goals are shown or Lean does not answer.</returns>
     public async Task<SubtermInfo?> InspectAsync(string reference, CancellationToken ct = default)
     {
         if (_held is not { } h)
@@ -146,11 +208,15 @@ public sealed partial class InfoViewModel : ObservableObject
     /// <summary>The Prove It card: tactics tried against a sorry.</summary>
     public ProofSearchViewModel Search { get; } = new();
 
+    /// <summary>The goals at the cursor, from the last refresh.</summary>
     public ObservableList<GoalView> Goals { get; } = new();
+    /// <summary>Lean's messages on the cursor's line.</summary>
     public ObservableList<MessageView> Messages { get; } = new();
 
+    /// <summary>Goal states pinned with the Pin command, oldest first.</summary>
     public ObservableList<PinnedGoal> Pinned { get; } = new();
 
+    /// <summary><see cref="Pinned"/> has any.</summary>
     [ObservableProperty]
     private bool _hasPinned;
 
@@ -165,6 +231,8 @@ public sealed partial class InfoViewModel : ObservableObject
         }
     }
 
+    /// <summary>Remove a pinned goal state.</summary>
+    /// <param name="g">The pinned state; null does nothing.</param>
     [RelayCommand]
     private void Unpin(PinnedGoal? g)
     {
@@ -178,6 +246,8 @@ public sealed partial class InfoViewModel : ObservableObject
     /// <summary>Raised when the person clicks a suggestion, for the window to apply its edit.</summary>
     public event Action<CodeAction>? ApplyRequested;
 
+    /// <summary>Apply a suggestion from a message, by raising <see cref="ApplyRequested"/>.</summary>
+    /// <param name="action">The suggestion; null does nothing.</param>
     [RelayCommand]
     private void ApplySuggestion(CodeAction? action)
     {
@@ -186,32 +256,44 @@ public sealed partial class InfoViewModel : ObservableObject
             ApplyRequested?.Invoke(action);
         }
     }
+    /// <summary>The steps of the tactic proof at the cursor; empty outside a proof.</summary>
     public ObservableList<ProofStepView> Steps { get; } = new();
 
+    /// <summary>Where the state shown is, as <c>File.lean:line:column</c> (1-based).</summary>
     [ObservableProperty]
     private string _position = "";
 
+    /// <summary>
+    /// A line about the state: the goal count, <c>No goals</c>, <c>Lean is elaborating…</c>, or why there is nothing.
+    /// </summary>
     [ObservableProperty]
     private string _status = "No file open";
 
+    /// <summary>The type expected of the term at the cursor, or null.</summary>
     [ObservableProperty]
     private string? _expectedType;
 
+    /// <summary>The declaration whose tactic proof the cursor is in; empty outside a proof.</summary>
     [ObservableProperty]
     private string _proofName = "";
 
+    /// <summary>There are goals at the cursor.</summary>
     [ObservableProperty]
     private bool _hasGoals;
 
+    /// <summary>The cursor is inside a tactic proof.</summary>
     [ObservableProperty]
     private bool _inProof;
 
+    /// <summary><see cref="Steps"/> has any.</summary>
     [ObservableProperty]
     private bool _hasSteps;
 
+    /// <summary><see cref="Messages"/> has any.</summary>
     [ObservableProperty]
     private bool _hasMessages;
 
+    /// <summary>There is an expected type at the cursor.</summary>
     [ObservableProperty]
     private bool _hasExpectedType;
 
@@ -219,6 +301,7 @@ public sealed partial class InfoViewModel : ObservableObject
     [ObservableProperty]
     private bool _plainText;
 
+    /// <summary>All the goals as plain text, as Lean renders them, separated by blank lines.</summary>
     [ObservableProperty]
     private string _plainGoals = "";
 
@@ -229,8 +312,11 @@ public sealed partial class InfoViewModel : ObservableObject
     /// <summary>Explain messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
 
+    /// <summary>Raised with a 0-based line and column to move the editor's caret to (after a proof step).</summary>
     public event Action<int, int>? NavigateRequested;
 
+    /// <summary>Move the caret to the end of a proof step, so the panel shows the state after it.</summary>
+    /// <param name="step">The step; null does nothing.</param>
     [RelayCommand]
     private void GoToStep(ProofStepView? step)
     {
@@ -240,6 +326,8 @@ public sealed partial class InfoViewModel : ObservableObject
         }
     }
 
+    /// <summary>Empty the panel and cancel any request still waiting, showing why there is nothing.</summary>
+    /// <param name="status">What to show instead, such as <c>No file open</c>.</param>
     public void Clear(string status)
     {
         _goalsCts?.Cancel();
@@ -257,6 +345,14 @@ public sealed partial class InfoViewModel : ObservableObject
     }
 
     /// <summary>Ask Lean for everything at the cursor. A newer call cancels an older one still waiting.</summary>
+    /// <remarks>
+    /// Messages on the line are shown at once; goals and the expected type follow when Lean answers, and the proof's
+    /// steps after that (only when the proof has changed). Lean's errors are shown in <see cref="Status"/>, not thrown.
+    /// The subterm references of the goals shown are kept for <see cref="InspectAsync"/> and released when replaced.
+    /// </remarks>
+    /// <param name="server">The running Lean server.</param>
+    /// <param name="doc">The document the cursor is in.</param>
+    /// <param name="pos">The cursor, 0-based.</param>
     public async Task RefreshAsync(LeanServer server, DocumentViewModel doc, Position pos)
     {
         _goalsCts?.Cancel();

@@ -9,14 +9,30 @@ using Range = LeanStudio.Lsp.Range;
 
 namespace LeanStudio.App.ViewModels;
 
+/// <summary>A declaration or namespace in the Outline panel, from Lean's document symbols.</summary>
+/// <param name="Name">The name Lean reports.</param>
+/// <param name="Kind">
+/// The keyword read from the source: <c>theorem</c> (also for <c>lemma</c>), <c>def</c>, <c>structure</c>,
+/// <c>namespace</c>…
+/// </param>
+/// <param name="Depth">How deeply it is nested, 0 at the top level.</param>
+/// <param name="Range">The whole declaration, doc comment and attributes included.</param>
+/// <param name="SelectionRange">The name, where going to it puts the caret.</param>
+/// <param name="Status">✓, ◐, ✗ or empty; see <see cref="IsProved"/>.</param>
 public sealed record OutlineItem(string Name, string Kind, int Depth, Range Range, Range SelectionRange, string Status = "")
 {
     /// <summary>For theorems: ✓ Lean accepts it, ◐ it uses sorry, ✗ it has an error. Live, without building.</summary>
     public bool IsProved => Status == "✓";
+    /// <summary>It uses <c>sorry</c> (◐).</summary>
     public bool IsIncomplete => Status == "◐";
+    /// <summary>Lean reports an error in it (✗).</summary>
     public bool IsBroken => Status == "✗";
 
+    /// <summary>Three spaces per level of nesting.</summary>
     public string Indent => new(' ', Depth * 3);
+    /// <summary>
+    /// A symbol for the kind: <c>{}</c> namespace, ◇ structure or class, ◆ inductive, ⊢ theorem, ƒ anything else.
+    /// </summary>
     public string Icon => Kind switch
     {
         "namespace" => "{}",
@@ -27,38 +43,63 @@ public sealed record OutlineItem(string Name, string Kind, int Depth, Range Rang
     };
 }
 
+/// <summary>A place in a file, in the References and Search panels.</summary>
+/// <param name="Path">The file.</param>
+/// <param name="Line">The 0-based line.</param>
+/// <param name="Column">The 0-based column.</param>
+/// <param name="Preview">The line's text.</param>
+/// <param name="MatchLength">How many characters matched, for highlighting a search hit; 0 for a reference.</param>
 public sealed record LocationItem(string Path, int Line, int Column, string Preview, int MatchLength = 0)
 {
+    /// <summary>The file's name, without its folder.</summary>
     public string File => System.IO.Path.GetFileName(Path);
+    /// <summary>The 1-based line and column, as <c>line:column</c>.</summary>
     public string Where => $"{Line + 1}:{Column + 1}";
+    /// <summary>The line's text, without surrounding whitespace.</summary>
     public string Text => Preview.Trim();
 }
 
 /// <summary>The editor features beyond editing: code actions, rename, references, outline, search, symbols, Git.</summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>The side panels' indices in <see cref="SidebarTab"/> (<see cref="LearnTab"/> is the sixth).</summary>
     public const int FilesTab = 0, OutlineTab = 1, LibraryTab = 2, GitTab = 3, ToolchainsTab = 4;
+    /// <summary>
+    /// The bottom panels' indices in <see cref="BottomTab"/> (<see cref="MarkersPanel"/>, <see cref="TimingPanel"/> and
+    /// <see cref="ReplPanel"/> are the others).
+    /// </summary>
     public const int ProblemsPanel = 0, OutputPanel = 1, TenetPanel = 2, ReferencesPanel = 3, SearchPanel = 5;
 
+    /// <summary>
+    /// The Outline panel: the active Lean file's declarations in order, nested ones after their parent.
+    /// </summary>
     public ObservableList<OutlineItem> Outline { get; } = new();
+    /// <summary>The References panel: the last Find References' results.</summary>
     public ObservableList<LocationItem> References { get; } = new();
+    /// <summary>The Search panel: the last find-in-files' hits, at most 2000.</summary>
     public ObservableList<LocationItem> SearchResults { get; } = new();
 
+    /// <summary>The References panel's title, with the count.</summary>
     [ObservableProperty]
     private string _referencesTitle = "References";
 
+    /// <summary>The text (or regular expression) to find in the project's files.</summary>
     [ObservableProperty]
     private string _searchQuery = "";
 
+    /// <summary>Find-in-files matches case.</summary>
     [ObservableProperty]
     private bool _searchCaseSensitive;
 
+    /// <summary>The query is a regular expression.</summary>
     [ObservableProperty]
     private bool _searchRegex;
 
+    /// <summary>The Search panel's status: the hit count, <c>Searching…</c>, or an invalid expression.</summary>
     [ObservableProperty]
     private string _searchStatus = "";
 
+    /// <summary>The Source Control panel. Pointed at the open project's repository when it is opened.</summary>
     public SourceControlViewModel SourceControl { get; private set; } = null!;
 
     private CancellationTokenSource? _outlineCts;
@@ -86,10 +127,20 @@ public sealed partial class MainViewModel
         Info.ApplyRequested += a => _ = ApplyCodeActionAsync(a);
     }
 
+    /// <summary>
+    /// The branch and its sync state, for the status bar (see <see cref="SourceControlViewModel.BranchLabel"/>).
+    /// </summary>
     public string BranchLabel => SourceControl.BranchLabel;
 
     // ---- code actions ("Try this", quick fixes) ----
 
+    /// <summary>
+    /// The code actions Lean offers at the caret (quick fixes, "Try this" suggestions), for the first message on the
+    /// caret's line, or for the caret position when there is none.
+    /// </summary>
+    /// <returns>
+    /// The actions; empty without an active Lean file and a running server, or when Lean fails (logged).
+    /// </returns>
     public async Task<IReadOnlyList<CodeAction>> CodeActionsAtCaretAsync()
     {
         if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } s)
@@ -110,6 +161,11 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Resolve a code action with Lean and apply its edit through <see cref="ApplyWorkspaceEditAsync"/>, which leaves
+    /// the files unsaved. Failures are logged.
+    /// </summary>
+    /// <param name="action">The action, as Lean offered it.</param>
     public async Task ApplyCodeActionAsync(CodeAction action)
     {
         if (_server is not { State: LeanServerState.Running } s)
@@ -135,6 +191,7 @@ public sealed partial class MainViewModel
     /// Apply edits across files. Each file is opened (if it is not already) and edited in the editor, as one undo
     /// step per file, and left unsaved so the person can review the change before saving.
     /// </summary>
+    /// <param name="edit">The edits, by file URI. The file that was active stays active.</param>
     public async Task ApplyWorkspaceEditAsync(WorkspaceEdit edit)
     {
         DocumentViewModel? keep = ActiveDocument;
@@ -170,6 +227,10 @@ public sealed partial class MainViewModel
 
     // ---- rename and references ----
 
+    /// <summary>
+    /// Rename the name at the caret everywhere Lean knows it is used, asking for the new name. The edited files are left
+    /// unsaved.
+    /// </summary>
     [RelayCommand]
     private async Task RenameSymbolAsync()
     {
@@ -204,6 +265,7 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Ask Lean for every use of the name at the caret and list them in the References panel.</summary>
     [RelayCommand]
     private async Task FindReferencesAsync()
     {
@@ -247,6 +309,8 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Open a reference or search hit in the editor.</summary>
+    /// <param name="item">The place; null does nothing.</param>
     [RelayCommand]
     private async Task OpenLocationAsync(LocationItem? item)
     {
@@ -333,6 +397,8 @@ public sealed partial class MainViewModel
         return "def";
     }
 
+    /// <summary>Move the caret to an outline item's name.</summary>
+    /// <param name="item">The item; null does nothing.</param>
     [RelayCommand]
     private void GoToOutline(OutlineItem? item)
     {
@@ -344,6 +410,10 @@ public sealed partial class MainViewModel
 
     // ---- find in files ----
 
+    /// <summary>
+    /// Search the project's files for <see cref="SearchQuery"/> on a background thread and list the hits (at most 2000).
+    /// A newer search cancels an older one.
+    /// </summary>
     [RelayCommand]
     private async Task SearchInFilesAsync()
     {
@@ -371,6 +441,10 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Show the Search panel and run the search.</summary>
+    /// <param name="seed">
+    /// Text to search for (such as the editor's selection), or null or empty to keep the current query.
+    /// </param>
     public void ShowSearch(string? seed)
     {
         if (!string.IsNullOrEmpty(seed))
@@ -383,9 +457,14 @@ public sealed partial class MainViewModel
 
     // ---- quick open and symbols ----
 
+    /// <summary>The project's files, relative to its root, for quick open; empty with no project.</summary>
     public IReadOnlyList<string> ProjectFiles() =>
         Project is null ? [] : ProjectSearch.Files(Project.Root).Select(f => Path.GetRelativePath(Project.Root, f)).ToList();
 
+    /// <summary>Ask Lean for declarations whose names match, for the symbol picker.</summary>
+    /// <param name="query">Part of a name; fewer than two characters gives nothing.</param>
+    /// <param name="ct">Cancels the request.</param>
+    /// <returns>The matches; empty without a running server, or when the request fails or is cancelled.</returns>
     public async Task<IReadOnlyList<SymbolLocation>> WorkspaceSymbolsAsync(string query, CancellationToken ct)
     {
         if (_server is not { State: LeanServerState.Running } s || query.Trim().Length < 2)
@@ -459,6 +538,10 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Ask for a repository (GitHub <c>owner/repo</c> or any Git URL) and a folder, clone it, and open it as the project.
+    /// For a Mathlib project, offers to download Mathlib's prebuilt files.
+    /// </summary>
     [RelayCommand]
     private async Task CloneRepositoryAsync()
     {

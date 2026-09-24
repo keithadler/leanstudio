@@ -35,12 +35,18 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(CanGoForward));
     }
 
+    /// <summary>There is a place to go back to.</summary>
     public bool CanGoBack => _back.Count > 0;
+    /// <summary>There is a place to go forward to (after going back).</summary>
     public bool CanGoForward => _forward.Count > 0;
 
+    /// <summary>
+    /// Return to where the caret was before the last jump, skipping places in files that no longer exist.
+    /// </summary>
     [RelayCommand]
     private async Task GoBackAsync() => await TravelAsync(_back, _forward);
 
+    /// <summary>Undo a <see cref="GoBackCommand"/>.</summary>
     [RelayCommand]
     private async Task GoForwardAsync() => await TravelAsync(_forward, _back);
 
@@ -74,9 +80,11 @@ public sealed partial class MainViewModel
 
     // ---- next and previous problem ----
 
+    /// <summary>Move the caret to the next error or warning in the active file, wrapping around.</summary>
     [RelayCommand]
     private void NextProblem() => StepProblem(+1);
 
+    /// <summary>Move the caret to the previous error or warning in the active file, wrapping around.</summary>
     [RelayCommand]
     private void PreviousProblem() => StepProblem(-1);
 
@@ -102,6 +110,7 @@ public sealed partial class MainViewModel
 
     // ---- stale imports: restart the file ----
 
+    /// <summary>Lean says the active file's imports are out of date: offer <see cref="RestartFileAsync"/>.</summary>
     [ObservableProperty]
     private bool _importsStale;
 
@@ -112,6 +121,7 @@ public sealed partial class MainViewModel
     /// Close and reopen the file in Lean, which rebuilds its imports first (what other editors call Restart File).
     /// Needed after changing a file that this one imports.
     /// </summary>
+    /// <remarks>Saves every file first. Does nothing without an active Lean file and a running server.</remarks>
     [RelayCommand]
     public async Task RestartFileAsync()
     {
@@ -129,11 +139,20 @@ public sealed partial class MainViewModel
 
     // ---- adding a missing import ----
 
+    /// <summary>The name an "unknown identifier" (or "unknown constant") message on a line complains about.</summary>
+    /// <param name="d">The document whose diagnostics to read.</param>
+    /// <param name="line">The 0-based line.</param>
+    /// <returns>The name, or null if no message on the line is about a missing name.</returns>
     public static string? MissingNameOn(DocumentViewModel d, int line) =>
         d.Diagnostics.Where(x => x.Extent.Start.Line <= line && line <= x.Extent.End.Line)
             .Select(x => ImportFinder.MissingName(x.Message)).FirstOrDefault(n => n is not null);
 
     /// <summary>For an "unknown identifier" on this line: the modules that define the name, from Loogle.</summary>
+    /// <remarks>
+    /// Asks Loogle over the network. Only modules the project can import are kept (core Lean's always; Mathlib's and
+    /// its dependencies' only in a project that uses Mathlib). A network failure is logged and gives an empty list.
+    /// </remarks>
+    /// <param name="line">The 0-based line in the active file.</param>
     public async Task<IReadOnlyList<ImportSuggestion>> ImportSuggestionsAsync(int line)
     {
         if (ActiveDocument is not DocumentViewModel d || MissingNameOn(d, line) is not string name)
@@ -154,6 +173,8 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Add an import to the active file, as one undoable edit.</summary>
+    /// <remarks>Does nothing if the file already imports it. The file is left unsaved.</remarks>
+    /// <param name="module">The module, such as <c>Mathlib.Data.Nat.Prime.Basic</c>.</param>
     public void AddImport(string module)
     {
         if (ActiveDocument is not DocumentViewModel d)
@@ -191,9 +212,11 @@ public sealed partial class MainViewModel
 
     // ---- getting Lean installed ----
 
+    /// <summary>elan is not installed, so Lean cannot run: the window offers to install it.</summary>
     [ObservableProperty]
     private bool _leanMissing;
 
+    /// <summary>The Lean installer is running.</summary>
     [ObservableProperty]
     private bool _installingLean;
 
@@ -234,6 +257,10 @@ public sealed partial class MainViewModel
 
     // ---- files ----
 
+    /// <summary>Create an empty file and open it. <c>.lean</c> is added to a name with no extension.</summary>
+    /// <param name="folder">The folder to create it in; created if needed.</param>
+    /// <param name="name">The file's name, which may include subfolders.</param>
+    /// <returns>What went wrong (the file already exists), or null.</returns>
     public async Task<string?> CreateFileAsync(string folder, string name)
     {
         string path = Path.Combine(folder, name.EndsWith(".lean", StringComparison.Ordinal) || name.Contains('.') ? name : name + ".lean");
@@ -248,6 +275,10 @@ public sealed partial class MainViewModel
         return null;
     }
 
+    /// <summary>Create a folder and refresh the file tree.</summary>
+    /// <param name="parent">The folder to create it in.</param>
+    /// <param name="name">The new folder's name.</param>
+    /// <returns>What went wrong (it already exists), or null.</returns>
     public string? CreateFolder(string parent, string name)
     {
         string path = Path.Combine(parent, name);
@@ -264,6 +295,10 @@ public sealed partial class MainViewModel
     /// Rename a file or folder. A Lean file inside the project is renamed as a module, so the imports of it are
     /// rewritten too; an open file follows its new name.
     /// </summary>
+    /// <remarks>Saves the file first if it has unsaved changes.</remarks>
+    /// <param name="path">The file or folder to rename.</param>
+    /// <param name="newName">Its new name, in the same folder.</param>
+    /// <returns>What went wrong (the new name is taken), or null.</returns>
     public async Task<string?> RenamePathAsync(string path, string newName)
     {
         string target = Path.Combine(Path.GetDirectoryName(path)!, newName);
@@ -306,6 +341,10 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>Move to the trash, closing it first if it is open. Returns a problem to show, or null.</summary>
+    /// <remarks>
+    /// Open files there (for a folder, every one inside it) are closed without asking about unsaved changes.
+    /// </remarks>
+    /// <param name="path">The file or folder.</param>
     public async Task<string?> TrashAsync(string path)
     {
         foreach (DocumentViewModel d in Documents.Where(d => d.Path == path || d.Path.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.Ordinal)).ToList())

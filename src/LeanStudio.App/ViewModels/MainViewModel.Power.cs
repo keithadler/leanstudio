@@ -10,16 +10,27 @@ namespace LeanStudio.App.ViewModels;
 /// search and replace and module renames.</summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>
+    /// The right-hand panels' indices in <see cref="RightTab"/>: the Tactic State, and the C that Lean emits.
+    /// </summary>
     public const int GoalsTab = 0, CodeTab = 1;
 
     // ---- the C that Lean emits, beside the definition at the cursor ----
 
+    /// <summary>
+    /// The right-hand panel shown: <see cref="GoalsTab"/> or <see cref="CodeTab"/>. Switching to the C view compiles
+    /// the file to C if needed.
+    /// </summary>
     [ObservableProperty]
     private int _rightTab;
 
+    /// <summary>The C view's code: the C functions for the definition at the caret, or the compiler's error.</summary>
     [ObservableProperty]
     private string _cCode = "";
 
+    /// <summary>
+    /// The C view's status line: which definition and function are shown, progress, or why there is no code.
+    /// </summary>
     [ObservableProperty]
     private string _cStatus = "Put the cursor on a definition to see the C that Lean compiles it to.";
 
@@ -102,6 +113,11 @@ public sealed partial class MainViewModel
         d.Message.Contains("Try this", StringComparison.Ordinal) || d.Message.Contains("[apply]", StringComparison.Ordinal);
 
     /// <summary>The code actions Lean offers on one line.</summary>
+    /// <remarks>
+    /// For each message on the line, the actions for it, without duplicate titles. Empty without an active Lean file
+    /// and a running server.
+    /// </remarks>
+    /// <param name="line">The 0-based line in the active file.</param>
     public async Task<IReadOnlyList<CodeAction>> CodeActionsAtLineAsync(int line)
     {
         if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } s)
@@ -126,6 +142,10 @@ public sealed partial class MainViewModel
     /// Apply one suggestion for every message in the file that has one: each "Try this" and each [apply] hint.
     /// Fixes are applied from the bottom of the file up, so each one's position is still right when it is used.
     /// </summary>
+    /// <remarks>
+    /// A fix that overlaps one already chosen is skipped. All are applied as one undoable edit, and the file is left
+    /// unsaved.
+    /// </remarks>
     [RelayCommand]
     public async Task FixAllInFileAsync()
     {
@@ -208,6 +228,9 @@ public sealed partial class MainViewModel
 
     // ---- replace across the project ----
 
+    /// <summary>
+    /// The replacement for Replace in Files; with a regular expression it may use <c>$1</c> and the like.
+    /// </summary>
     [ObservableProperty]
     private string _replaceWith = "";
 
@@ -215,6 +238,14 @@ public sealed partial class MainViewModel
     /// Replace every match of the search in the project. Open files are edited in the editor (undoable, unsaved,
     /// so you can review); other files are written, after their current text is kept in local history.
     /// </summary>
+    /// <remarks>Uses the Search panel's query and options. Afterwards the search is run again.</remarks>
+    /// <param name="confirm">
+    /// Asked with the number of matches and of files before anything changes; false cancels.
+    /// </param>
+    /// <returns>
+    /// How many matches were replaced, in how many files; zeros if nothing was (no project, no matches, cancelled, or
+    /// an invalid expression).
+    /// </returns>
     public async Task<(int Matches, int Files)> ReplaceInFilesAsync(Func<int, int, Task<bool>> confirm)
     {
         if (Project is null || SearchQuery.Length == 0)
@@ -261,6 +292,11 @@ public sealed partial class MainViewModel
     // ---- rename a module ----
 
     /// <summary>Rename the active file's module, moving the file and rewriting every import of it.</summary>
+    /// <remarks>Saves every file first. The file reopens at the same caret position under its new name.</remarks>
+    /// <param name="newModule">
+    /// The new module name, such as <c>MyProject.Algebra.Groups</c>; its file goes under the project's root.
+    /// </param>
+    /// <returns>What went wrong, or null.</returns>
     public async Task<string?> RenameModuleAsync(string newModule)
     {
         if (Project is null || ActiveDocument is not { IsLean: true } d)

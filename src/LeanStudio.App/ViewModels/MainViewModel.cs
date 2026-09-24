@@ -10,21 +10,64 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.App.ViewModels;
 
+/// <summary>What the New Project dialog returns: where to create the project, and how.</summary>
+/// <param name="Parent">The folder the project's own folder is created in.</param>
+/// <param name="Name">The project's name, which is also its folder's name (passed to <c>lake new</c>).</param>
+/// <param name="Template">
+/// Which <c>lake new</c> template to start from; <see cref="ProjectTemplate.Math"/> also fetches Mathlib's cache.
+/// </param>
+/// <param name="Toolchain">
+/// The toolchain to create it with and pin, such as <c>leanprover/lean4:stable</c>; installed first if elan does not
+/// have it.
+/// </param>
 public sealed record NewProjectRequest(string Parent, string Name, ProjectTemplate Template, string Toolchain);
 
 /// <summary>What the window provides to the view model: file pickers, prompts and confirmations.</summary>
 public interface IDialogs
 {
+    /// <summary>Ask for a folder.</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <returns>The chosen folder, or null if the person cancelled.</returns>
     Task<string?> PickFolderAsync(string title);
+    /// <summary>Ask for an existing file to open.</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <returns>The chosen file, or null if the person cancelled.</returns>
     Task<string?> PickFileAsync(string title);
+    /// <summary>Ask where to save a file. Nothing is written: the caller does that.</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <param name="suggestedName">The file name filled in to start with.</param>
+    /// <param name="folder">The folder the dialog starts in, or null to let the system choose.</param>
+    /// <returns>The chosen path, or null if the person cancelled.</returns>
     Task<string?> SaveFileAsync(string title, string suggestedName, string? folder);
+    /// <summary>Ask a yes-or-no question. Also used just to tell the person something, ignoring the answer.</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <param name="message">The question or message.</param>
+    /// <returns>True if the person agreed.</returns>
     Task<bool> ConfirmAsync(string title, string message);
+    /// <summary>Ask for a line of text (a name, a line number, a URL…).</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <param name="message">What to enter, shown above the text box.</param>
+    /// <param name="initial">The text the box starts with.</param>
+    /// <returns>The text entered, or null if the person cancelled.</returns>
     Task<string?> PromptAsync(string title, string message, string initial);
+    /// <summary>Show the New Project dialog.</summary>
+    /// <param name="toolchains">The names of the installed toolchains, to choose from.</param>
+    /// <param name="defaultParent">The folder offered to create the project in.</param>
+    /// <returns>What to create, or null if the person cancelled.</returns>
     Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent);
+    /// <summary>Open a URL (a web page, or a local file) with the system's default application.</summary>
+    /// <param name="uri">What to open.</param>
     Task LaunchAsync(Uri uri);
     /// <summary>Show a file in the system's file manager (or open it, where revealing is not possible).</summary>
     Task RevealAsync(string path);
+    /// <summary>Ask where to save an HTML page, as <see cref="SaveFileAsync"/> does but for web pages.</summary>
+    /// <param name="title">The dialog's title.</param>
+    /// <param name="suggestedName">The file name filled in to start with.</param>
+    /// <param name="folder">The folder the dialog starts in, or null to let the system choose.</param>
+    /// <returns>The chosen path, or null if the person cancelled.</returns>
     Task<string?> SaveWebPageAsync(string title, string suggestedName, string? folder);
+    /// <summary>Put text on the clipboard.</summary>
+    /// <param name="text">The text to copy.</param>
     Task CopyTextAsync(string text);
 }
 
@@ -32,6 +75,15 @@ public interface IDialogs
 /// The window's state: the open project, the Lean server serving it, the open files, and every panel. Everything
 /// that talks to Lean, Lake, elan or Tenet starts here.
 /// </summary>
+/// <remarks>
+/// The window binds to this one object. It owns the panels' view models (<see cref="Info"/>, <see cref="Navigator"/>,
+/// <see cref="Toolchains"/>, <see cref="Verification"/>, <see cref="SourceControl"/>, <see cref="Learn"/>) and passes
+/// them the callbacks they need. Its data comes from the <see cref="LeanServer"/> it starts for the open project
+/// (diagnostics, progress, goals, code actions), from running <c>lake</c>, <c>elan</c> and <c>git</c>, from a
+/// <see cref="TenetWorkspace"/> opened on what Lake built, and from watching the project folder for changes on disk.
+/// It is split by area across partial files: this one holds projects, files, the Lean server, Lake and Tenet.
+/// Everything here is meant to be used on the UI thread; events from Lean are posted there.
+/// </remarks>
 public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly IDialogs _dialogs;
@@ -43,6 +95,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _diskCts;
 
+    /// <summary>
+    /// Create the window's state and its panels. Nothing is opened or started until <see cref="StartAsync"/>.
+    /// </summary>
+    /// <param name="dialogs">The window's pickers, prompts and confirmations.</param>
+    /// <param name="settings">The settings to read, and to update and save as the person works.</param>
     public MainViewModel(IDialogs dialogs, Settings settings)
     {
         _dialogs = dialogs;
@@ -59,53 +116,92 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         InitAssist();
     }
 
+    /// <summary>What Lean Studio remembers between runs; changed and saved as the person works.</summary>
     public Settings Settings { get; }
+    /// <summary>The Tactic State panel.</summary>
     public InfoViewModel Info { get; }
+    /// <summary>The Library panel: declarations read from the build by Tenet, and online search.</summary>
     public NavigatorViewModel Navigator { get; }
+    /// <summary>The Toolchains panel.</summary>
     public ToolchainsViewModel Toolchains { get; }
+    /// <summary>The Tenet panel.</summary>
     public VerificationViewModel Verification { get; }
+    /// <summary>The open files, in tab order.</summary>
     public ObservableList<DocumentViewModel> Documents { get; } = new();
+    /// <summary>
+    /// The Problems panel: errors and warnings from Lean for the open files and from the last build for the others,
+    /// errors first.
+    /// </summary>
     public ObservableList<ProblemItem> Problems { get; } = new();
+    /// <summary>The top level of the project's file tree.</summary>
     public ObservableList<FileNode> Files { get; } = new();
+    /// <summary>
+    /// The Output panel's text: everything <see cref="Log"/> writes, trimmed when it grows past about two million
+    /// characters.
+    /// </summary>
     public TextDocument Output { get; } = new();
 
+    /// <summary>
+    /// The Lean server for the open project, or null when none was started (no project, or elan is missing). It may
+    /// have stopped since: check its <see cref="LeanServer.State"/>.
+    /// </summary>
     public LeanServer? Server => _server;
 
+    /// <summary>The open project, or null. Set by <see cref="OpenProjectAsync"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasProject), nameof(ProjectName))]
     [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private LeanProject? _project;
 
+    /// <summary>
+    /// The file in the editor, or null when none is open. Changing it refreshes the Tactic State and the outline.
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasDocument))]
     private DocumentViewModel? _activeDocument;
 
+    /// <summary>The Lean server's state for the status bar, such as <c>Lean: ready</c>.</summary>
     [ObservableProperty]
     private string _serverStatus = "Lean: not started";
 
+    /// <summary>The toolchain Lean runs on, for the status bar; says so when the project does not pin one.</summary>
     [ObservableProperty]
     private string _toolchainLabel = "";
 
+    /// <summary>The caret's line and column for the status bar, 1-based.</summary>
     [ObservableProperty]
     private string _caretLabel = "";
 
+    /// <summary>The error and warning counts for the status bar.</summary>
     [ObservableProperty]
     private string _problemSummary = "No problems";
 
+    /// <summary>
+    /// A long task (a build, a clone, fetching a cache…) is running; project tasks cannot start meanwhile.
+    /// </summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private bool _isBusy;
 
+    /// <summary>What the running long task is doing, for the status bar.</summary>
     [ObservableProperty]
     private string _busyText = "";
 
+    /// <summary>
+    /// The bottom panel shown: one of <see cref="ProblemsPanel"/>, <see cref="OutputPanel"/> and the other
+    /// <c>…Panel</c> constants.
+    /// </summary>
     [ObservableProperty]
     private int _bottomTab;
 
+    /// <summary>A project is open.</summary>
     public bool HasProject => Project is not null;
+    /// <summary>A file is open in the editor.</summary>
     public bool HasDocument => ActiveDocument is not null;
+    /// <summary>The open project's name, or <c>No project</c>.</summary>
     public string ProjectName => Project?.Name ?? "No project";
 
+    /// <summary>The window's title: the active file, then the project, then Lean Studio.</summary>
     public string WindowTitle =>
         (ActiveDocument is null ? "" : ActiveDocument.Title + " — ") + (Project is null ? "Lean Studio" : Project.Name + " — Lean Studio");
 
@@ -127,6 +223,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- logging ----
 
+    /// <summary>
+    /// Append a line to the Output panel. Safe to call from any thread: off the UI thread it is posted there.
+    /// </summary>
+    /// <param name="line">The line, without a newline.</param>
     public void Log(string line)
     {
         void Append()
@@ -148,10 +248,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Raised on the UI thread after a line is added to <see cref="Output"/>, so the view can scroll to it.
+    /// </summary>
     public event Action? OutputAppended;
 
     // ---- startup ----
 
+    /// <summary>
+    /// Called once the window is shown: list the toolchains, note whether elan is installed, and (unless starting empty)
+    /// reopen the last project with the files that were open and the one that was active.
+    /// </summary>
+    /// <param name="restoreSession">False for a new, empty window.</param>
     public async Task StartAsync(bool restoreSession = true)
     {
         await Toolchains.RefreshAsync();
@@ -182,6 +290,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- projects ----
 
+    /// <summary>Ask for a folder and open it as the project.</summary>
     [RelayCommand]
     private async Task OpenFolderAsync()
     {
@@ -192,6 +301,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Open a project from the recent list. Does nothing if the folder no longer exists.</summary>
+    /// <param name="dir">The project's folder.</param>
     [RelayCommand]
     public async Task OpenRecentAsync(string? dir)
     {
@@ -201,6 +312,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Open a folder as the project, in place of the current one. Asks first if files have unsaved changes (and does
+    /// nothing if the person keeps them), then closes every file, remembers it among the recent projects, loads the file
+    /// tree, watches the folder, opens its Git repository, starts Lean on it, and opens its build with Tenet.
+    /// </summary>
+    /// <param name="dir">The project's root folder; any folder works, a Lake project or not.</param>
     public async Task OpenProjectAsync(string dir)
     {
         if (!await CloseAllAsync(force: false))
@@ -230,6 +347,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>A fresh copy each time, so bindings see a new list when a project is opened.</summary>
     public IReadOnlyList<string> RecentProjects => Settings.RecentProjects.ToList();
 
+    /// <summary>
+    /// Create a project with <c>lake new</c> from the New Project dialog, installing its toolchain first if needed,
+    /// and open it. A Mathlib project also gets its dependencies and Mathlib's prebuilt cache.
+    /// </summary>
     [RelayCommand]
     private async Task NewProjectAsync()
     {
@@ -361,6 +482,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ---- the AI assistant bridge ----
 
     /// <summary>What the person is looking at, for an assistant that asks (see StudioBridge).</summary>
+    /// <returns>
+    /// A JSON object with <c>project</c> and, when a file is open, <c>file</c>, 1-based <c>line</c> and <c>column</c>,
+    /// <c>dirty</c>, <c>lineText</c>, <c>selection</c>, <c>goals</c> and <c>messages</c>.
+    /// </returns>
     public System.Text.Json.Nodes.JsonObject BridgeContext()
     {
         var o = new System.Text.Json.Nodes.JsonObject { ["project"] = Project?.Root };
@@ -386,6 +511,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>The editor's selected text; set by the window.</summary>
     public Func<string>? SelectionProvider { get; set; }
 
+    /// <summary>Show a place in the editor for an assistant, opening the file if needed.</summary>
+    /// <param name="path">The file to show.</param>
+    /// <param name="line">The 1-based line.</param>
+    /// <param name="column">The 1-based column.</param>
+    /// <returns>What went wrong, or null.</returns>
     public async Task<string?> BridgeShowAsync(string path, int line, int column)
     {
         if (!File.Exists(path))
@@ -456,6 +586,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Stop the Lean server and start a new one, clearing every file's diagnostics; open files are sent to it again.
+    /// </summary>
     [RelayCommand]
     public async Task RestartServerAsync()
     {
@@ -540,6 +673,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- documents ----
 
+    /// <summary>Ask for a file and open it.</summary>
     [RelayCommand]
     private async Task OpenFileDialogAsync()
     {
@@ -550,6 +684,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Open a file in the editor and make it the active document, or switch to it if it is already open. With no
+    /// project open, the file's enclosing Lake project (or else its folder) is opened first. A newly opened Lean file
+    /// is sent to Lean. The place left is remembered for Back.
+    /// </summary>
+    /// <param name="path">The file; made absolute.</param>
+    /// <param name="line">
+    /// The 0-based line to put the caret on, or null to keep it where it was (last time, for a newly opened file).
+    /// </param>
+    /// <param name="column">The 0-based column, with <paramref name="line"/>.</param>
+    /// <returns>The document, or null (with a line logged) if the file does not exist.</returns>
     public async Task<DocumentViewModel?> OpenFileAsync(string path, int? line = null, int? column = null)
     {
         path = Path.GetFullPath(path);
@@ -597,6 +742,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return doc;
     }
 
+    /// <summary>Ask for a new file's name and place, create it empty (unless it exists), and open it.</summary>
     [RelayCommand]
     private async Task NewFileAsync()
     {
@@ -649,6 +795,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Called by the editor when the caret moves. Records the position; for the active document it also updates the
+    /// status bar, blame and the C view, and asks Lean for the Tactic State there after a short pause.
+    /// </summary>
+    /// <param name="doc">The document whose caret moved.</param>
+    /// <param name="line">The 0-based line.</param>
+    /// <param name="column">The 0-based column.</param>
     public void CaretMoved(DocumentViewModel doc, int line, int column)
     {
         doc.CaretLine = line;
@@ -694,6 +847,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Save the active file, tell Lean, and keep the saved text in local history. A failure is logged, not thrown.
+    /// </summary>
     [RelayCommand]
     public async Task SaveAsync()
     {
@@ -703,6 +859,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Save the active file under a new name; Lean is told it closed the old file and opened the new one.
+    /// </summary>
     [RelayCommand]
     private async Task SaveAsAsync()
     {
@@ -728,6 +887,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RememberOpenFiles();
     }
 
+    /// <summary>Save every file with unsaved changes.</summary>
     [RelayCommand]
     private async Task SaveAllAsync()
     {
@@ -760,6 +920,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Close a file, asking first if it has unsaved changes, and tell Lean. The neighbouring tab becomes active.
+    /// </summary>
+    /// <param name="d">The file to close, or null for the active one.</param>
     [RelayCommand]
     public async Task CloseDocumentAsync(DocumentViewModel? d)
     {
@@ -787,6 +951,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Close every file; returns false if the user kept one with unsaved changes.</summary>
+    /// <param name="force">Close without asking, discarding unsaved changes.</param>
     public async Task<bool> CloseAllAsync(bool force)
     {
         if (!force && Documents.Any(d => d.IsDirty)
@@ -807,6 +972,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Settings.Save();
     }
 
+    /// <summary>Reload the project's file tree from disk, keeping the folders that were expanded.</summary>
     public void RefreshFiles()
     {
         if (Project is null)
@@ -837,6 +1003,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Files.Reset(root.Children);
     }
 
+    /// <summary>Ask Lean where the name at the caret is defined and open it there.</summary>
     [RelayCommand]
     private async Task GoToDefinitionAsync()
     {
@@ -858,6 +1025,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Ask for a 1-based line number and move the caret there.</summary>
     [RelayCommand]
     private async Task GoToLineAsync()
     {
@@ -872,6 +1040,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Show a problem's place in the editor, opening its file if needed.</summary>
+    /// <param name="p">The problem; null does nothing.</param>
     [RelayCommand]
     private async Task OpenProblemAsync(ProblemItem? p)
     {
@@ -894,6 +1064,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanRunProjectTask => Project is { IsLakeProject: true } && !IsBusy;
 
+    /// <summary>
+    /// Save everything and run <c>lake build</c>, showing the output and taking its errors into the Problems panel. Then
+    /// Tenet reopens the build, and, if the build succeeded and the setting is on, verifies it.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private async Task BuildAsync()
     {
@@ -914,6 +1088,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Download Mathlib's prebuilt files (<c>lake exe cache get</c>), then restart Lean.</summary>
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private Task GetMathlibCacheAsync() => RunBusyAsync("Fetching Mathlib's cache…", async ct =>
     {
@@ -922,6 +1097,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await RestartServerAsync();
     });
 
+    /// <summary>
+    /// Run <c>lake update</c> (and fetch Mathlib's cache for a project that uses it), then restart Lean.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private Task UpdateDependenciesAsync() => RunBusyAsync("Updating dependencies…", async ct =>
     {
@@ -934,6 +1112,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await RestartServerAsync();
     });
 
+    /// <summary>Remove the build (<c>lake clean</c>) and reopen what is left with Tenet.</summary>
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private Task CleanAsync() => RunBusyAsync("Cleaning…", async ct =>
     {
@@ -942,6 +1121,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await ReopenTenetAsync();
     });
 
+    /// <summary>Cancel the running long task (a build, a clone…).</summary>
     [RelayCommand]
     private void CancelTask() => _buildCts?.Cancel();
 
@@ -994,6 +1174,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Navigator.WorkspaceChanged();
     }
 
+    /// <summary>
+    /// Re-check the project's built modules with Tenet's independent kernel, showing progress and then the verdicts in
+    /// the Tenet panel and beside each declaration in the open files. Asks for a build first if there is none.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private async Task VerifyAsync()
     {
@@ -1058,6 +1242,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         d.Verdicts = map;
     }
 
+    /// <summary>Open a verified declaration's source at its line.</summary>
+    /// <param name="v">The verdict; null does nothing.</param>
     [RelayCommand]
     private async Task OpenVerdictAsync(VerdictView? v)
     {
@@ -1072,6 +1258,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Look up the name at the caret in the Library panel and switch to it.</summary>
     [RelayCommand]
     private async Task ShowDeclarationAtCaretAsync()
     {
@@ -1088,6 +1275,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The side panel shown: one of <see cref="FilesTab"/>, <see cref="OutlineTab"/> and the other <c>…Tab</c>
+    /// constants.
+    /// </summary>
     [ObservableProperty]
     private int _sidebarTab;
 
@@ -1112,6 +1303,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         return text[s..e].Trim('.');
     }
 
+    /// <summary>
+    /// Save which files are open, stop watching the disk, stop the Lean server, and close Tenet's workspace.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         _watcher?.Dispose();

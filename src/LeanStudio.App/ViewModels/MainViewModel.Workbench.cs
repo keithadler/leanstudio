@@ -9,13 +9,22 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.App.ViewModels;
 
+/// <summary>A <c>sorry</c>, <c>admit</c> or TODO in the Sorries &amp; TODOs panel.</summary>
+/// <param name="Marker">What was found, and where.</param>
+/// <param name="Root">The project's root, to show the file's path relative to it.</param>
 public sealed record MarkerItem(Marker Marker, string Root)
 {
+    /// <summary>The file, relative to the project's root.</summary>
     public string File => System.IO.Path.GetRelativePath(Root, Marker.Path);
+    /// <summary>The 1-based line.</summary>
     public string Where => $"{Marker.Line + 1}";
+    /// <summary>What it is, as the panel labels it.</summary>
     public string Kind => Marker.KindLabel;
+    /// <summary>The declaration it is in, or empty.</summary>
     public string Declaration => Marker.Declaration ?? "";
+    /// <summary>The line's text.</summary>
     public string Text => Marker.LineText;
+    /// <summary>It is an unfinished proof (<c>sorry</c> or <c>admit</c>), not a TODO comment.</summary>
     public bool IsSorry => Marker.Kind != MarkerKind.Todo;
 }
 
@@ -23,13 +32,21 @@ public sealed record MarkerItem(Marker Marker, string Root)
 /// build problems, line blame, tasks, and remembering where you were.</summary>
 public sealed partial class MainViewModel
 {
+    /// <summary>The Sorries &amp; TODOs panel's index in <see cref="BottomTab"/>.</summary>
     public const int MarkersPanel = 4;
 
+    /// <summary>
+    /// The Sorries &amp; TODOs panel: every one in the project, sorries first, then by file and line.
+    /// </summary>
     public ObservableList<MarkerItem> Markers { get; } = new();
 
+    /// <summary>The Sorries &amp; TODOs panel's title, with the counts.</summary>
     [ObservableProperty]
     private string _markersTitle = "Sorries & TODOs";
 
+    /// <summary>
+    /// Who last changed the caret's line and when, for the status bar; empty when blame is off or not available.
+    /// </summary>
     [ObservableProperty]
     private string _blameText = "";
 
@@ -40,6 +57,9 @@ public sealed partial class MainViewModel
     private CancellationTokenSource? _blameCts;
     private CancellationTokenSource? _taskCts;
 
+    /// <summary>
+    /// The recent saved versions of each file, kept under the settings folder, for File ▸ Local History.
+    /// </summary>
     public LocalHistory History => _history;
 
     // ---- auto-save and local history ----
@@ -96,10 +116,12 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>The saved versions of the active file in local history; empty when no real file is active.</summary>
     public IReadOnlyList<HistoryEntry> VersionsOfActive() =>
         ActiveDocument is { IsVirtual: false } d ? _history.Versions(d.Path) : [];
 
     /// <summary>Bring back an earlier version into the editor (undoable, unsaved until you save).</summary>
+    /// <param name="entry">The version; nothing happens unless its file is open.</param>
     public void RestoreVersion(HistoryEntry entry)
     {
         DocumentViewModel? d = Documents.FirstOrDefault(x => x.Path == entry.Path);
@@ -113,6 +135,10 @@ public sealed partial class MainViewModel
 
     // ---- sorries and TODOs ----
 
+    /// <summary>
+    /// Scan the project's files for sorries and TODOs on a background thread and list them. A newer scan cancels an
+    /// older one; with no project the list is emptied.
+    /// </summary>
     [RelayCommand]
     public async Task RefreshMarkersAsync()
     {
@@ -139,6 +165,8 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>Open a sorry or TODO in the editor, with the caret on it.</summary>
+    /// <param name="m">The item; null does nothing.</param>
     [RelayCommand]
     private async Task OpenMarkerAsync(MarkerItem? m)
     {
@@ -203,8 +231,18 @@ public sealed partial class MainViewModel
 
     // ---- tasks ----
 
+    /// <summary>
+    /// The tasks that can be run for the project: the standard Lake commands, and the lakefile's executables and scripts
+    /// (the lakefile is read from disk). Empty unless it is a Lake project.
+    /// </summary>
     public IReadOnlyList<ProjectTask> Tasks() => Project is { IsLakeProject: true } p ? ProjectTasks.For(p) : [];
 
+    /// <summary>
+    /// Save everything and run a task in the project's folder, with its output in the Output panel. After a build the
+    /// Problems panel takes its errors and Tenet reopens the build; afterwards the file tree and the sorries are
+    /// refreshed. A task already running is cancelled first.
+    /// </summary>
+    /// <param name="task">The task, from <see cref="Tasks"/> or a shell command.</param>
     public async Task RunTaskAsync(ProjectTask task)
     {
         if (Project is null)

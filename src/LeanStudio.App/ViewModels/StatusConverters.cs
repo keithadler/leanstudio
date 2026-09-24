@@ -5,10 +5,19 @@ using LeanStudio.Core.Verification;
 
 namespace LeanStudio.App.ViewModels;
 
+/// <summary>
+/// Value converters the views use in bindings, as <c>{x:Static vm:StatusConverters.IsZero}</c> and the like.
+/// </summary>
 public static class StatusConverters
 {
+    /// <summary>True for <see cref="VerificationStatus.Verified"/>: Tenet accepted the declaration.</summary>
     public static readonly IValueConverter IsVerified = new FuncValueConverter<VerificationStatus, bool>(s => s == VerificationStatus.Verified);
+    /// <summary>
+    /// True for <see cref="VerificationStatus.RestsOnAssumption"/>: it rests on sorry or on an axiom the project
+    /// introduces.
+    /// </summary>
     public static readonly IValueConverter IsConditional = new FuncValueConverter<VerificationStatus, bool>(s => s == VerificationStatus.RestsOnAssumption);
+    /// <summary>True for <see cref="VerificationStatus.Rejected"/>: Tenet's kernel rejected it.</summary>
     public static readonly IValueConverter IsRejected = new FuncValueConverter<VerificationStatus, bool>(s => s == VerificationStatus.Rejected);
 
     /// <summary>True for an empty list's count: shows a panel's "nothing here" message.</summary>

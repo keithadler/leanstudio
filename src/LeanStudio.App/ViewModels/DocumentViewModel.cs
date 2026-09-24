@@ -7,8 +7,17 @@ using LeanStudio.Lsp;
 namespace LeanStudio.App.ViewModels;
 
 /// <summary>One open file: its text, whether it is saved, and what Lean and Tenet have said about it.</summary>
+/// <remarks>
+/// Backs one editor tab. <see cref="MainViewModel"/> creates it from the file's text on disk, forwards its edits to
+/// Lean, and fills in <see cref="Diagnostics"/>, <see cref="Processing"/>, <see cref="Verdicts"/>,
+/// <see cref="Timings"/> and <see cref="LineChanges"/> as Lean, Tenet, the profiler and Git report on it. Used on
+/// the UI thread.
+/// </remarks>
 public sealed partial class DocumentViewModel : ObservableObject
 {
+    /// <summary>Wrap a file's text. Nothing is read or written here: the caller reads the file.</summary>
+    /// <param name="path">The file; made absolute. For a virtual document, any name.</param>
+    /// <param name="text">The text, which is also taken as what is saved on disk.</param>
     public DocumentViewModel(string path, string text)
     {
         Path = System.IO.Path.GetFullPath(path);
@@ -25,15 +34,23 @@ public sealed partial class DocumentViewModel : ObservableObject
         };
     }
 
+    /// <summary>The file's full path. Changes with Save As.</summary>
     public string Path { get; private set; }
+    /// <summary>The file's URI, which identifies it to Lean. Changes with Save As.</summary>
     public string Uri { get; private set; }
+    /// <summary>The text, as the editor shows and edits it.</summary>
     public TextDocument Document { get; }
+    /// <summary>The text as last read from or written to disk, to tell whether there are unsaved changes.</summary>
     public string SavedText { get; private set; }
 
+    /// <summary>
+    /// The tab's title: the file name, with • when there are unsaved changes, or <c>(changes)</c> for a diff.
+    /// </summary>
     public string Title => IsVirtual
         ? System.IO.Path.GetFileNameWithoutExtension(Path) + " (changes)"
         : System.IO.Path.GetFileName(Path) + (IsDirty ? " •" : "");
 
+    /// <summary>A <c>.lean</c> file, which Lean checks; false for a virtual document.</summary>
     public bool IsLean => !IsVirtual && Path.EndsWith(".lean", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A view with no file behind it (a diff): read-only, never saved, never sent to Lean.</summary>
@@ -43,6 +60,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     [ObservableProperty]
     private IReadOnlyList<Core.Git.LineChange> _lineChanges = [];
 
+    /// <summary>The text differs from <see cref="SavedText"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Title))]
     private bool _isDirty;
@@ -56,6 +74,7 @@ public sealed partial class DocumentViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsProcessing))]
     private IReadOnlyList<LeanFileProgressRange> _processing = [];
 
+    /// <summary>Lean is still checking part of the file.</summary>
     public bool IsProcessing => Processing.Count > 0;
 
     /// <summary>Tenet's verdict for each declaration in this file, by 1-based line, from the last verification.</summary>
@@ -76,6 +95,8 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// Move the caret. Recorded as well as announced, so a document the editor has not switched to yet still opens
     /// at the right place.
     /// </summary>
+    /// <param name="line">The 0-based line.</param>
+    /// <param name="column">The 0-based column.</param>
     public void Reveal(int line, int column)
     {
         CaretLine = line;
@@ -83,9 +104,19 @@ public sealed partial class DocumentViewModel : ObservableObject
         RevealRequested?.Invoke(line, column);
     }
 
+    /// <summary>
+    /// The caret's 0-based line, kept while the document is not shown. Use <see cref="Reveal"/> to move the editor's
+    /// caret.
+    /// </summary>
     public int CaretLine { get; set; }
+    /// <summary>The caret's 0-based column; see <see cref="CaretLine"/>.</summary>
     public int CaretColumn { get; set; }
 
+    /// <summary>
+    /// Write the text to disk. Does not tell Lean; <see cref="MainViewModel"/> does that. Throws if the file cannot be
+    /// written.
+    /// </summary>
+    /// <param name="newPath">A new path to save under (Save As), or null to save in place.</param>
     public async Task SaveAsync(string? newPath = null)
     {
         if (newPath is not null)
@@ -114,34 +145,58 @@ public sealed partial class DocumentViewModel : ObservableObject
     /// <summary>Replace the whole text as a single edit, so undo brings the old text back.</summary>
     public void ReplaceAll(string text) => Document.Replace(0, Document.TextLength, text);
 
+    /// <summary>The text split into lines, without line endings. A new array each call.</summary>
     public string[] Lines() => Document.Text.Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
 }
 
 /// <summary>A problem in the list: from Lean's live diagnostics for an open file, or from the last build for any file.</summary>
+/// <param name="Document">The open file it is in, or null for a build message about a file that is not open.</param>
+/// <param name="Path">The file.</param>
+/// <param name="Diagnostic">The message, with its range and severity.</param>
 public sealed record ProblemItem(DocumentViewModel? Document, string Path, Diagnostic Diagnostic)
 {
+    /// <summary>A problem in an open file.</summary>
+    /// <param name="document">The file.</param>
+    /// <param name="diagnostic">Lean's message.</param>
     public ProblemItem(DocumentViewModel document, Diagnostic diagnostic)
         : this(document, document.Path, diagnostic)
     {
     }
 
+    /// <summary>The file's name, without its folder.</summary>
     public string File => System.IO.Path.GetFileName(Path);
+    /// <summary>The 1-based line and column, as <c>line:column</c>.</summary>
     public string Location => $"{Diagnostic.Range.Start.Line + 1}:{Diagnostic.Range.Start.Character + 1}";
+    /// <summary>The message's first line.</summary>
     public string Message => Diagnostic.Message.Split('\n')[0];
+    /// <summary>The whole message.</summary>
     public string FullMessage => Diagnostic.Message;
+    /// <summary>✕ for an error, ▲ for a warning, ● otherwise.</summary>
     public string Icon => Diagnostic.Severity switch
     {
         DiagnosticSeverity.Error => "✕",
         DiagnosticSeverity.Warning => "▲",
         _ => "●",
     };
+    /// <summary>The message's severity.</summary>
     public DiagnosticSeverity Severity => Diagnostic.Severity;
+    /// <summary>It is an error.</summary>
     public bool IsError => Diagnostic.Severity == DiagnosticSeverity.Error;
+    /// <summary>It is a warning.</summary>
     public bool IsWarning => Diagnostic.Severity == DiagnosticSeverity.Warning;
 }
 
+/// <summary>
+/// A collection bound to a list in the UI, which can have all its items replaced with one change notification.
+/// </summary>
+/// <typeparam name="T">The items' type.</typeparam>
 public sealed class ObservableList<T> : ObservableCollection<T>
 {
+    /// <summary>
+    /// Replace every item and raise a single <c>Reset</c> notification, so a panel redraws once rather than once per
+    /// item. On the UI thread only, like any change to a bound collection.
+    /// </summary>
+    /// <param name="items">The new items; enumerated once.</param>
     public void Reset(IEnumerable<T> items)
     {
         Items.Clear();
