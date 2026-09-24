@@ -106,6 +106,15 @@ public static partial class Heartbeats
         return (string.Join('\n', lines), headerEnd, counter.Length + 2);
     }
 
+    /// <summary>
+    /// A warning for the heaviest declaration past half of Lean's default limit (a small change could push it over),
+    /// or null when every one is below half.
+    /// </summary>
+    public static string? Warning(IEnumerable<DeclarationHeartbeats> counts) =>
+        counts.Where(c => c.OfLimit >= 0.5).MaxBy(c => c.Heartbeats) is { } heavy
+            ? string.Create(CultureInfo.InvariantCulture, $"line {heavy.Line + 1} uses {heavy.OfLimit * 100:0}% of the default maxHeartbeats ({DeclarationHeartbeats.DefaultLimit:N0}): a small change could push it over.")
+            : null;
+
     /// <summary>Count the heartbeats of each top-level declaration of <paramref name="text"/> (the contents of <paramref name="sourcePath"/>).</summary>
     public static async Task<(IReadOnlyList<DeclarationHeartbeats> Counts, string? Error)> RunAsync(LeanProject project, string sourcePath, string text, CancellationToken ct = default)
     {

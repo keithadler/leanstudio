@@ -172,6 +172,27 @@ internal static class Scenario
             ["method"] = "show", ["path"] = doc.Path, ["line"] = 5, ["column"] = 3,
         });
         Check(shown?["ok"]?.GetValue<bool>() == true && await WaitFor(() => doc.CaretLine == 4, 5), "an assistant can move the person's cursor to a line");
+        {
+            // The same through the MCP tools an assistant calls (studio_context, studio_show).
+            await using var bench = new LeanStudio.Core.Agents.Workbench(vm.Project!.Root);
+            LeanStudio.Mcp.McpServer mcp = LeanStudio.Mcp.LeanTools.Create(bench, "snapshot");
+            async Task<string> Tool(string name, System.Text.Json.Nodes.JsonObject args)
+            {
+                var r = await mcp.HandleAsync(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = "tools/call",
+                    ["params"] = new System.Text.Json.Nodes.JsonObject { ["name"] = name, ["arguments"] = args },
+                }, CancellationToken.None);
+                return r?["result"]?["content"]?[0]?["text"]?.GetValue<string>() ?? "";
+            }
+            doc.Reveal(16, 14);
+            await WaitFor(() => doc.CaretLine == 16 && vm.Info.Goals.Any(g => g.Hypotheses.Any(h => h.Names == "hp")), 30);
+            string ctx = await Tool("studio_context", []);
+            Check(ctx.Contains("file: " + doc.Path, StringComparison.Ordinal) && ctx.Contains("cursor: line 17", StringComparison.Ordinal) && ctx.Contains("hp : p", StringComparison.Ordinal),
+                "the studio_context tool tells an assistant the file, the line and the goals" + (ctx.Contains("hp : p", StringComparison.Ordinal) ? "" : ": " + ctx.Replace("\n", " | ", StringComparison.Ordinal)));
+            await Tool("studio_show", new System.Text.Json.Nodes.JsonObject { ["path"] = doc.Path, ["line"] = 8 });
+            Check(await WaitFor(() => doc.CaretLine == 7, 5), "and studio_show moves the person's cursor");
+        }
 
         Console.WriteLine("a file changed on disk by an assistant reloads");
         string original = doc.SavedText;

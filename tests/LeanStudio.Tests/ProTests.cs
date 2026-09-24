@@ -410,6 +410,40 @@ public sealed class ProTests
     }
 
     [Fact]
+    public async Task WhyFindsTheShortestChainToTheSorry()
+    {
+        // top reaches the unfinished lemma two ways: through a and b, and through c. Why? shows the shorter one.
+        Lean.RequireLean();
+        LeanProject project = await BuiltProjectAsync("Chain", ("Chain.lean", """
+            theorem Chain.pending : 1 = 1 := by sorry
+            theorem Chain.b : 1 = 1 := Chain.pending
+            theorem Chain.a : 1 = 1 := Chain.b
+            theorem Chain.c : 1 = 1 := Chain.pending
+            theorem Chain.top : 1 = 1 ∧ 1 = 1 := ⟨Chain.a, Chain.c⟩
+            """));
+        try
+        {
+            using var ws = Core.Verification.TenetWorkspace.Open(project);
+            var trails = ws.WhyNotProved("Chain.top", TestContext.Current.CancellationToken);
+            Assert.NotEmpty(trails);
+            Assert.Equal(["Chain.top", "Chain.c", "Chain.pending"], trails[0].Path.Select(l => l.Name).Take(3));
+        }
+        finally
+        {
+            Lean.DeleteTree(project.Root);
+        }
+    }
+
+    [Fact]
+    public void WarnsAboutADeclarationPastHalfTheHeartbeatLimit()
+    {
+        Core.Proofs.DeclarationHeartbeats Beats(int line, long n) => new(line, "theorem t" + line, n);
+        Assert.Null(Core.Proofs.Heartbeats.Warning([Beats(0, 12_000), Beats(4, 99_999)]));
+        Assert.Equal("line 9 uses 60% of the default maxHeartbeats (200,000): a small change could push it over.",
+            Core.Proofs.Heartbeats.Warning([Beats(0, 12_000), Beats(4, 110_000), Beats(8, 120_000)]));
+    }
+
+    [Fact]
     public void KnowsWhatImportsWhat()
     {
         string root = Directory.CreateTempSubdirectory("leanstudio-graph").FullName;

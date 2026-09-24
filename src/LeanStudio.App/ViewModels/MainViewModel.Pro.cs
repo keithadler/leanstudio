@@ -301,9 +301,9 @@ public sealed partial class MainViewModel
                 $"{c.Heartbeats:N0} heartbeats ({c.OfLimit:P0} of the default limit) · {c.Declaration.Trim()}")));
             ReferencesTitle = $"Heartbeats in {Path.GetFileName(d.Path)}";
             BottomTab = ReferencesPanel;
-            if (counts.FirstOrDefault(c => c.OfLimit >= 0.5) is { } heavy)
+            if (Core.Proofs.Heartbeats.Warning(counts) is string warning)
             {
-                Log($"Heartbeats: line {heavy.Line + 1} uses {heavy.OfLimit:P0} of the default maxHeartbeats ({Core.Proofs.DeclarationHeartbeats.DefaultLimit:N0}): a small change could push it over.");
+                Log("Heartbeats: " + warning);
             }
             return counts;
         }
