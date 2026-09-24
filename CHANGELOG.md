@@ -14,6 +14,7 @@
 - *View ▸ Split Editor* (⌘\\ / Ctrl+\\) puts two files, or two places in one, side by side. Each side has its own file; the one you're typing in is the one the Tactic State, the status bar and every command follow.
 - Several cursors: ⌘D (Ctrl+D) adds the next occurrence of the selection, ⌘⇧L selects every occurrence, ⌘⌥↑/↓ add a cursor on the line above or below, ⌥-click adds one anywhere. Typing, Backspace and Delete act at every cursor, as one undo step. ⌥-drag selects a column.
 - Your own keyboard shortcuts: *View ▸ Keyboard Shortcuts File* opens keybindings.json, which binds any command-palette command to any key (`{ "key": "Cmd+Alt+L", "command": "Lean: Lint File (the linters CI runs)" }`). It's listed with every command to start from, and applies as soon as it's saved.
+- Screen readers: the editor is announced as an edit field named after its file, with its text readable, and every button, box and list (dialogs included) has a spoken name. The headless test checks all of them through the same accessibility API VoiceOver and UI Automation use.
 - *View ▸ Emacs Keys*: C-f/b/n/p/a/e, M-f/b, C-k and C-y with a kill ring that adds up, the mark and region (C-SPC, C-w, M-w, C-x C-x), C-/ to undo, C-s to search, C-x C-s to save. Kills go to the clipboard.
 
 **Fixes**: Tenet no longer counts a module whose source file was deleted but whose build was left behind.

@@ -993,11 +993,35 @@ internal static class Scenario
         }
         vm.ActiveDocument = doc;
 
+        Console.WriteLine("screen readers");
+        {
+            // What a screen reader announces for each control (Avalonia's automation peers: UI Automation on
+            // Windows, the accessibility API on macOS).
+            var unnamed = window.GetVisualDescendants().OfType<Control>()
+                .Where(c => c is Button or ComboBox or TextBox or Avalonia.Controls.Primitives.ToggleButton && c.IsEffectivelyVisible)
+                .Select(c => (Control: c, Name: Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(c).GetName()))
+                .Where(x => string.IsNullOrWhiteSpace(x.Name) || !x.Name.Any(char.IsLetter)) // "×" says nothing useful
+                .Select(x => $"{x.Control.GetType().Name}{(x.Control.Name is { } n ? " " + n : "")} '{x.Name}' in {x.Control.GetVisualParent()?.GetType().Name}")
+                .ToList();
+            Check(unnamed.Count == 0, "every button, box and list has a name a screen reader can say" + (unnamed.Count == 0 ? "" : ": missing on " + string.Join("; ", unnamed.Take(12))));
+            var editorPeer = Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!);
+            Check(editorPeer.GetAutomationControlType() == Avalonia.Automation.Peers.AutomationControlType.Edit
+                && editorPeer.GetName().StartsWith("Editor, Basic.lean, line", StringComparison.Ordinal)
+                && (editorPeer.GetProvider<Avalonia.Automation.Provider.IValueProvider>()?.Value ?? "").Contains("theorem", StringComparison.Ordinal),
+                $"the editor is an edit field named after its file, whose text a screen reader can read ({editorPeer.GetName()})");
+        }
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
+        var unnamedInDialogs = new List<string>();
         void OnDialog(Window d) => Dispatcher.UIThread.Post(async () =>
         {
             await Task.Delay(400);
+            unnamedInDialogs.AddRange(d.GetVisualDescendants().OfType<Control>()
+                .Where(c => c is Button or ComboBox or TextBox or Avalonia.Controls.Primitives.ToggleButton && c.IsEffectivelyVisible)
+                .Select(c => (Control: c, Name: Avalonia.Automation.Peers.ControlAutomationPeer.CreatePeerForElement(c).GetName()))
+                .Where(x => string.IsNullOrWhiteSpace(x.Name) || !x.Name.Any(char.IsLetter))
+                .Select(x => $"{dialogName}: {x.Control.GetType().Name} '{x.Name}'"));
             Snap(d, outDir, dialogName!);
             d.Close();
         });
@@ -1010,6 +1034,7 @@ internal static class Scenario
         await window.ShowConnectAssistantAsync();
         DialogHooks.Opened -= OnDialog;
         Check(File.Exists(Path.Combine(outDir, "24-about.png")) && File.Exists(Path.Combine(outDir, "26-connect-assistant.png")), "the About, Preferences and Connect dialogs open and close");
+        Check(unnamedInDialogs.Count == 0, "and everything in them has a name a screen reader can say" + (unnamedInDialogs.Count == 0 ? "" : ": " + string.Join("; ", unnamedInDialogs.Take(12))));
 
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();

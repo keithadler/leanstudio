@@ -464,6 +464,35 @@ public sealed class LeanEditor : UserControl
         }
     }
 
+    // ---- screen readers ----
+
+    /// <inheritdoc />
+    protected override Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new EditorPeer(this);
+
+    /// <summary>
+    /// What a screen reader is told about the editor: an edit field named after its file, whose value is the text.
+    /// </summary>
+    private sealed class EditorPeer(LeanEditor owner) : Avalonia.Automation.Peers.ControlAutomationPeer(owner), Avalonia.Automation.Provider.IValueProvider
+    {
+        protected override Avalonia.Automation.Peers.AutomationControlType GetAutomationControlTypeCore() => Avalonia.Automation.Peers.AutomationControlType.Edit;
+
+        protected override string GetNameCore() => owner._current is DocumentViewModel d
+            ? $"Editor, {System.IO.Path.GetFileName(d.Path)}, line {d.CaretLine + 1}"
+            : "Editor, no file open";
+
+        public bool IsReadOnly => owner._editor.IsReadOnly || owner._current is null;
+
+        public string? Value => owner._current?.Document.Text;
+
+        public void SetValue(string? value)
+        {
+            if (!IsReadOnly && value is not null)
+            {
+                owner._current!.ReplaceAll(value);
+            }
+        }
+    }
+
     // ---- Emacs ----
 
     private bool EmacsOn => Main?.Settings.EmacsMode == true && Main.Settings.VimMode != true && _current is not null;

@@ -269,7 +269,7 @@
           <Button Content="Download" Classes="accent" Command="{Binding DownloadUpdateCommand}" FontSize="12" Padding="10,3" />
           <Button Content="What's new" Command="{Binding OpenReleaseNotesCommand}" Classes="chip" />
           <Button Content="Skip this version" Command="{Binding SkipUpdateCommand}" Classes="chip" />
-          <Button Classes="flat" Content="×" Command="{Binding DismissUpdateCommand}" FontSize="14" />
+          <Button Classes="flat" Content="×" AutomationProperties.Name="Dismiss" Command="{Binding DismissUpdateCommand}" FontSize="14" />
         </StackPanel>
       </Grid>
     </Border>
@@ -352,7 +352,7 @@
             <DataTemplate x:DataType="vm:DocumentViewModel">
               <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding Path}">
                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                <Button Classes="flat" Content="×" FontSize="13" Padding="4,0" VerticalAlignment="Center"
+                <Button Classes="flat" Content="×" FontSize="13" Padding="4,0" VerticalAlignment="Center" AutomationProperties.Name="Close file"
                         Command="{Binding $parent[Window].((vm:MainViewModel)DataContext).CloseDocumentCommand}" CommandParameter="{Binding}" />
               </StackPanel>
             </DataTemplate>
@@ -388,7 +388,7 @@
                       </DataTemplate>
                     </ComboBox.ItemTemplate>
                   </ComboBox>
-                  <Button Grid.Column="1" Classes="flat" Content="×" FontSize="14" Padding="6,0" Command="{Binding CloseSplitCommand}" ToolTip.Tip="Close this side" />
+                  <Button Grid.Column="1" Classes="flat" Content="×" FontSize="14" Padding="6,0" AutomationProperties.Name="Close split" Command="{Binding CloseSplitCommand}" ToolTip.Tip="Close this side" />
                 </Grid>
               </Border>
               <ed:LeanEditor x:Name="SplitEditor" Document="{Binding SplitDocument}" Main="{Binding}" />

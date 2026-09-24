@@ -267,6 +267,7 @@ internal static class Dialogs
         var semantic = Check("Colour variables and fields as Lean sees them (semantic highlighting)", s.SemanticHighlighting);
         var hints = Check("Show inlay hints (what Lean fills in, such as implicit arguments)", s.InlayHints);
         var vim = Check("Vim mode (normal, insert and visual modes; motions, operators, :w, :q)", s.VimMode);
+        var emacs = Check("Emacs keys (C-f, M-f, C-k, C-y, the mark, C-x C-s; Vim mode wins if both are on)", s.EmacsMode);
         var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
         var explain = Check("Explain Lean's messages in plain words", s.ExplainErrors);
         var autofix = Check("Apply a lone Try this suggestion automatically", s.AutoApplyFixes);
@@ -287,6 +288,11 @@ internal static class Dialogs
         Grid Row(string label, Control c)
         {
             var g = new Grid { ColumnDefinitions = new ColumnDefinitions("140,*"), Margin = new Thickness(0, 2) };
+            // A screen reader says the label with the field.
+            if (string.IsNullOrEmpty(Avalonia.Automation.AutomationProperties.GetName(c)))
+            {
+                Avalonia.Automation.AutomationProperties.SetName(c, label);
+            }
             g.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             Grid.SetColumn(c, 1);
             g.Children.Add(c);
@@ -301,7 +307,7 @@ internal static class Dialogs
             Children =
             {
                 Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
-                Head("Editing"), unicode, autosave, inline, vim,
+                Head("Editing"), unicode, autosave, inline, vim, emacs,
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
@@ -325,6 +331,7 @@ internal static class Dialogs
             s.SemanticHighlighting = semantic.IsChecked == true;
             s.InlayHints = hints.IsChecked == true;
             s.VimMode = vim.IsChecked == true;
+            s.EmacsMode = emacs.IsChecked == true;
             s.ShowGoalsInEnglish = english.IsChecked == true;
             s.ExplainErrors = explain.IsChecked == true;
             s.AutoApplyFixes = autofix.IsChecked == true;
@@ -344,6 +351,7 @@ internal static class Dialogs
     {
         string? result = null;
         var box = new TextBox { Text = initial };
+        Avalonia.Automation.AutomationProperties.SetName(box, message);
         var ok = new Button { Content = "OK", IsDefault = true, Classes = { "accent" } };
         var cancel = new Button { Content = "Cancel", IsCancel = true };
         var panel = new StackPanel { Spacing = 10, Children = { new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, LineHeight = 19 }, box, Buttons(cancel, ok) } };
@@ -364,6 +372,8 @@ internal static class Dialogs
         NewProjectRequest? result = null;
         var name = new TextBox { PlaceholderText = "MyProject" };
         var parent = new TextBox { Text = defaultParent };
+        Avalonia.Automation.AutomationProperties.SetName(name, "Project name");
+        Avalonia.Automation.AutomationProperties.SetName(parent, "Folder to create it in");
         var browse = new Button { Content = "…" };
         var template = new ComboBox
         {
@@ -383,6 +393,9 @@ internal static class Dialogs
             choices.Add("leanprover/lean4:stable");
         }
         var toolchain = new ComboBox { ItemsSource = choices, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        Avalonia.Automation.AutomationProperties.SetName(template, "Template");
+        Avalonia.Automation.AutomationProperties.SetName(toolchain, "Lean version");
+        Avalonia.Automation.AutomationProperties.SetName(browse, "Choose a folder");
         var error = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap };
         var note = new TextBlock
         {

@@ -22,7 +22,7 @@
         <StackPanel Spacing="4">
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock Text="{Binding TrailTitle}" TextWrapping="Wrap" FontSize="12" FontWeight="SemiBold" />
-            <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" Command="{Binding CloseTrailCommand}" ToolTip.Tip="Close" />
+            <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" AutomationProperties.Name="Close" Command="{Binding CloseTrailCommand}" ToolTip.Tip="Close" />
           </Grid>
           <ItemsControl ItemsSource="{Binding Trails}">
             <ItemsControl.ItemTemplate>

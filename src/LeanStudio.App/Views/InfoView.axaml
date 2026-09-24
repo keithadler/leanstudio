@@ -45,7 +45,7 @@
               <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                 <Button Classes="chip" Content="Every sorry in the file" Command="{Binding Search.ProveAllCommand}" IsEnabled="{Binding !Search.IsRunning}"
                         ToolTip.Tip="Search for a proof of each sorry in this file, in one pass of Lean" />
-                <Button Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Close (and stop a running search)" Command="{Binding Search.CloseCommand}" />
+                <Button Classes="flat" Content="×" FontSize="12" AutomationProperties.Name="Close" ToolTip.Tip="Close (and stop a running search)" Command="{Binding Search.CloseCommand}" />
               </StackPanel>
             </Grid>
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -100,7 +100,7 @@
                 <StackPanel Spacing="4">
                   <Grid ColumnDefinitions="*,Auto">
                     <TextBlock Text="{Binding Where, StringFormat='Pinned at {0}'}" FontSize="11" Classes="dim" />
-                    <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" ToolTip.Tip="Unpin"
+                    <Button Grid.Column="1" Classes="flat" Content="×" FontSize="12" AutomationProperties.Name="Unpin" ToolTip.Tip="Unpin"
                             Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).UnpinCommand}" CommandParameter="{Binding}" />
                   </Grid>
                   <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" FontSize="12" />

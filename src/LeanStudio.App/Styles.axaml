@@ -1,5 +1,12 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- The tree's expander: a name for screen readers -->
+  <Style Selector="NumericUpDown /template/ TextBox">
+    <Setter Property="AutomationProperties.Name" Value="{Binding $parent[NumericUpDown].(AutomationProperties.Name)}" />
+  </Style>
+  <Style Selector="ToggleButton#PART_ExpandCollapseChevron">
+    <Setter Property="AutomationProperties.Name" Value="Expand or collapse" />
+  </Style>
   <Style Selector="TextBlock.panelTitle">
     <Setter Property="FontSize" Value="11" />
     <Setter Property="FontWeight" Value="SemiBold" />
