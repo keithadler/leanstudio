@@ -7,9 +7,9 @@
 cask "lean-studio" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.5.0"
-  sha256 arm:   "394f373bbe494086fcd4ef881408857f127ee5bf9030a10186340b02c234e327",
-         intel: "6334d1055412de768f1a16f905bb554ddd97ba6500b1b9122c26e59cd67aaa29"
+  version "0.6.0"
+  sha256 arm:   "2bd9d95db1d5b21b720cdbe5b4dac1358fe4172e1d4a8eff23015a1c5b5333ab",
+         intel: "87e598b998ac46de73f9456cfba4fa2e40d29b07e6784b1bb955b286308320d1"
 
   url "https://github.com/keithadler/leanstudio/releases/download/v#{version}/LeanStudio-#{version}-osx-#{arch}.zip"
   name "Lean Studio"
@@ -21,7 +21,7 @@ cask "lean-studio" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "Lean Studio.app"
   # `leanstudio --mcp` runs the MCP server for AI assistants; `leanstudio path/to/project` opens a project.
