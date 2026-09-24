@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="#install">Install</a> ·
+  <a href="#how-it-compares">Compared with VS Code</a> ·
   <a href="#new-to-lean">New to Lean?</a> ·
   <a href="#features">Features</a> ·
   <a href="#use-it-with-ai-assistants">AI assistants</a> ·
@@ -24,6 +25,30 @@
 ![Lean Studio: the editor, the tactic state with the hypotheses in scope, and the proof's steps](docs/images/tactic-state.png)
 
 Lean Studio is a native desktop app built only for Lean. It is not a plugin or a web view inside another editor. The tactic state gets a full panel. Every tactic in a proof is listed with what it changed. Each declaration you build gets a second, independent check from [Tenet](https://github.com/keithadler/tenet), a separate implementation of Lean's kernel.
+
+## How it compares
+
+Most people write Lean in VS Code with the official lean4 extension, and it's very good. Here's what Lean Studio has, side by side:
+
+| | VS Code + lean4 | Lean Studio |
+|---|:---:|:---:|
+| Goals and messages as you type, go to definition, hover, completion, rename, references | ✓ | ✓ |
+| Unicode input (`\alpha`), semantic highlighting, inlay hints, call hierarchy, trace trees | ✓ | ✓ |
+| Every step of a proof listed with what it changed | | ✓ |
+| Prove It: a portfolio of tactics tried on each `sorry`, with counterexamples when the goal is false | | ✓ |
+| Extract a goal as a lemma, with the hypotheses it needs | | ✓ |
+| Independent re-checking of every declaration by a second kernel (Tenet) | | ✓ |
+| Why a theorem isn't fully proved, and a map of what rests on `sorry` | | ✓ |
+| Per-declaration timing from Lean's profiler | | ✓ |
+| Search Mathlib in plain English, and Loogle, built in | | ✓ |
+| Proof walkthroughs as web pages; share links to the web editor | | ✓ |
+| A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
+| C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
+| An MCP server so AI assistants can use Lean | | ✓ |
+| ProofWidgets and other JavaScript widgets in the infoview | ✓ | shown as text |
+| The VS Code ecosystem: its extensions, remote development, Vim mode | ✓ | |
+
+Lean Studio is tested against real Lean on macOS, Windows and Linux on every change, and against a real Mathlib project every week.
 
 ## New to Lean?
 
