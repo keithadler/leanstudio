@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+# The release zips hold a LeanStudio folder with LeanStudio.exe and the files it loads, so the folder is
+# installed as a portable app and put on the PATH (rather than a symlink to the exe).
+
+PackageIdentifier: KeithAdler.LeanStudio
+PackageVersion: 0.5.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: LeanStudio\LeanStudio.exe
+ArchiveBinariesDependOnPath: true
+ReleaseDate: 2026-09-24
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v0.5.0/LeanStudio-0.5.0-win-x64.zip
+    InstallerSha256: F252A7978153E4E6AB5AC0D963CCDAE02E5639C131D1AF46712300B4ECCC42AE
+  - Architecture: arm64
+    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v0.5.0/LeanStudio-0.5.0-win-arm64.zip
+    InstallerSha256: 429A875FC4CFC7E4C0F428A1EEA09EE1AFC6AA8B24010035D7DE23960DFF314A
+ManifestType: installer
+ManifestVersion: 1.9.0

@@ -3,8 +3,9 @@
 
     packaging/update-manifests.py 0.6.0
 
-Reads the release's assets from GitHub (tag v0.6.0) and rewrites the version and SHA-256 checksums in:
+Reads the release's assets from GitHub (tag v0.6.0) and rewrites the version, download URLs and SHA-256 checksums in:
   - packaging/homebrew/lean-studio.rb
+  - packaging/winget/KeithAdler.LeanStudio*.yaml (plus the release date and release notes link)
 
 Checksums come from the digests GitHub records for each asset; an asset without one is downloaded and hashed.
 Set GITHUB_TOKEN to avoid the API's anonymous rate limit. Needs only the Python standard library.
@@ -30,15 +31,15 @@ def fetch(url: str, accept: str = "application/vnd.github+json"):
     return urllib.request.urlopen(req)
 
 
-def checksums(version: str) -> dict[str, str]:
-    """Asset file name -> lowercase SHA-256, for every asset of release v<version>."""
+def release(version: str) -> tuple[dict[str, str], str]:
+    """For release v<version>: asset file name -> lowercase SHA-256, and the publication date (YYYY-MM-DD)."""
     try:
         with fetch(f"https://api.github.com/repos/{REPO}/releases/tags/v{version}") as r:
-            release = json.load(r)
+            rel = json.load(r)
     except urllib.error.HTTPError as e:
         sys.exit(f"no release v{version} on {REPO} ({e.code}): has CI finished publishing it?")
     sums = {}
-    for asset in release["assets"]:
+    for asset in rel["assets"]:
         digest = asset.get("digest") or ""
         if digest.startswith("sha256:"):
             sums[asset["name"]] = digest.removeprefix("sha256:").lower()
@@ -49,7 +50,7 @@ def checksums(version: str) -> dict[str, str]:
             for chunk in iter(lambda: r.read(1 << 20), b""):
                 h.update(chunk)
         sums[asset["name"]] = h.hexdigest()
-    return sums
+    return sums, (rel.get("published_at") or rel["created_at"])[:10]
 
 
 def need(sums: dict[str, str], name: str) -> str:
@@ -70,12 +71,31 @@ def update_cask(version: str, sums: dict[str, str]) -> None:
     print(f"updated {path.relative_to(ROOT)}")
 
 
+def update_winget(version: str, sums: dict[str, str], date: str) -> None:
+    folder = ROOT / "packaging/winget"
+    for path in sorted(folder.glob("KeithAdler.LeanStudio*.yaml")):
+        text = path.read_text()
+        text = re.sub(r"^PackageVersion: .*$", f"PackageVersion: {version}", text, flags=re.M)
+        text = re.sub(r"^ReleaseDate: .*$", f"ReleaseDate: {date}", text, flags=re.M)
+        text = re.sub(r"releases/tag/v[^/\s]+$", f"releases/tag/v{version}", text, flags=re.M)
+        for arch in ("x64", "arm64"):
+            name = f"LeanStudio-{version}-win-{arch}.zip"
+            url = f"https://github.com/{REPO}/releases/download/v{version}/{name}"
+            text = re.sub(
+                rf"(- Architecture: {arch}\n    InstallerUrl: )\S+\n    InstallerSha256: [0-9A-Fa-f]{{64}}",
+                lambda m: f"{m.group(1)}{url}\n    InstallerSha256: {need(sums, name).upper()}",
+                text)
+        path.write_text(text)
+        print(f"updated {path.relative_to(ROOT)}")
+
+
 def main() -> None:
     if len(sys.argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+", sys.argv[1]):
         sys.exit("usage: packaging/update-manifests.py <version, e.g. 0.6.0>")
     version = sys.argv[1]
-    sums = checksums(version)
+    sums, date = release(version)
     update_cask(version, sums)
+    update_winget(version, sums, date)
 
 
 if __name__ == "__main__":
