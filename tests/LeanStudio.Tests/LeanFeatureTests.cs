@@ -98,7 +98,17 @@ public sealed class LeanFeatureTests
         Assert.Equal([(0, 3)], Core.Editing.LeanText.CommentFolds(string.Join('\n', lines)));
 
         // Go to Symbol searches what the file can see, dependencies and core Lean included.
-        IReadOnlyList<SymbolLocation> symbols = await server.WorkspaceSymbolsAsync("Nat.add_comm", ct);
-        Assert.Contains(symbols, s => s.Name == "Nat.add_comm" && s.Location.Uri.Contains("/Init/", StringComparison.Ordinal));
+        // Lean reads its index of core Lean in the background after it starts: ask until it has (as the picker does,
+        // asking again on every keystroke).
+        IReadOnlyList<SymbolLocation> symbols = [];
+        for (int tries = 0; tries < 120 && !symbols.Any(s => s.Name == "Nat.add_comm"); tries++)
+        {
+            symbols = await server.WorkspaceSymbolsAsync("Nat.add_comm", ct);
+            if (!symbols.Any(s => s.Name == "Nat.add_comm"))
+            {
+                await Task.Delay(500, ct);
+            }
+        }
+        Assert.Contains(symbols, s => s.Name == "Nat.add_comm" && s.Location.Uri.Replace("%5C", "/", StringComparison.OrdinalIgnoreCase).Contains("/Init/", StringComparison.Ordinal));
     }
 }
