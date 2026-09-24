@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+"""Point the package manifests in packaging/ at a published release.
+
+    packaging/update-manifests.py 0.6.0
+
+Reads the release's assets from GitHub (tag v0.6.0) and rewrites the version and SHA-256 checksums in:
+  - packaging/homebrew/lean-studio.rb
+
+Checksums come from the digests GitHub records for each asset; an asset without one is downloaded and hashed.
+Set GITHUB_TOKEN to avoid the API's anonymous rate limit. Needs only the Python standard library.
+"""
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+REPO = "keithadler/leanstudio"
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def fetch(url: str, accept: str = "application/vnd.github+json"):
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "leanstudio-update-manifests"})
+    token = os.environ.get("GITHUB_TOKEN")
+    if token and url.startswith("https://api.github.com/"):
+        req.add_header("Authorization", f"Bearer {token}")
+    return urllib.request.urlopen(req)
+
+
+def checksums(version: str) -> dict[str, str]:
+    """Asset file name -> lowercase SHA-256, for every asset of release v<version>."""
+    try:
+        with fetch(f"https://api.github.com/repos/{REPO}/releases/tags/v{version}") as r:
+            release = json.load(r)
+    except urllib.error.HTTPError as e:
+        sys.exit(f"no release v{version} on {REPO} ({e.code}): has CI finished publishing it?")
+    sums = {}
+    for asset in release["assets"]:
+        digest = asset.get("digest") or ""
+        if digest.startswith("sha256:"):
+            sums[asset["name"]] = digest.removeprefix("sha256:").lower()
+            continue
+        print(f"hashing {asset['name']} (no digest on GitHub)…", file=sys.stderr)
+        h = hashlib.sha256()
+        with fetch(asset["browser_download_url"], accept="application/octet-stream") as r:
+            for chunk in iter(lambda: r.read(1 << 20), b""):
+                h.update(chunk)
+        sums[asset["name"]] = h.hexdigest()
+    return sums
+
+
+def need(sums: dict[str, str], name: str) -> str:
+    if name not in sums:
+        sys.exit(f"release has no asset {name}: is the release finished?")
+    return sums[name]
+
+
+def update_cask(version: str, sums: dict[str, str]) -> None:
+    path = ROOT / "packaging/homebrew/lean-studio.rb"
+    text = path.read_text()
+    arm = need(sums, f"LeanStudio-{version}-osx-arm64.zip")
+    intel = need(sums, f"LeanStudio-{version}-osx-x64.zip")
+    text = re.sub(r'^(  version )"[^"]*"', rf'\g<1>"{version}"', text, count=1, flags=re.M)
+    text = re.sub(r'(sha256 arm:\s+)"[0-9a-f]{64}"', rf'\g<1>"{arm}"', text, count=1)
+    text = re.sub(r'(intel:\s+)"[0-9a-f]{64}"', rf'\g<1>"{intel}"', text, count=1)
+    path.write_text(text)
+    print(f"updated {path.relative_to(ROOT)}")
+
+
+def main() -> None:
+    if len(sys.argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+", sys.argv[1]):
+        sys.exit("usage: packaging/update-manifests.py <version, e.g. 0.6.0>")
+    version = sys.argv[1]
+    sums = checksums(version)
+    update_cask(version, sums)
+
+
+if __name__ == "__main__":
+    main()
