@@ -18,6 +18,16 @@ public enum VerificationStatus
     Rejected,
 }
 
+/// <summary>What verification concluded about one declaration of the project.</summary>
+/// <param name="Name">The declaration's full name. Generated helpers appear under their own names only when rejected.</param>
+/// <param name="Module">The module that defines it.</param>
+/// <param name="Status">Whether it is verified, rests on an assumption, or was rejected.</param>
+/// <param name="Assumptions">
+/// For <see cref="VerificationStatus.RestsOnAssumption"/>, the axioms beyond Lean's standard three it rests on
+/// (<c>sorryAx</c> for sorry), sorted; otherwise empty.
+/// </param>
+/// <param name="Message">For <see cref="VerificationStatus.Rejected"/>, the kernel's error; otherwise <see langword="null"/>.</param>
+/// <param name="Line">The 1-based line of its keyword in the source file, or <see langword="null"/> when unknown.</param>
 public sealed record DeclarationVerdict(
     string Name,
     string Module,
@@ -26,6 +36,12 @@ public sealed record DeclarationVerdict(
     string? Message,
     int? Line);
 
+/// <summary>The outcome of <see cref="TenetWorkspace.VerifyAsync"/>.</summary>
+/// <param name="LeanVersion">The Lean version the modules were built with.</param>
+/// <param name="ModulesChecked">How many of the project's modules were re-checked.</param>
+/// <param name="ModulesLoaded">How many modules were open, the checked ones' imports included.</param>
+/// <param name="Elapsed">How long verification took.</param>
+/// <param name="Declarations">A verdict for every user-facing declaration in the checked modules, plus rejected generated ones.</param>
 public sealed record VerificationReport(
     string LeanVersion,
     int ModulesChecked,
@@ -33,15 +49,31 @@ public sealed record VerificationReport(
     TimeSpan Elapsed,
     IReadOnlyList<DeclarationVerdict> Declarations)
 {
+    /// <summary>How many declarations are <see cref="VerificationStatus.Verified"/>.</summary>
     public int Verified => Declarations.Count(d => d.Status == VerificationStatus.Verified);
+    /// <summary>How many declarations rest on an assumption (<see cref="VerificationStatus.RestsOnAssumption"/>).</summary>
     public int Conditional => Declarations.Count(d => d.Status == VerificationStatus.RestsOnAssumption);
+    /// <summary>How many declarations were <see cref="VerificationStatus.Rejected"/>.</summary>
     public int Rejected => Declarations.Count(d => d.Status == VerificationStatus.Rejected);
 }
 
+/// <summary>
+/// How far verification has got, reported after each declaration (or group of mutually defined ones) is checked.
+/// Reports may come from several worker threads.
+/// </summary>
+/// <param name="Module">The module being checked.</param>
+/// <param name="ModuleIndex">Its position among the modules to check, 1-based.</param>
+/// <param name="ModuleCount">How many modules are to be checked.</param>
+/// <param name="Done">How many declaration groups of this module have been checked.</param>
+/// <param name="Total">How many declaration groups this module has.</param>
 public sealed record VerificationProgress(string Module, int ModuleIndex, int ModuleCount, int Done, int Total);
 
+/// <summary>A declaration found by <see cref="TenetWorkspace.Search"/>: its full name and the module that defines it.</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Module">The module that defines it.</param>
 public sealed record DeclarationSummary(string Name, string Module);
 
+/// <summary>Whether a declaration on the project map is fully proved, and if not, what it rests on.</summary>
 public enum MapStatus
 {
     /// <summary>Rests on nothing beyond Lean's standard axioms.</summary>
@@ -55,8 +87,14 @@ public enum MapStatus
 }
 
 /// <summary>A declaration of the project on the project map.</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Module">The module that defines it.</param>
+/// <param name="Kind">Tenet's name for its kind: <c>theorem</c>, <c>def</c>, <c>axiom</c>, <c>opaque</c>, <c>inductive</c> or <c>mutual def</c>.</param>
+/// <param name="Line">The 1-based line of its keyword in <paramref name="SourceFile"/>, or <see langword="null"/> when unknown.</param>
+/// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
 public sealed record MapNode(string Name, string Module, string Kind, int? Line, string? SourceFile)
 {
+    /// <summary>Whether it is proved, set by <see cref="TenetWorkspace.Map"/>.</summary>
     public MapStatus Status { get; set; }
 
     /// <summary>It uses sorry (or a project axiom) itself, rather than through a lemma.</summary>
@@ -70,6 +108,8 @@ public sealed record MapNode(string Name, string Module, string Kind, int? Line,
 }
 
 /// <summary>The project's own declarations and which uses which (From uses To, as indices into Nodes).</summary>
+/// <param name="Nodes">The declarations, in the order their modules were read.</param>
+/// <param name="Edges">One entry per use: <c>From</c> uses <c>To</c>, both indices into <paramref name="Nodes"/>.</param>
 public sealed record ProjectMap(IReadOnlyList<MapNode> Nodes, IReadOnlyList<(int From, int To)> Edges)
 {
     /// <summary>The sorries and axioms worth fixing first: those that the most declarations rest on.</summary>
@@ -77,9 +117,16 @@ public sealed record ProjectMap(IReadOnlyList<MapNode> Nodes, IReadOnlyList<(int
 }
 
 /// <summary>One declaration on the way from a theorem down to what it rests on.</summary>
+/// <param name="Name">The declaration's name, with generated names shown as the declaration they belong to.</param>
+/// <param name="Module">The module that defines it; empty when unknown.</param>
+/// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
+/// <param name="Line">The 1-based line of its keyword, or <see langword="null"/> when unknown.</param>
 public sealed record TrailLink(string Name, string Module, string? SourceFile, int? Line)
 {
+    /// <summary>This link is <c>sorry</c> itself (the axiom <c>sorryAx</c>).</summary>
     public bool IsSorry => Name == "sorryAx";
+
+    /// <summary>The name to show: <c>sorry</c> for <c>sorryAx</c>, otherwise <see cref="Name"/>.</summary>
     public string Display => IsSorry ? "sorry" : Name;
 }
 
@@ -87,16 +134,37 @@ public sealed record TrailLink(string Name, string Module, string? SourceFile, i
 /// Why a declaration is not fully proved: the chain of declarations from it to one assumption (sorry, or an axiom
 /// the project adds), shortest first. The last declaration before the assumption is where to go and fix it.
 /// </summary>
+/// <param name="Assumption">The axiom's full name; <c>sorryAx</c> for sorry.</param>
+/// <param name="Path">
+/// The chain, starting with the declaration asked about and ending with the assumption itself; consecutive links
+/// that belong to the same declaration are merged.
+/// </param>
 public sealed record AssumptionTrail(string Assumption, IReadOnlyList<TrailLink> Path)
 {
+    /// <summary>The assumption is <c>sorry</c> rather than an axiom.</summary>
     public bool IsSorry => Assumption == "sorryAx";
 
     /// <summary>The declaration that uses the assumption itself.</summary>
     public TrailLink? Culprit => Path.Count >= 2 ? Path[^2] : null;
 
+    /// <summary>The chain on one line, with arrows between the names.</summary>
     public string Summary => string.Join("  →  ", Path.Select(l => l.Display));
 }
 
+/// <summary>What the declaration navigator shows about one declaration, read from the <c>.olean</c> files.</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Kind">Tenet's name for its kind, e.g. <c>theorem</c>, <c>def</c>, <c>inductive</c>.</param>
+/// <param name="Module">The module that defines it; empty when unknown.</param>
+/// <param name="LevelParams">Its universe level parameters.</param>
+/// <param name="Type">Its type, printed, cut off after 4000 characters.</param>
+/// <param name="Value">Its value, printed and cut off likewise; <see langword="null"/> for a theorem (proofs are not shown) or a declaration without one.</param>
+/// <param name="DocString">Its docstring, or <see langword="null"/> when it has none.</param>
+/// <param name="Deprecation">A one-line deprecation notice, or <see langword="null"/> when it is not deprecated.</param>
+/// <param name="Line">The 1-based line where Lean's recorded range starts (which may be a doc comment or attribute), or <see langword="null"/>.</param>
+/// <param name="Column">The 0-based column of that start, in Unicode code points, or <see langword="null"/>.</param>
+/// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
+/// <param name="Uses">The user-facing constants it mentions directly, sorted.</param>
+/// <param name="IsUnsafe">It is declared <c>unsafe</c>.</param>
 public sealed record DeclarationDetails(
     string Name,
     string Kind,
@@ -119,6 +187,9 @@ public sealed record DeclarationDetails(
 ///
 /// Opening maps the files; nothing is decoded until asked for, so opening a Mathlib project is quick and its
 /// memory is the operating system's page cache rather than this process's heap.
+///
+/// Every public member is thread-safe: access to the modules is serialised with a lock, so a long call (such as
+/// verification) blocks the others until it finishes. Dispose it to unmap the files.
 /// </summary>
 public sealed class TenetWorkspace : IDisposable
 {
@@ -139,13 +210,16 @@ public sealed class TenetWorkspace : IDisposable
         LeanVersion = leanVersion;
     }
 
+    /// <summary>The project the workspace was opened for.</summary>
     public LeanProject Project { get; }
 
     /// <summary>The project's own modules (those built under its .lake/build), not its dependencies.</summary>
     public IReadOnlyList<TenetName> OwnModules { get; }
 
+    /// <summary>The Lean version the modules were built with, from their headers; empty when no module was opened.</summary>
     public string LeanVersion { get; }
 
+    /// <summary>How many modules are open, imports included.</summary>
     public int ModuleCount
     {
         get
@@ -160,6 +234,7 @@ public sealed class TenetWorkspace : IDisposable
     /// <summary>
     /// Open a project's built modules and their import closure. A project that has not been built yet opens the
     /// toolchain's own library instead (Init, Std, Lean), so the navigator still has something to show.
+    /// Synchronous: reads module headers from disk. The caller owns the result and must dispose it.
     /// </summary>
     public static TenetWorkspace Open(LeanProject project)
     {
@@ -230,6 +305,7 @@ public sealed class TenetWorkspace : IDisposable
         }
     }
 
+    /// <summary>The user-facing declarations in an open module, sorted; empty when the module is not open.</summary>
     public IReadOnlyList<string> DeclarationsIn(string module)
     {
         lock (_lock)
@@ -242,7 +318,9 @@ public sealed class TenetWorkspace : IDisposable
 
     /// <summary>
     /// Declarations whose name contains every space-separated part of the query, case-insensitively, shortest
-    /// names first (the likeliest intended match). Names Lean generates for itself are left out.
+    /// names first (the likeliest intended match). Names Lean generates for itself are left out. At most
+    /// <paramref name="limit"/> results; an empty query gives none. The first call lists every declaration, which can
+    /// take a while on a large project; later calls reuse that list.
     /// </summary>
     public IReadOnlyList<DeclarationSummary> Search(string query, int limit = 400, CancellationToken ct = default)
     {
@@ -306,6 +384,10 @@ public sealed class TenetWorkspace : IDisposable
         && !name.EndsWith(".sizeOf_spec", StringComparison.Ordinal)
         && !name.Contains("._cstage", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Everything the navigator shows about the declaration with full name <paramref name="name"/>, or
+    /// <see langword="null"/> when no open module defines it. Decodes the declaration and prints its type and value.
+    /// </summary>
     public DeclarationDetails? Details(string name)
     {
         TenetName n = TenetName.Parse(name);
@@ -344,7 +426,10 @@ public sealed class TenetWorkspace : IDisposable
         return s.Length > 4000 ? s[..4000] + " …" : s;
     }
 
-    /// <summary>Every axiom a declaration depends on, transitively (Lean's <c>#print axioms</c>, computed by Tenet).</summary>
+    /// <summary>
+    /// Every axiom a declaration depends on, transitively (Lean's <c>#print axioms</c>, computed by Tenet), sorted.
+    /// Includes <c>sorryAx</c> when it uses sorry.
+    /// </summary>
     public IReadOnlyList<string> AxiomsOf(string name)
     {
         lock (_lock)
@@ -358,6 +443,7 @@ public sealed class TenetWorkspace : IDisposable
     /// For each assumption (sorry, or an axiom beyond Lean's standard three) a declaration rests on, the shortest
     /// chain of declarations that leads to it, found breadth-first through what each one uses. Names Lean made
     /// (<c>foo._proof_1</c>, <c>foo.match_1</c>, private names) are shown as the declaration they belong to.
+    /// Sorry comes first, then shorter trails. Empty when the declaration is unknown or fully proved.
     /// </summary>
     public IReadOnlyList<AssumptionTrail> WhyNotProved(string name, CancellationToken ct = default)
     {
@@ -428,7 +514,8 @@ public sealed class TenetWorkspace : IDisposable
     /// <summary>
     /// The project map: every declaration in the project's own modules, what it uses among them, and whether it
     /// rests on sorry or a project axiom (propagated along uses; Lean's library is taken as sound). Names Lean
-    /// generates are folded into the declaration they belong to.
+    /// generates are folded into the declaration they belong to. Reads the project's source files to find
+    /// declaration lines. Empty when the project has not been built.
     /// </summary>
     public ProjectMap Map(CancellationToken ct = default)
     {
@@ -592,7 +679,10 @@ public sealed class TenetWorkspace : IDisposable
         return new TrailLink(s, module, source, line);
     }
 
-    /// <summary><c>foo._proof_1</c> → <c>foo</c>; <c>_private.Mod.0.foo.match_1</c> → <c>foo</c>.</summary>
+    /// <summary>
+    /// The user-facing declaration a generated name belongs to: <c>foo._proof_1</c> → <c>foo</c>;
+    /// <c>_private.Mod.0.foo.match_1</c> → <c>foo</c>. Other names are returned unchanged.
+    /// </summary>
     public static string UserFacingOwner(string name)
     {
         string s = name;
@@ -619,7 +709,10 @@ public sealed class TenetWorkspace : IDisposable
         return string.Join('.', parts.Take(keep));
     }
 
-    /// <summary>Declarations that mention <paramref name="name"/> directly, among the project's own modules (or all, when asked).</summary>
+    /// <summary>
+    /// Declarations that mention <paramref name="name"/> directly, among the project's own modules (or all, when
+    /// <paramref name="everywhere"/> or the project has no built modules), sorted. Only user-facing names are listed.
+    /// </summary>
     public IReadOnlyList<string> UsedBy(string name, bool everywhere = false, CancellationToken ct = default)
     {
         TenetName target = TenetName.Parse(name);
@@ -650,7 +743,10 @@ public sealed class TenetWorkspace : IDisposable
         return hits;
     }
 
-    /// <summary>The .lean file a module was compiled from, if it can be found in the project, its packages, or the toolchain.</summary>
+    /// <summary>
+    /// The .lean file a module was compiled from, if it can be found in the project, its packages, or the toolchain's
+    /// sources; <see langword="null"/> otherwise or for an empty module name.
+    /// </summary>
     public string? SourceFileOf(string module)
     {
         if (module.Length == 0)
@@ -686,6 +782,12 @@ public sealed class TenetWorkspace : IDisposable
     /// on an assumption (sorry or a project axiom), or rejected. Runs on a thread with a large stack, as Tenet's
     /// kernel recursion needs one on deep terms.
     /// </summary>
+    /// <param name="modules">
+    /// The modules to check, by name; <see langword="null"/> for all of the project's own modules. Names that are not
+    /// the project's own are ignored.
+    /// </param>
+    /// <param name="progress">Told after each declaration group is checked, possibly from several threads.</param>
+    /// <param name="ct">Cancels the check; the task then ends as cancelled.</param>
     public Task<VerificationReport> VerifyAsync(IReadOnlyList<string>? modules = null, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default)
     {
         var tcs = new TaskCompletionSource<VerificationReport>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -833,6 +935,7 @@ public sealed class TenetWorkspace : IDisposable
         return new VerificationReport(result.LeanVersion, targets.Count, result.ModulesLoaded, sw.Elapsed, verdicts);
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         lock (_lock)

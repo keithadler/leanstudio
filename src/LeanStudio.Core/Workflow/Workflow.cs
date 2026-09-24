@@ -11,16 +11,30 @@ using LeanStudio.Core.Toolchains;
 
 namespace LeanStudio.Core.Workflow;
 
+/// <summary>What a <see cref="Marker"/> marks.</summary>
 public enum MarkerKind
 {
+    /// <summary>A <c>sorry</c> in code.</summary>
     Sorry,
+    /// <summary>An <c>admit</c> in code.</summary>
     Admit,
+    /// <summary>A TODO, FIXME or XXX in a comment.</summary>
     Todo,
 }
 
 /// <summary>A sorry, admit or TODO somewhere in the project: where, which declaration, and the line.</summary>
+/// <param name="Path">The file, as the scan was given it (full paths from <see cref="Markers.Scan"/>).</param>
+/// <param name="Line">The line, 0-based.</param>
+/// <param name="Column">Where the word starts in the line, 0-based, in UTF-16 code units.</param>
+/// <param name="Kind">Which kind of marker it is.</param>
+/// <param name="Declaration">
+/// The name of the nearest declaration that starts at or above the line (the keyword, such as <c>example</c>, when it
+/// has no name), or <see langword="null"/> when there is none.
+/// </param>
+/// <param name="LineText">The whole line, trimmed, for display.</param>
 public sealed record Marker(string Path, int Line, int Column, MarkerKind Kind, string? Declaration, string LineText)
 {
+    /// <summary>The kind as shown in the list: <c>sorry</c>, <c>admit</c> or <c>TODO</c> (also for FIXME and XXX).</summary>
     public string KindLabel => Kind switch
     {
         MarkerKind.Sorry => "sorry",
@@ -44,6 +58,11 @@ public static partial class Markers
     [GeneratedRegex(@"^\s*(@\[[^\]]*\]\s*)*((private|protected|noncomputable|partial|unsafe|nonrec)\s+)*(theorem|lemma|def|example|instance|abbrev|structure|class|inductive)\s*([^\s:({\[]*)")]
     private static partial Regex Declaration();
 
+    /// <summary>
+    /// Read every Lean file under <paramref name="root"/> from disk and collect its markers. Files that cannot be read
+    /// are skipped. Synchronous and potentially slow on a large project; checks <paramref name="ct"/> between files.
+    /// </summary>
+    /// <exception cref="OperationCanceledException"><paramref name="ct"/> was cancelled.</exception>
     public static IReadOnlyList<Marker> Scan(string root, CancellationToken ct = default)
     {
         var list = new List<Marker>();
@@ -64,6 +83,10 @@ public static partial class Markers
         return list;
     }
 
+    /// <summary>
+    /// The markers in one file's lines, lazily, in order. <c>sorry</c> and <c>admit</c> count only outside comments;
+    /// TODO, FIXME and XXX only inside them. Block comments spanning lines are followed.
+    /// </summary>
     public static IEnumerable<Marker> ScanText(string path, IReadOnlyList<string> lines)
     {
         bool inBlock = false;
@@ -92,8 +115,14 @@ public static partial class Markers
 }
 
 /// <summary>An error or warning from <c>lake build</c>, for a file that may not be open.</summary>
+/// <param name="Path">The file's full path.</param>
+/// <param name="Line">The line, 0-based (Lake prints it 1-based).</param>
+/// <param name="Column">The column as Lake prints it, which is 0-based.</param>
+/// <param name="IsError">An error rather than a warning.</param>
+/// <param name="Message">The message, which may span several lines.</param>
 public sealed record BuildMessage(string Path, int Line, int Column, bool IsError, string Message);
 
+/// <summary>Reads the messages out of <c>lake build</c>'s output.</summary>
 public static partial class LakeOutput
 {
     [GeneratedRegex(@"^(?<sev>error|warning|info): (?<file>[^:\n]+\.lean):(?<line>\d+):(?<col>\d+): (?<msg>.*)$")]
@@ -102,6 +131,7 @@ public static partial class LakeOutput
     /// <summary>
     /// Read Lake's build log into messages. Each starts with "error: File.lean:line:col: text" and may continue on
     /// following lines until the next message or Lake's own status lines (✔ ⚠ ✖, "Build completed", …).
+    /// Info messages are dropped. Relative file names are resolved against <paramref name="projectRoot"/>.
     /// </summary>
     public static IReadOnlyList<BuildMessage> Parse(string output, string projectRoot)
     {
@@ -153,8 +183,13 @@ public static partial class LakeOutput
     }
 }
 
+/// <summary>One saved version of a file in <see cref="LocalHistory"/>.</summary>
+/// <param name="Path">The file the version belongs to, as passed to <see cref="LocalHistory.Versions"/>.</param>
+/// <param name="SavedAt">When it was saved, in UTC.</param>
+/// <param name="SnapshotFile">The full path of the file holding that version's text.</param>
 public sealed record HistoryEntry(string Path, DateTime SavedAt, string SnapshotFile)
 {
+    /// <summary>When it was saved, in local time and the current culture, e.g. <c>Tue 3 Mar, 14:05:09</c>.</summary>
     public string Label => SavedAt.ToLocalTime().ToString("ddd d MMM, HH:mm:ss", CultureInfo.CurrentCulture);
 }
 
@@ -162,10 +197,15 @@ public sealed record HistoryEntry(string Path, DateTime SavedAt, string Snapshot
 /// Local history: every save of a file keeps a copy, so earlier versions can be brought back even without git.
 /// The newest <see cref="Keep"/> versions of each file are kept, under the app's data folder.
 /// </summary>
+/// <param name="folder">
+/// Where to keep the versions: one subfolder per file, named by a hash of its full path. Created when first needed.
+/// </param>
 public sealed class LocalHistory(string folder)
 {
+    /// <summary>How many versions of each file are kept; older ones are deleted as new ones are recorded.</summary>
     public const int Keep = 40;
 
+    /// <summary>The folder the versions are kept in.</summary>
     public string Folder { get; } = folder;
 
     private string FolderFor(string path)
@@ -174,6 +214,11 @@ public sealed class LocalHistory(string folder)
         return System.IO.Path.Combine(Folder, key);
     }
 
+    /// <summary>
+    /// Save <paramref name="text"/> as the newest version of the file at <paramref name="path"/>, unless it is the
+    /// same as the newest one already kept, and delete versions beyond <see cref="Keep"/>. Writes to disk; I/O errors
+    /// are not caught.
+    /// </summary>
     public void Record(string path, string text)
     {
         string dir = FolderFor(path);
@@ -192,6 +237,7 @@ public sealed class LocalHistory(string folder)
         }
     }
 
+    /// <summary>The versions kept for the file at <paramref name="path"/>, newest first; empty when there are none.</summary>
     public IReadOnlyList<HistoryEntry> Versions(string path)
     {
         string dir = FolderFor(path);
@@ -208,16 +254,26 @@ public sealed class LocalHistory(string folder)
 }
 
 /// <summary>A hit from Loogle, the Mathlib search engine: a name, its type, and the module that defines it.</summary>
+/// <param name="Name">The declaration's full name, e.g. <c>Nat.add_comm</c>.</param>
+/// <param name="Type">Its type (the statement, for a theorem), as Lean prints it.</param>
+/// <param name="Module">The module that defines it, e.g. <c>Mathlib.Algebra.Group.Basic</c>.</param>
+/// <param name="Doc">Its docstring, or <see langword="null"/> when it has none.</param>
 public sealed record LoogleHit(string Name, string Type, string Module, string? Doc);
 
 /// <summary>
 /// Loogle (loogle.lean-lang.org) searches Mathlib by name, by constant, or by the shape of a type:
 /// <c>Real.sqrt</c>, <c>"prime"</c>, <c>_ * (_ ^ _)</c>, <c>|- tsum _ = _ * tsum _</c>. Online, read-only.
 /// </summary>
+/// <param name="http">The client to send requests with; by default, one with a 20-second timeout.</param>
 public sealed class Loogle(HttpClient? http = null)
 {
     private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
 
+    /// <summary>
+    /// Send <paramref name="query"/> to Loogle and read the answer (see <see cref="Parse"/>). A query Loogle cannot
+    /// understand is not an exception: it comes back as <c>Error</c>, with no hits.
+    /// </summary>
+    /// <exception cref="HttpRequestException">The request failed or Loogle answered with an HTTP error.</exception>
     public async Task<(IReadOnlyList<LoogleHit> Hits, string? Error, int Count)> SearchAsync(string query, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "https://loogle.lean-lang.org/json?q=" + Uri.EscapeDataString(query));
@@ -228,6 +284,10 @@ public sealed class Loogle(HttpClient? http = null)
         return Parse(doc.RootElement);
     }
 
+    /// <summary>
+    /// Read Loogle's JSON answer: the hits it returned, its error message (or <see langword="null"/>), and how many
+    /// declarations matched in total, which can be more than the hits returned.
+    /// </summary>
     public static (IReadOnlyList<LoogleHit> Hits, string? Error, int Count) Parse(JsonElement root)
     {
         if (root.TryGetProperty("error", out JsonElement err))
@@ -251,8 +311,14 @@ public sealed class Loogle(HttpClient? http = null)
     }
 }
 
-/// <summary>Links to the documentation site that covers Mathlib and its dependencies, Lean core included.</summary>
 /// <summary>A Mathlib result found by meaning, with its informal statement.</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Kind">What kind of declaration it is (<c>theorem</c>, <c>def</c>, …); empty when not given.</param>
+/// <param name="Module">The module that defines it; empty when not given.</param>
+/// <param name="Type">Its type or signature; empty when not given.</param>
+/// <param name="InformalName">A short English name for it, when LeanSearch has one.</param>
+/// <param name="InformalStatement">An English statement of it, when LeanSearch has one.</param>
+/// <param name="Distance">How far it is from the question, as LeanSearch reports it: smaller is closer, <c>0</c> when not given.</param>
 public sealed record MeaningHit(string Name, string Kind, string Module, string Type, string? InformalName, string? InformalStatement, double Distance)
 {
     /// <summary>How closely it matches the question, 0–100.</summary>
@@ -264,12 +330,16 @@ public sealed record MeaningHit(string Name, string Kind, string Module, string 
 /// (leansearch.net), which matches the question against informal statements of every Mathlib result. Loogle finds
 /// what you can name or shape; this finds what you can only describe.
 /// </summary>
+/// <param name="http">The client to send requests with; by default, one with a 30-second timeout.</param>
 public sealed class LeanSearch(HttpClient? http = null)
 {
     private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
+    /// <summary>The LeanSearch URL queries are posted to.</summary>
     public const string Endpoint = "https://leansearch.net/search";
 
+    /// <summary>Ask LeanSearch for up to <paramref name="results"/> results matching <paramref name="question"/>, closest first.</summary>
+    /// <exception cref="HttpRequestException">The request failed or LeanSearch answered with an HTTP error.</exception>
     public async Task<IReadOnlyList<MeaningHit>> SearchAsync(string question, int results = 20, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, Endpoint)
@@ -324,21 +394,33 @@ public sealed class LeanSearch(HttpClient? http = null)
     }
 }
 
+/// <summary>Links to the documentation site that covers Mathlib and its dependencies, Lean core included.</summary>
 public static class DocLinks
 {
+    /// <summary>
+    /// The page for <paramref name="declaration"/> (its full name) in <paramref name="module"/>. The link is built,
+    /// not checked, so it only works for modules the site documents.
+    /// </summary>
     public static string For(string module, string declaration) =>
         $"https://leanprover-community.github.io/mathlib4_docs/{module.Replace('.', '/')}.html#{Uri.EscapeDataString(declaration)}";
 }
 
 /// <summary>Who last changed a line, and when, from <c>git blame</c>.</summary>
+/// <param name="Author">The author's name.</param>
+/// <param name="When">The author time (UTC).</param>
+/// <param name="Summary">The first line of the commit message.</param>
+/// <param name="Commit">The full commit hash; all zeros for a change that is not committed yet.</param>
 public sealed record BlameLine(string Author, DateTimeOffset When, string Summary, string Commit)
 {
+    /// <summary>The line has changed since the last commit.</summary>
     public bool IsUncommitted => Commit.All(c => c == '0');
 
+    /// <summary>One line for the editor: author, how long before <paramref name="now"/>, and summary.</summary>
     public string Describe(DateTimeOffset now) => IsUncommitted
         ? "You, not committed yet"
         : $"{Author}, {Ago(now - When)} · {Summary}";
 
+    /// <summary>A rough English age, e.g. <c>just now</c>, <c>5 min ago</c>, <c>3 months ago</c>.</summary>
     public static string Ago(TimeSpan t) =>
         t.TotalMinutes < 1 ? "just now"
         : t.TotalHours < 1 ? $"{(int)t.TotalMinutes} min ago"
@@ -348,14 +430,20 @@ public sealed record BlameLine(string Author, DateTimeOffset When, string Summar
         : $"{(int)(t.TotalDays / 365)} years ago";
 }
 
+/// <summary>Line blame, through <c>git blame --porcelain</c>.</summary>
 public static class Blame
 {
+    /// <summary>
+    /// Who last changed line <paramref name="oneBasedLine"/> of <paramref name="file"/> (as saved on disk); null when
+    /// git fails, for example because the file is untracked.
+    /// </summary>
     public static async Task<BlameLine?> LineAsync(GitRepository repo, string file, int oneBasedLine, CancellationToken ct = default)
     {
         ProcessResult r = await repo.RunAsync(["blame", "--porcelain", "-L", $"{oneBasedLine},{oneBasedLine}", "--", file], ct: ct).ConfigureAwait(false);
         return r.Success ? Parse(r.Output) : null;
     }
 
+    /// <summary>Read the first entry of <c>git blame --porcelain</c> output; null when it does not start with a commit hash.</summary>
     public static BlameLine? Parse(string porcelain)
     {
         string[] lines = porcelain.Split('\n');
@@ -386,6 +474,10 @@ public static class Blame
 }
 
 /// <summary>Something to run in a project: a Lake target or command, or a shell command.</summary>
+/// <param name="Title">What the task list shows, e.g. <c>lake build</c>.</param>
+/// <param name="Detail">A short description of what it does.</param>
+/// <param name="FileName">The executable to run.</param>
+/// <param name="Arguments">Its arguments, one per element, unquoted.</param>
 public sealed record ProjectTask(string Title, string Detail, string FileName, IReadOnlyList<string> Arguments);
 
 /// <summary>The tasks a Lean project offers: build, test, lint, each executable, each Lake script.</summary>
@@ -400,6 +492,11 @@ public static partial class ProjectTasks
     [GeneratedRegex(@"^\s*script\s+«?(?<n>[\w.]+)»?", RegexOptions.Multiline)]
     private static partial Regex LeanScript();
 
+    /// <summary>
+    /// The tasks for <paramref name="project"/>: the standard Lake commands, <c>lake exe cache get</c> when it depends
+    /// on Mathlib, and one per <c>lean_exe</c> and (in a <c>lakefile.lean</c>) <c>script</c> found in the lakefile.
+    /// Reads the lakefile from disk.
+    /// </summary>
     public static IReadOnlyList<ProjectTask> For(LeanProject project)
     {
         string lake = Elan.FindExecutable("lake") ?? "lake";

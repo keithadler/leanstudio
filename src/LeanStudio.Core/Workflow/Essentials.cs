@@ -11,7 +11,9 @@ namespace LeanStudio.Core.Workflow;
 /// </summary>
 public static class ElanInstaller
 {
+    /// <summary>elan's official installer script for macOS and Linux.</summary>
     public const string UnixScript = "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh";
+    /// <summary>elan's official installer script for Windows (PowerShell).</summary>
     public const string WindowsScript = "https://raw.githubusercontent.com/leanprover/elan/master/elan-init.ps1";
 
     /// <summary>The script to fetch, and how to run it once saved at <paramref name="scriptPath"/>.</summary>
@@ -19,6 +21,12 @@ public static class ElanInstaller
         ? (WindowsScript, "powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, "-NoPrompt", "1", "-DefaultToolchain", "stable"])
         : (UnixScript, "sh", [scriptPath, "-y", "--default-toolchain", "stable"]);
 
+    /// <summary>
+    /// Download the installer for this platform into a new temporary folder and run it without prompts, installing
+    /// elan and the latest stable Lean as the default toolchain. Progress is streamed to <paramref name="onLine"/>.
+    /// The client used, including one passed as <paramref name="http"/>, is disposed afterwards.
+    /// </summary>
+    /// <exception cref="HttpRequestException">The installer could not be downloaded.</exception>
     public static async Task<ProcessResult> InstallAsync(Action<string>? onLine = null, HttpClient? http = null, CancellationToken ct = default)
     {
         bool windows = OperatingSystem.IsWindows();
@@ -36,7 +44,10 @@ public static class ElanInstaller
 /// <summary>File operations for the explorer: move to the trash, open a terminal, reveal.</summary>
 public static class FileOps
 {
-    /// <summary>Move a file or folder to the system's trash. False when the platform offers no way to.</summary>
+    /// <summary>
+    /// Move a file or folder to the system's trash: through Finder on macOS, the Recycle Bin on Windows, and
+    /// <c>gio trash</c> elsewhere. False when the platform offers no way to or it did not work; does not throw.
+    /// </summary>
     public static async Task<bool> MoveToTrashAsync(string path)
     {
         string full = Path.GetFullPath(path);
@@ -71,7 +82,10 @@ public static class FileOps
 
     private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 
-    /// <summary>Open the platform's terminal in a folder.</summary>
+    /// <summary>
+    /// Open the platform's terminal in a folder, trying each likely terminal in turn without waiting for it. False
+    /// when none could be started.
+    /// </summary>
     public static bool OpenTerminal(string folder)
     {
         (string file, string[] args)[] candidates = OperatingSystem.IsMacOS()
@@ -100,6 +114,8 @@ public static class FileOps
 }
 
 /// <summary>An import that would bring a missing name into scope.</summary>
+/// <param name="Name">The declaration's full name, which may include a namespace the file does not open.</param>
+/// <param name="Module">The module to import.</param>
 public sealed record ImportSuggestion(string Name, string Module);
 
 /// <summary>
@@ -111,14 +127,21 @@ public static partial class ImportFinder
     [GeneratedRegex(@"^unknown (?:identifier|constant) '(?<n>[^']+)'")]
     private static partial Regex Unknown();
 
-    /// <summary>The missing name in an "unknown identifier" message, or null.</summary>
+    /// <summary>
+    /// The missing name in an "unknown identifier" or "unknown constant" message, without <c>«»</c>, or null when the
+    /// message is something else.
+    /// </summary>
     public static string? MissingName(string message)
     {
         Match m = Unknown().Match(message.Trim());
         return m.Success ? m.Groups["n"].Value.Trim('«', '»') : null;
     }
 
-    /// <summary>Declarations named exactly <paramref name="name"/>, or ending in .name (it may need a namespace or an import).</summary>
+    /// <summary>
+    /// Declarations named exactly <paramref name="name"/>, or ending in .name (it may need a namespace or an import),
+    /// ranked by <see cref="Rank"/>. Asks Loogle online; empty when Loogle reports an error.
+    /// </summary>
+    /// <exception cref="HttpRequestException">Loogle could not be reached.</exception>
     public static async Task<IReadOnlyList<ImportSuggestion>> SuggestAsync(string name, Loogle? loogle = null, CancellationToken ct = default)
     {
         var (hits, error, _) = await (loogle ?? new Loogle()).SearchAsync("\"" + name + "\"", ct).ConfigureAwait(false);
@@ -129,6 +152,10 @@ public static partial class ImportFinder
         return Rank(hits, name);
     }
 
+    /// <summary>
+    /// Keep the hits named <paramref name="name"/> or ending in <c>.name</c>, exact names first, then modules outside
+    /// Mathlib, then shorter names; at most one per module and eight in all.
+    /// </summary>
     public static IReadOnlyList<ImportSuggestion> Rank(IEnumerable<LoogleHit> hits, string name) =>
         hits.Where(h => h.Name == name || h.Name.EndsWith("." + name, StringComparison.Ordinal))
             .OrderBy(h => h.Name == name ? 0 : 1)
@@ -139,7 +166,10 @@ public static partial class ImportFinder
             .Take(8)
             .ToList();
 
-    /// <summary>Add <c>import Module</c> after the file's last import (or at the top), unless it is already there.</summary>
+    /// <summary>
+    /// Add <c>import Module</c> after the file's last import (or at the top, after any <c>module</c> or
+    /// <c>prelude</c> header and comments), unless it is already there. Returns the new text.
+    /// </summary>
     public static string AddImport(string text, string module)
     {
         string[] lines = text.Split('\n');

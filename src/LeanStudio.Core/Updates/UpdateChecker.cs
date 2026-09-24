@@ -5,8 +5,17 @@ using System.Text.Json;
 namespace LeanStudio.Core.Updates;
 
 /// <summary>A newer release than the one running: its version, notes, page, and the download for this computer.</summary>
+/// <param name="Version">The release's version, from its tag, with any pre-release suffix dropped.</param>
+/// <param name="Tag">The Git tag as written, e.g. <c>v0.2.0</c>.</param>
+/// <param name="Name">The release's title, or the tag when it has none.</param>
+/// <param name="Notes">The release notes (Markdown); empty when there are none.</param>
+/// <param name="PageUrl">The release's page on github.com.</param>
+/// <param name="AssetName">The file name of the build for this runtime, or <see langword="null"/> when there is none.</param>
+/// <param name="AssetUrl">Where to download that build, or <see langword="null"/> when there is none.</param>
+/// <param name="AssetSize">The build's size in bytes as GitHub reports it; <c>0</c> when unknown.</param>
 public sealed record UpdateInfo(Version Version, string Tag, string Name, string Notes, string PageUrl, string? AssetName, string? AssetUrl, long AssetSize)
 {
+    /// <summary>The release has a build for this runtime that <see cref="UpdateChecker.DownloadAsync"/> can fetch.</summary>
     public bool HasDownload => AssetUrl is not null;
 }
 
@@ -18,11 +27,17 @@ public sealed record UpdateInfo(Version Version, string Tag, string Name, string
 /// </summary>
 public sealed class UpdateChecker
 {
+    /// <summary>The GitHub repository, <c>owner/repo</c>, whose releases are checked by default.</summary>
     public const string DefaultRepository = "keithadler/leanstudio";
 
     private readonly HttpClient _http;
     private readonly string _repository;
 
+    /// <summary>
+    /// A checker for <paramref name="repository"/>'s releases. Without <paramref name="http"/>, a client with a
+    /// 30-second timeout is created. A <c>User-Agent</c> (which GitHub's API requires) is added to the client's
+    /// default headers when it has none.
+    /// </summary>
     public UpdateChecker(HttpClient? http = null, string repository = DefaultRepository)
     {
         _repository = repository;
@@ -33,6 +48,7 @@ public sealed class UpdateChecker
         }
     }
 
+    /// <summary>The running build's version (major, minor, build) from the assembly; <c>0.0.0</c> when it has none.</summary>
     public static Version CurrentVersion =>
         typeof(UpdateChecker).Assembly.GetName().Version is Version v ? new Version(v.Major, v.Minor, Math.Max(0, v.Build)) : new Version(0, 0, 0);
 
@@ -52,7 +68,10 @@ public sealed class UpdateChecker
         }
     }
 
-    /// <summary>Parse a tag like v0.2.0 or 0.2.0-beta into its version, ignoring any pre-release suffix.</summary>
+    /// <summary>
+    /// Parse a tag like v0.2.0 or 0.2.0-beta into its version (major, minor, build; a missing build is <c>0</c>),
+    /// ignoring any pre-release or build suffix. <see langword="null"/> when it is not a version.
+    /// </summary>
     public static Version? ParseTag(string tag)
     {
         string t = tag.Trim().TrimStart('v', 'V').Split('-', '+')[0];
@@ -63,7 +82,13 @@ public sealed class UpdateChecker
         return new Version(v.Major, v.Minor, Math.Max(0, v.Build));
     }
 
-    /// <summary>The newest release if it is newer than <paramref name="current"/>; null when up to date.</summary>
+    /// <summary>
+    /// Ask GitHub for the latest release and return it if it is newer than <paramref name="current"/>; null when up
+    /// to date, when the repository has no releases, or when the latest is a draft or pre-release.
+    /// <paramref name="current"/> and <paramref name="runtime"/> default to <see cref="CurrentVersion"/> and
+    /// <see cref="CurrentRuntime"/>.
+    /// </summary>
+    /// <exception cref="HttpRequestException">The request failed or GitHub answered with an error other than 404.</exception>
     public async Task<UpdateInfo?> CheckAsync(Version? current = null, string? runtime = null, CancellationToken ct = default)
     {
         using HttpResponseMessage r = await _http.GetAsync($"https://api.github.com/repos/{_repository}/releases/latest", ct).ConfigureAwait(false);
@@ -76,7 +101,11 @@ public sealed class UpdateChecker
         return Evaluate(doc.RootElement, current ?? CurrentVersion, runtime ?? CurrentRuntime);
     }
 
-    /// <summary>Decide from a release's JSON whether it is an update, and which file is for this runtime.</summary>
+    /// <summary>
+    /// Decide from a release's JSON (GitHub's REST release object) whether it is an update, and which file is for this
+    /// runtime: the first asset whose name contains <c>-runtime.</c>. Drafts, pre-releases, unparseable tags and
+    /// versions not newer than <paramref name="current"/> give <see langword="null"/>.
+    /// </summary>
     public static UpdateInfo? Evaluate(JsonElement release, Version current, string runtime)
     {
         if (release.TryGetProperty("draft", out JsonElement d) && d.ValueKind == JsonValueKind.True
@@ -116,6 +145,7 @@ public sealed class UpdateChecker
             size);
     }
 
+    /// <summary>The person's <c>~/Downloads</c> folder, or their home folder when there is no Downloads folder.</summary>
     public static string DownloadsFolder
     {
         get
@@ -126,7 +156,14 @@ public sealed class UpdateChecker
         }
     }
 
-    /// <summary>Download the release file for this computer into the Downloads folder; returns its path.</summary>
+    /// <summary>
+    /// Download the release file for this computer into <paramref name="folder"/> (by default
+    /// <see cref="DownloadsFolder"/>); returns its path. The file is written as <c>name.part</c> and renamed when
+    /// complete, replacing any file of the same name. <paramref name="progress"/> gets the fraction done, 0 to 1,
+    /// when the size is known.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The release has no build for this runtime.</exception>
+    /// <exception cref="HttpRequestException">The download failed.</exception>
     public async Task<string> DownloadAsync(UpdateInfo update, IProgress<double>? progress = null, string? folder = null, CancellationToken ct = default)
     {
         if (update.AssetUrl is null || update.AssetName is null)

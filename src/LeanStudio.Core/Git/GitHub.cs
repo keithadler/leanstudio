@@ -9,9 +9,14 @@ namespace LeanStudio.Core.Git;
 /// </summary>
 public static partial class GitHub
 {
+    /// <summary>
+    /// The path of the <c>gh</c> executable: on PATH (or in elan's bin), else in the usual Homebrew and system
+    /// locations; <see langword="null"/> when it is not installed. Searched on every access.
+    /// </summary>
     public static string? Gh => Toolchains.Elan.FindExecutable("gh")
         ?? new[] { "/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh" }.FirstOrDefault(File.Exists);
 
+    /// <summary>The <c>gh</c> command line is installed (see <see cref="Gh"/>).</summary>
     public static bool IsCliInstalled => Gh is not null;
 
     /// <summary><c>owner/repo</c> becomes https://github.com/owner/repo.git; anything else is taken as a URL or path.</summary>
@@ -38,11 +43,19 @@ public static partial class GitHub
     [GeneratedRegex(@"github\.com[:/](?<owner>[^/]+)/(?<repo>[^/]+?)(\.git)?/?$")]
     private static partial Regex RemotePattern();
 
-    /// <summary>The page for a file (and line) on github.com at a commit or branch.</summary>
+    /// <summary>
+    /// The page for a file (and line) on github.com at a commit or branch. <paramref name="repository"/> is
+    /// <c>owner/repo</c>, <paramref name="relativePath"/> is relative to the repository root (either slash), and
+    /// <paramref name="line"/> is 1-based.
+    /// </summary>
     public static string FileUrl(string repository, string gitRef, string relativePath, int? line = null) =>
         $"https://github.com/{repository}/blob/{Uri.EscapeDataString(gitRef)}/{string.Join('/', relativePath.Replace('\\', '/').Split('/').Select(Uri.EscapeDataString))}"
         + (line is int l ? $"#L{l}" : "");
 
+    /// <summary>
+    /// Whether <c>gh</c> is installed and logged in, by running <c>gh auth status</c>. <see langword="false"/> when it
+    /// is not installed.
+    /// </summary>
     public static async Task<bool> IsLoggedInAsync(CancellationToken ct = default)
     {
         if (Gh is not string gh)
@@ -53,7 +66,10 @@ public static partial class GitHub
         return r.Success;
     }
 
-    /// <summary>Create a GitHub repository from a local one and push it (<c>gh repo create --source . --push</c>).</summary>
+    /// <summary>
+    /// Create a GitHub repository named <paramref name="name"/> from a local one, add it as the <c>origin</c> remote and
+    /// push (<c>gh repo create --source . --push</c>). Requires <c>gh</c> to be installed and logged in.
+    /// </summary>
     public static Task<ProcessResult> PublishAsync(GitRepository repo, string name, bool isPrivate, string? description, Action<string>? onLine = null, CancellationToken ct = default)
     {
         var args = new List<string> { "repo", "create", name, isPrivate ? "--private" : "--public", "--source", repo.Root, "--remote", "origin", "--push" };
@@ -64,7 +80,11 @@ public static partial class GitHub
         return ProcessRunner.RunAsync(Gh ?? "gh", args, repo.Root, onLine, ct: ct);
     }
 
-    /// <summary>Open a pull request for the current branch, filled from its commits; returns gh's output (the PR URL).</summary>
+    /// <summary>
+    /// Open a pull request for the current branch with <c>gh pr create</c>; returns gh's output (the PR URL). With no
+    /// <paramref name="title"/>, the title and body are filled from the branch's commits and <paramref name="body"/>
+    /// is ignored.
+    /// </summary>
     public static Task<ProcessResult> CreatePullRequestAsync(GitRepository repo, string? title, string? body, bool draft, Action<string>? onLine = null, CancellationToken ct = default)
     {
         var args = new List<string> { "pr", "create" };
@@ -83,7 +103,10 @@ public static partial class GitHub
         return ProcessRunner.RunAsync(Gh ?? "gh", args, repo.Root, onLine, ct: ct);
     }
 
-    /// <summary>The pull request for the current branch, if there is one: number, title, state and URL.</summary>
+    /// <summary>
+    /// The pull request for the current branch, if there is one, as one line: <c>#number title (STATE) url</c>.
+    /// <see langword="null"/> when there is none, or <c>gh</c> is missing or fails.
+    /// </summary>
     public static async Task<string?> CurrentPullRequestAsync(GitRepository repo, CancellationToken ct = default)
     {
         if (Gh is not string gh)
@@ -111,7 +134,11 @@ public static partial class GitHub
               - uses: leanprover/lean-action@v1
         """;
 
-    /// <summary>Add the Lean CI workflow to a project unless it already has one; returns the file written, or null.</summary>
+    /// <summary>
+    /// Add <see cref="LeanActionWorkflow"/> to a project as <c>.github/workflows/lean_action_ci.yml</c> unless a
+    /// <c>.yml</c> workflow there already uses <c>lean-action</c>; returns the file written, or null. Overwrites a
+    /// file of that name that does not mention <c>lean-action</c>.
+    /// </summary>
     public static string? AddLeanWorkflow(string projectRoot)
     {
         string dir = Path.Combine(projectRoot, ".github", "workflows");

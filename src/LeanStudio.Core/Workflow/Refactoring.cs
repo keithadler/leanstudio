@@ -9,6 +9,8 @@ using LeanStudio.Core.Toolchains;
 namespace LeanStudio.Core.Workflow;
 
 /// <summary>One compiled C function: its name and its code.</summary>
+/// <param name="Name">The C identifier, e.g. <c>l_Foo_bar</c>.</param>
+/// <param name="Code">The whole definition, from the start of its signature to its closing brace.</param>
 public sealed record CFunction(string Name, string Code);
 
 /// <summary>
@@ -99,7 +101,10 @@ public static partial class EmittedC
     [GeneratedRegex(@"^(?:LEAN_EXPORT |static |LEAN_EXPORT static )?[A-Za-z_][\w\s\*]*?\b(?<name>[A-Za-z_]\w*)\((?<params>[^;{]*)\)\s*\{", RegexOptions.Multiline)]
     private static partial Regex FunctionStart();
 
-    /// <summary>Every function defined in a C file, with its body.</summary>
+    /// <summary>
+    /// Every function defined in a C file, with its body, in file order. A pattern match on the shape of Lean's
+    /// output, not a C parser: declarations without a body are skipped.
+    /// </summary>
     public static IReadOnlyList<CFunction> Functions(string c)
     {
         var list = new List<CFunction>();
@@ -141,8 +146,10 @@ public static partial class EmittedC
 
     /// <summary>
     /// Compile <paramref name="text"/> (the file as it is in the editor) to C. In a Lake project it runs with the
-    /// project's dependencies, so their imports must be built.
+    /// project's dependencies, so their imports must be built. Writes a copy of the file and the C output under the
+    /// project's <c>.lake</c> folder, and runs <c>lean</c>.
     /// </summary>
+    /// <returns>The C code and an empty error, or <see langword="null"/> and Lean's output (or its exit code) on failure.</returns>
     public static async Task<(string? C, string Error)> EmitAsync(LeanProject project, string sourcePath, string text, CancellationToken ct = default)
     {
         // Lean names a module after its path under the root, and insists the file is inside it: compile a copy
@@ -171,7 +178,11 @@ public static partial class EmittedC
     [GeneratedRegex(@"^\s*section\b")]
     private static partial Regex SectionLine();
 
-    /// <summary>The declaration a line belongs to, with its namespace: (kind, full name), or null outside one.</summary>
+    /// <summary>
+    /// The declaration a line belongs to, with its namespace: (kind, full name), or null outside one.
+    /// <paramref name="line"/> is 0-based. Only declarations starting in column 0 count; the name is empty for an
+    /// <c>example</c> or an anonymous <c>instance</c>. A heuristic reading of the text, not Lean's elaborator.
+    /// </summary>
     public static (string Kind, string Name)? DeclarationAt(IReadOnlyList<string> lines, int line)
     {
         (string Kind, string Name)? found = null;
@@ -224,12 +235,20 @@ public static partial class EmittedC
 }
 
 /// <summary>A planned replacement in one file: how many matches, and the new text.</summary>
+/// <param name="Path">The file's path, as the project search found it.</param>
+/// <param name="Count">How many matches are replaced.</param>
+/// <param name="NewText">The whole file's text after the replacement.</param>
 public sealed record FileReplacement(string Path, int Count, string NewText);
 
 /// <summary>Refactorings that span files: replace across the project, and renaming a module with its imports.</summary>
 public static partial class Refactor
 {
-    /// <summary>Replace every match in a text; with <paramref name="regex"/>, $1 and friends refer to groups.</summary>
+    /// <summary>
+    /// Replace every match in a text; with <paramref name="regex"/>, $1 and friends refer to groups. Returns the new
+    /// text and the number of replacements; an empty query replaces nothing.
+    /// </summary>
+    /// <exception cref="ArgumentException">With <paramref name="regex"/>, the query is not a valid pattern.</exception>
+    /// <exception cref="RegexMatchTimeoutException">With <paramref name="regex"/>, matching took longer than two seconds.</exception>
     public static (string Text, int Count) ReplaceInText(string text, string query, string replacement, bool caseSensitive, bool regex)
     {
         if (query.Length == 0)
@@ -260,7 +279,11 @@ public static partial class Refactor
         return (sb.ToString(), count);
     }
 
-    /// <summary>Plan a project-wide replacement: every source file that would change, and its new text.</summary>
+    /// <summary>
+    /// Plan a project-wide replacement: every source file that would change, and its new text. Nothing is written.
+    /// <paramref name="openText"/> supplies the editor's text for open files (null to read the file from disk);
+    /// unreadable files are skipped.
+    /// </summary>
     public static IReadOnlyList<FileReplacement> Plan(string root, string query, string replacement, bool caseSensitive, bool regex, Func<string, string?>? openText = null, CancellationToken ct = default)
     {
         var list = new List<FileReplacement>();
@@ -294,7 +317,8 @@ public static partial class Refactor
 
     /// <summary>
     /// Rename a module: move its file, and rewrite every <c>import</c> of it in the project (only whole module
-    /// names: renaming A.B leaves A.Bc alone). Returns the files whose imports changed.
+    /// names: renaming A.B leaves A.Bc alone). Returns the files whose imports changed. Both paths must be under
+    /// <paramref name="root"/>. Writes files on disk directly, not through the editor, and throws if the move fails.
     /// </summary>
     public static IReadOnlyList<string> RenameModule(string root, string oldFile, string newFile)
     {
@@ -315,6 +339,10 @@ public static partial class Refactor
         return changed;
     }
 
+    /// <summary>
+    /// Replace <paramref name="oldModule"/> with <paramref name="newModule"/> in every <c>import</c> line of a text,
+    /// matching whole module names only. Other lines are left alone.
+    /// </summary>
     public static string RewriteImports(string text, string oldModule, string newModule) =>
         ImportLine().Replace(text, m =>
         {

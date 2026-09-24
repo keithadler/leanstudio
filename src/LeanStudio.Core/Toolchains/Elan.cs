@@ -3,6 +3,9 @@ using LeanStudio.Core.Processes;
 
 namespace LeanStudio.Core.Toolchains;
 
+/// <summary>A toolchain elan has installed, as listed by <c>elan toolchain list</c>.</summary>
+/// <param name="Name">The full toolchain name, e.g. <c>leanprover/lean4:v4.34.0</c>.</param>
+/// <param name="IsDefault">elan marks it as the default toolchain, used outside projects with a <c>lean-toolchain</c> file.</param>
 public sealed record Toolchain(string Name, bool IsDefault)
 {
     /// <summary>The part after the channel, e.g. <c>v4.34.0</c> from <c>leanprover/lean4:v4.34.0</c>.</summary>
@@ -18,16 +21,22 @@ public static class Elan
 {
     private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
+    /// <summary>elan's home directory: <c>ELAN_HOME</c> when set, otherwise <c>~/.elan</c>. It may not exist.</summary>
     public static string Home =>
         Environment.GetEnvironmentVariable("ELAN_HOME") is { Length: > 0 } h
             ? h
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".elan");
 
+    /// <summary>Where elan puts its proxies for <c>lean</c>, <c>lake</c> and <c>elan</c> itself.</summary>
     public static string BinDirectory => Path.Combine(Home, "bin");
 
+    /// <summary>Where elan installs toolchains, one subdirectory each (see <see cref="ToolchainDirectory"/>).</summary>
     public static string ToolchainsDirectory => Path.Combine(Home, "toolchains");
 
-    /// <summary>Find <paramref name="name"/> (lean, lake, elan) in elan's bin directory, then on PATH.</summary>
+    /// <summary>
+    /// Find <paramref name="name"/> (lean, lake, elan) in elan's bin directory, then on PATH. <c>.exe</c> is added on
+    /// Windows. Returns the full path, or <see langword="null"/> when it is in neither.
+    /// </summary>
     public static string? FindExecutable(string name)
     {
         string file = IsWindows ? name + ".exe" : name;
@@ -47,11 +56,16 @@ public static class Elan
         return null;
     }
 
+    /// <summary>The <c>elan</c> executable can be found (checked on every access).</summary>
     public static bool IsInstalled => FindExecutable("elan") is not null;
 
     /// <summary>The page with elan's installer for this platform.</summary>
     public static string InstallUrl => "https://github.com/leanprover/elan#installation";
 
+    /// <summary>
+    /// The installed toolchains, by running <c>elan toolchain list</c>. Empty when elan is not installed or has no
+    /// toolchains.
+    /// </summary>
     public static async Task<IReadOnlyList<Toolchain>> ListAsync(CancellationToken ct = default)
     {
         string? elan = FindExecutable("elan");
@@ -82,15 +96,31 @@ public static class Elan
         return list;
     }
 
+    /// <summary>
+    /// Run <c>elan toolchain install</c> for <paramref name="toolchain"/> (which downloads it), streaming its output to
+    /// <paramref name="onLine"/>. When elan is not installed, the result has exit code <c>-1</c>.
+    /// </summary>
     public static Task<ProcessResult> InstallAsync(string toolchain, Action<string>? onLine = null, CancellationToken ct = default) =>
         RunElanAsync(["toolchain", "install", toolchain], onLine, ct);
 
+    /// <summary>
+    /// Run <c>elan toolchain uninstall</c> for <paramref name="toolchain"/>, deleting it. When elan is not installed,
+    /// the result has exit code <c>-1</c>.
+    /// </summary>
     public static Task<ProcessResult> UninstallAsync(string toolchain, Action<string>? onLine = null, CancellationToken ct = default) =>
         RunElanAsync(["toolchain", "uninstall", toolchain], onLine, ct);
 
+    /// <summary>
+    /// Run <c>elan default</c> to make <paramref name="toolchain"/> the default toolchain (elan installs it if it is
+    /// missing). When elan is not installed, the result has exit code <c>-1</c>.
+    /// </summary>
     public static Task<ProcessResult> SetDefaultAsync(string toolchain, Action<string>? onLine = null, CancellationToken ct = default) =>
         RunElanAsync(["default", toolchain], onLine, ct);
 
+    /// <summary>
+    /// Run <c>elan self update</c>, which updates elan itself (not any toolchain). When elan is not installed, the
+    /// result has exit code <c>-1</c>.
+    /// </summary>
     public static Task<ProcessResult> SelfUpdateAsync(Action<string>? onLine = null, CancellationToken ct = default) =>
         RunElanAsync(["self", "update"], onLine, ct);
 
