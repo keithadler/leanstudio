@@ -991,6 +991,11 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
+        yield return ("Project: Edit This Project's Commands (commands.json)", "", Cmd(_vm.EditProjectCommandsCommand));
+        foreach (Core.Workflow.ProjectCommand pc in _vm.ProjectCommandList())
+        {
+            yield return ("Project: " + pc.Title, "", () => _vm.RunProjectCommandAsync(pc));
+        }
         yield return ("Preferences: Keyboard Shortcuts File (keybindings.json)", "", EditKeybindingsAsync);
         yield return ("Preferences: Unicode Abbreviations File (abbreviations.json)", "", EditAbbreviationsAsync);
         yield return ("View: Toggle Emacs Keys", "", Act(() => { _vm.Settings.EmacsMode = !_vm.Settings.EmacsMode; ApplySettings(); _vm.Log("Emacs keys: " + (_vm.Settings.EmacsMode ? "on" : "off")); }));

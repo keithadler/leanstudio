@@ -46,6 +46,8 @@ Dispatcher.UIThread.Post(async () =>
     {
         failures = args.Length > 2 && args[0] == "--validate"
             ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
+            : args.Length > 3 && args[0] == "--scale"
+            ? await Validate.ScaleAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]))
             : await Scenario.RunAsync(repo, outDir);
     }
     catch (Exception e)
@@ -1077,6 +1079,27 @@ internal static class Scenario
             Snap(window, outDir, "34-build-progress");
             await running;
             Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
+        }
+
+        Console.WriteLine("the project's own commands");
+        string commandsFile = Path.Combine(repo, "samples", "Proofs", LeanStudio.Core.Workflow.ProjectCommands.RelativePath);
+        try
+        {
+            await vm.EditProjectCommandsAsync();
+            Check(File.Exists(commandsFile) && vm.ProjectCommandList().Any(c => c.Title == "Build this module"), "commands.json starts from a template, and its commands are read");
+            await vm.CloseDocumentCommand.ExecuteAsync(vm.ActiveDocument);
+            await File.WriteAllTextAsync(commandsFile, "[ { \"title\": \"Say where\", \"program\": \"/bin/echo\", \"args\": [\"module=${module}\", \"line=${line}\"] } ]");
+            vm.ActiveDocument = doc;
+            doc.Reveal(4, 2);
+            if (!OperatingSystem.IsWindows())
+            {
+                await vm.RunProjectCommandAsync(vm.ProjectCommandList().Single());
+                Check(vm.Output.Text.Contains("module=Proofs.Basic line=5", StringComparison.Ordinal), "a project command runs with its variables filled in from where you are");
+            }
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(commandsFile)!, true);
         }
 
         Console.WriteLine("heartbeats");

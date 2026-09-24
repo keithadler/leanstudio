@@ -629,4 +629,22 @@ public sealed class ProTests
             Directory.Delete(project.Root, true);
         }
     }
+
+    [Fact]
+    public void ReadsAProjectsOwnCommands()
+    {
+        var (commands, problems) = ProjectCommands.Parse(ProjectCommands.Template);
+        Assert.Empty(problems);
+        ProjectCommand build = Assert.Single(commands);
+        Assert.Equal(("Build this module", "lake", true), (build.Title, build.Program, build.Save));
+
+        var ctx = new CommandContext("/p", "/p/My Proofs/A.lean", "My.A", 12, "foo_bar", "sel");
+        Assert.Equal(["build", "My.A"], ProjectCommands.Expand(build.Arguments, ctx));
+        Assert.Equal(["/p/My Proofs/A.lean", "My Proofs/A.lean", "A.lean:12", "foo_bar", "${nope}"],
+            ProjectCommands.Expand(["${file}", "${relativeFile}", "${fileName}:${line}", "${word}", "${nope}"], ctx));
+
+        var (_, bad) = ProjectCommands.Parse("""[ { "title": "x" }, { "title": "ok", "program": "echo", "save": false } ]""");
+        Assert.Single(bad);
+        Assert.False(ProjectCommands.Parse("""[ { "title": "ok", "program": "echo", "save": false } ]""").Commands[0].Save);
+    }
 }

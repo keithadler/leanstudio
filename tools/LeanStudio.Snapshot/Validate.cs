@@ -220,4 +220,89 @@ internal static class Validate
         await vm.DisposeAsync();
         return failures;
     }
+
+    /// <summary>
+    /// How Lean Studio copes with a very large project (the Mathlib repository itself): the time each everyday
+    /// action takes, with a screenshot of each, and the memory the app uses.
+    ///
+    ///     LeanStudio.Snapshot --scale &lt;project&gt; &lt;output dir&gt; &lt;a file in it&gt;
+    /// </summary>
+    public static async Task<int> ScaleAsync(string project, string outDir, string file)
+    {
+        Directory.CreateDirectory(outDir);
+        using var log = new StreamWriter(Path.Combine(outDir, "scale-log.txt"));
+        int shot = 0;
+        var window = new MainWindow(new Settings { VerifyAfterBuild = false }) { Width = 1600, Height = 1000, OpenOnStartup = project };
+        void Note(string s)
+        {
+            Console.WriteLine(s);
+            log.WriteLine(s);
+            log.Flush();
+        }
+        void Snap(string name)
+        {
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+#pragma warning disable CS0618
+            window.CaptureRenderedFrame()?.Save(Path.Combine(outDir, $"{++shot:00}-{name}.png"));
+#pragma warning restore CS0618
+        }
+        async Task<double> Time(string what, Func<Task<bool>> run, double limitSeconds)
+        {
+            var sw = Stopwatch.StartNew();
+            bool ok = await run();
+            double took = sw.Elapsed.TotalSeconds;
+            Note($"{(ok ? (took <= limitSeconds ? "ok  " : "SLOW") : "FAIL")} {took,7:F1} s  {what} (aim: under {limitSeconds:F0} s)");
+            return took;
+        }
+        async Task<bool> WaitFor(Func<bool> condition, double seconds)
+        {
+            var sw = Stopwatch.StartNew();
+            while (!condition())
+            {
+                if (sw.Elapsed.TotalSeconds > seconds)
+                {
+                    return false;
+                }
+                await Task.Delay(100);
+            }
+            return true;
+        }
+        long Memory() => Process.GetCurrentProcess().WorkingSet64 >> 20;
+
+        Note($"Lean Studio on {project} ({Directory.EnumerateFiles(project, "*.lean", SearchOption.AllDirectories).Count(f => !Path.GetRelativePath(project, f).Contains(".lake", StringComparison.Ordinal)):N0} Lean files)");
+        MainViewModel vm = window.ViewModel;
+        var opened = Stopwatch.StartNew();
+        window.Show();
+        await Time("open the project (file tree shown)", async () => await WaitFor(() => vm.Project is not null && vm.Files.Count > 0, 300), 5);
+        await Time("Tenet opens the build (the Library, badges)", async () => await WaitFor(() => vm.Output.Text.Contains("Tenet opened", StringComparison.Ordinal), 600), 30);
+        Note($"memory after opening: {Memory():N0} MB");
+        Snap("opened");
+
+        vm.SidebarTab = MainViewModel.LibraryTab;
+        await Time("Library search for add_comm", async () => { vm.Navigator.Query = "add_comm"; return await WaitFor(() => vm.Navigator.Results.Count > 0, 120); }, 3);
+        Snap("library");
+
+        DocumentViewModel? d = null;
+        await Time($"open {Path.GetFileName(file)} and let Lean check it", async () =>
+        {
+            d = await vm.OpenFileAsync(file);
+            return d is not null && await WaitFor(() => !d.IsProcessing && d.Diagnostics.Count + d.ProofMarks.Count > 0, 900);
+        }, 60);
+        await Time("the outline of it", async () => await WaitFor(() => vm.Outline.Count > 0, 60), 3);
+        Snap("file");
+
+        await Time("sorries and TODOs across the project", async () => { await vm.RefreshMarkersAsync(); return true; }, 10);
+        Note($"  {vm.MarkersTitle}");
+        await Time("find in files: \"theorem add_comm\"", async () =>
+        {
+            vm.SearchQuery = "theorem add_comm";
+            await vm.SearchInFilesCommand.ExecuteAsync(null);
+            return vm.SearchResults.Count > 0;
+        }, 10);
+        Note($"  {vm.SearchStatus}");
+        Note($"memory at the end: {Memory():N0} MB; total {opened.Elapsed.TotalSeconds:F0} s");
+        Snap("end");
+        await vm.DisposeAsync();
+        return 0;
+    }
 }

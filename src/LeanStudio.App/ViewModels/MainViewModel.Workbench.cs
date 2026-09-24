@@ -238,18 +238,22 @@ public sealed partial class MainViewModel
     public IReadOnlyList<ProjectTask> Tasks() => Project is { IsLakeProject: true } p ? ProjectTasks.For(p) : [];
 
     /// <summary>
-    /// Save everything and run a task in the project's folder, with its output in the Output panel. After a build the
+    /// Save everything (unless told not to) and run a task in the project's folder, with its output in the Output panel. After a build the
     /// Problems panel takes its errors and Tenet reopens the build; afterwards the file tree and the sorries are
     /// refreshed. A task already running is cancelled first.
     /// </summary>
     /// <param name="task">The task, from <see cref="Tasks"/> or a shell command.</param>
-    public async Task RunTaskAsync(ProjectTask task)
+    /// <param name="save">Whether to save everything first (a project command can say not to).</param>
+    public async Task RunTaskAsync(ProjectTask task, bool save = true)
     {
         if (Project is null)
         {
             return;
         }
-        await SaveAllCommand.ExecuteAsync(null);
+        if (save)
+        {
+            await SaveAllCommand.ExecuteAsync(null);
+        }
         _taskCts?.Cancel();
         var cts = new CancellationTokenSource();
         _taskCts = cts;

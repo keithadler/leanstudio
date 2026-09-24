@@ -180,6 +180,62 @@ public sealed partial class MainViewModel
         await RestartServerAsync();
     }
 
+    // ---- the project's own commands (.leanstudio/commands.json) ----
+
+    /// <summary>The project's own commands, read fresh (so an edit to commands.json applies at once); empty without a project.</summary>
+    public IReadOnlyList<ProjectCommand> ProjectCommandList()
+    {
+        if (Project is not LeanProject p || !File.Exists(Path.Combine(p.Root, ProjectCommands.RelativePath)))
+        {
+            return [];
+        }
+        try
+        {
+            var (commands, problems) = ProjectCommands.Parse(File.ReadAllText(Path.Combine(p.Root, ProjectCommands.RelativePath)));
+            foreach (string problem in problems)
+            {
+                Log(".leanstudio/commands.json: " + problem);
+            }
+            return commands;
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>Run one of the project's own commands, with its variables filled in from where you are.</summary>
+    public Task RunProjectCommandAsync(ProjectCommand c)
+    {
+        if (Project is not LeanProject p)
+        {
+            return Task.CompletedTask;
+        }
+        DocumentViewModel? d = ActiveDocument;
+        string word = d is null ? "" : Core.Editing.MultiCursor.WordAt(d.Document.Text,
+            Math.Min(d.Document.TextLength, d.Document.GetOffset(Math.Clamp(d.CaretLine + 1, 1, d.Document.LineCount), d.CaretColumn + 1))) is { } w
+            ? d.Document.Text[w.Start..w.End] : "";
+        var ctx = new CommandContext(p.Root, d?.Path ?? "", d is null ? "" : p.ModuleNameOf(d.Path) ?? "", (d?.CaretLine ?? 0) + 1, word, SelectionProvider?.Invoke() ?? "");
+        return RunTaskAsync(new ProjectTask(c.Title, c.Detail, c.Program, ProjectCommands.Expand(c.Arguments, ctx)), c.Save);
+    }
+
+    /// <summary>Open the project's commands.json, starting it from a template with examples.</summary>
+    [RelayCommand]
+    public async Task EditProjectCommandsAsync()
+    {
+        if (Project is not LeanProject p)
+        {
+            return;
+        }
+        string path = Path.Combine(p.Root, ProjectCommands.RelativePath);
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllTextAsync(path, ProjectCommands.Template);
+        }
+        await OpenFileAsync(path);
+    }
+
     // ---- the blueprint ----
 
     /// <summary>
