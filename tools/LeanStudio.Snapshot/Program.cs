@@ -241,6 +241,30 @@ internal static class Scenario
         editor.TextArea.PerformTextInput(")");
         lastLine = editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
         Check(lastLine.Contains("⟨()⟩", StringComparison.Ordinal) && !lastLine.Contains("))", StringComparison.Ordinal), "typing ) steps over the closer instead of doubling it");
+        string LastLine() => editor.Document.GetText(editor.Document.GetLineByNumber(editor.Document.LineCount));
+        void RealKey(Avalonia.Input.Key key)
+        {
+            editor.TextArea.Focus();
+            window.KeyPress(key, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
+            window.KeyRelease(key, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null);
+            Dispatcher.UIThread.RunJobs();
+        }
+        editor.CaretOffset = editor.Document.TextLength;
+        editor.TextArea.PerformTextInput(" ");
+        editor.TextArea.PerformTextInput("⦃");
+        bool strict = LastLine().EndsWith("⦃⦄", StringComparison.Ordinal);
+        RealKey(Avalonia.Input.Key.Back);
+        bool bothGone = !LastLine().Contains('⦃', StringComparison.Ordinal) && !LastLine().Contains('⦄', StringComparison.Ordinal);
+        editor.TextArea.PerformTextInput("⟦");
+        Check(strict && bothGone && LastLine().EndsWith("⟦⟧", StringComparison.Ordinal), $"⦃ and ⟦ close themselves, and Backspace in an empty pair removes both (got '{LastLine().Trim()}')");
+        editor.CaretOffset = editor.Document.TextLength;
+        foreach (char c in " \\to") // could still become \\top: it waits, and Tab converts it now
+        {
+            editor.TextArea.PerformTextInput(c.ToString());
+        }
+        bool waiting = LastLine().EndsWith("\\to", StringComparison.Ordinal);
+        RealKey(Avalonia.Input.Key.Tab);
+        Check(waiting && LastLine().EndsWith(" →", StringComparison.Ordinal), $"Tab converts an abbreviation at once (got '{LastLine().Replace(" ", "·", StringComparison.Ordinal)}')");
         doc.ReplaceAll(doc.SavedText);
 
         Console.WriteLine("outline, references, find in files");
@@ -380,6 +404,11 @@ internal static class Scenario
             Snap(window, outDir, "14-lightbulbs");
             await vm.FixAllInFileCommand.ExecuteAsync(null);
             Check(!f.Document.Text.Contains("simp?", StringComparison.Ordinal) && f.Document.Text.Split("simp only").Length == 3, "Fix All in File applies both");
+            string fixedAll = f.Document.Text;
+            f.Document.UndoStack.Undo();
+            bool bothBack = f.Document.Text.Split("simp?").Length == 3;
+            f.Document.UndoStack.Redo();
+            Check(bothBack && f.Document.Text == fixedAll, "as a single edit: one undo takes both back");
             Check(await WaitFor(() => f.Diagnostics.Count == 0 && !f.IsProcessing, 60), "and Lean accepts the result");
             await f.SaveAsync();
             await vm.CloseDocumentCommand.ExecuteAsync(f);
@@ -398,6 +427,8 @@ internal static class Scenario
             vm.ReplaceWith = "zzNew";
             var (matches, files) = await vm.ReplaceInFilesAsync((_, _) => Task.FromResult(true));
             Check(matches == 3 && files == 2 && File.ReadAllText(rep1).Contains("#eval zzNew", StringComparison.Ordinal), $"replace in files changes every match ({matches} in {files})");
+            var kept = new LeanStudio.Core.Workflow.LocalHistory(Path.Combine(Settings.Directory, "history")).Versions(rep2);
+            Check(kept.Any(v => File.ReadAllText(v.SnapshotFile).Contains("zzOld", StringComparison.Ordinal)), "and the files it changed keep their previous version in local history");
 
             await File.WriteAllTextAsync(modA, "def modA := 1\n");
             await File.WriteAllTextAsync(modB, "import Proofs.ModA\n#eval modA\n");
@@ -513,6 +544,8 @@ internal static class Scenario
         Check(vm.Verification.Trails.FirstOrDefault()?.Links.Select(l => l.Name).SequenceEqual(["not_not_elim", "em'"]) == true
             && vm.Verification.Trails[0].Links[0].Where == "Basic.lean:15", "and traces not_not_elim to the axiom em' it uses, with where each is written");
         Snap(window, outDir, "17-why-not-proved");
+        vm.Verification.OpenLinkCommand.Execute(vm.Verification.Trails[0].Links[1]); // em'
+        Check(await WaitFor(() => vm.ActiveDocument?.Path == doc.Path && doc.CaretLine == 12, 5), $"a link in the chain opens where it is written (line {doc.CaretLine + 1})");
 
         string slowFile = Path.Combine(proofsDir, "Slow.lean");
         string walkFile = Path.Combine(Path.GetTempPath(), $"leanstudio-walk-{Environment.ProcessId}.html");
@@ -851,6 +884,11 @@ internal static class Scenario
             LeanStudio.Core.Workflow.ImportReport? imports = await vm.RemoveUnusedImportsAsync();
             Check(imports?.Removable.Select(r => r.Module).SequenceEqual(["Proofs.Basic"]) == true && !td.Document.Text.Contains("import Proofs.Basic", StringComparison.Ordinal),
                 "Remove Unused Imports takes out the import nothing uses, as one edit");
+            string tidied = td.Document.Text;
+            td.Document.UndoStack.Undo();
+            bool importBack = td.Document.Text.StartsWith("import Proofs.Basic", StringComparison.Ordinal);
+            td.Document.UndoStack.Redo();
+            Check(importBack && td.Document.Text == tidied, "and one undo brings it back");
             IReadOnlyList<LeanStudio.Core.Workflow.LintFinding> lint = await vm.LintFileAsync();
             Check(lint.Any(f => f.Linter == "linter.missingDocs" && f.Line == 6) && vm.Problems.Any(p => p.Diagnostic.Source == "lint"),
                 "Lint File runs the linters CI runs and lists what they find in Problems");
@@ -1483,6 +1521,108 @@ internal static class Scenario
                 $"starting again reopens the project, its files, and the one you were on ({Path.GetFileName(vm2.ActiveDocument?.Path)}, {vm2.Documents.Count} files)");
             await vm2.DisposeAsync();
             again.Close();
+            vm.ActiveDocument = doc;
+        }
+
+        Console.WriteLine("lists you pick from, and the build's marks");
+        {
+            vm.ActiveDocument = doc;
+            // Pick from a list the way a person does: type part of it, press Enter. Each answer is used once.
+            void PickIn(string titlePart, string query)
+            {
+                void Once(Window w)
+                {
+                    if (w.Title?.Contains(titlePart, StringComparison.Ordinal) != true)
+                    {
+                        return;
+                    }
+                    DialogHooks.Opened -= Once;
+                    Dispatcher.UIThread.Post(async () =>
+                    {
+                        TextBox? box = null;
+                        await WaitFor(() => (box = w.GetVisualDescendants().OfType<TextBox>().FirstOrDefault()) is not null, 5);
+                        box!.Text = query;
+                        await WaitFor(() => false, 0.5);
+                        Button? ok = w.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault);
+                        if (ok is not null)
+                        {
+                            ok.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent)); // a prompt
+                        }
+                        else
+                        {
+                            w.KeyPress(Avalonia.Input.Key.Enter, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.None, null); // a picker
+                        }
+                    });
+                }
+                DialogHooks.Opened += Once;
+            }
+
+            // Lean's Processes: pick a file's worker to stop it; the open file is checked again by a new one.
+            var before = await LeanStudio.Core.Toolchains.LeanProcesses.ListAsync(vm.Project!.Root);
+            int? oldWorker = before.FirstOrDefault(w => w.File == doc.Path)?.Pid;
+            PickIn("Lean's file workers", "Basic.lean");
+            await window.LeanProcessesAsync();
+            Check(await WaitFor(() => vm.Output.Text.Contains("Stopped Lean's worker for Basic.lean", StringComparison.Ordinal), 10)
+                && await WaitFor(() => LeanStudio.Core.Toolchains.LeanProcesses.ListAsync(vm.Project!.Root).Result.Any(w => w.File == doc.Path && w.Pid != oldWorker), 60)
+                && await WaitFor(() => !doc.IsProcessing && doc.Diagnostics.Any(d => d.Message.Contains("sorry", StringComparison.Ordinal)), 60),
+                "Lean's Processes stops the worker picked, and the file is checked again by a new one");
+
+            // Instances of a class: pick one to see it in the Library.
+            PickIn("Instances of a class", "Inhabited");
+            PickIn("instances of Inhabited", "instInhabitedNat");
+            await window.InstancesOfClassAsync();
+            Check(await WaitFor(() => vm.SidebarTab == MainViewModel.LibraryTab && vm.Navigator.Details?.Name == "instInhabitedNat", 30),
+                $"Instances of Class lists Lean's instances, and picking one shows it in the Library ({vm.Navigator.Details?.Name})");
+            vm.SidebarTab = 0;
+
+            // The project map: a click on a node opens the declaration.
+            LeanStudio.Core.Verification.ProjectMap? projectMap = await vm.ShowProjectMapAsync();
+            window.MapWindow?.Close();
+            vm.OpenMapNode(projectMap!.Nodes.First(n => n.Name == "unfinished"));
+            Check(await WaitFor(() => vm.ActiveDocument?.Path == doc.Path && doc.CaretLine == 19, 5), $"a node of the project map opens its declaration (line {doc.CaretLine + 1})");
+
+            // ⌘⇧L: a cursor at every occurrence of the word.
+            var ed = window.MainEditorControl;
+            doc.Reveal(1, 5); // double
+            await WaitFor(() => false, 0.3);
+            ed.TextEditor.Select(ed.TextEditor.Document.GetOffset(2, 5), "double".Length);
+            ed.TextEditor.TextArea.Focus();
+            window.KeyPress(Avalonia.Input.Key.L, (OperatingSystem.IsMacOS() ? Avalonia.Input.RawInputModifiers.Meta : Avalonia.Input.RawInputModifiers.Control) | Avalonia.Input.RawInputModifiers.Shift, Avalonia.Input.PhysicalKey.None, null);
+            int doubles = System.Text.RegularExpressions.Regex.Count(doc.Document.Text, "double"); // the selection, wherever it is (as in VS Code)
+            Check(ed.MultiCursor.Cursors.Count == doubles, $"⌘⇧L puts a cursor on every occurrence ({ed.MultiCursor.Cursors.Count} of {doubles})");
+            ed.MultiCursor.Clear();
+
+            // Copy Goals puts the goals on the clipboard as text.
+            doc.Reveal(16, 14);
+            await WaitFor(() => vm.Info.HasGoals, 30);
+            await vm.CopyGoalsAsync();
+            string? copied = window.Clipboard is { } clip ? await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clip) : null;
+            Check(copied?.Contains("⊢ p", StringComparison.Ordinal) == true, $"Copy Goals puts the goals on the clipboard ({copied?.Split('\n').LastOrDefault()})");
+
+            // The file tree after a build that fails: ✗ on the broken module and its folder, ✓ on the ones built.
+            string proofsRoot2 = Path.Combine(repo, "samples", "Proofs", "Proofs.lean");
+            string rootBefore = await File.ReadAllTextAsync(proofsRoot2);
+            string broken = Path.Combine(repo, "samples", "Proofs", "Proofs", "Broken.lean");
+            string fine = Path.Combine(repo, "samples", "Proofs", "Proofs", "Fine.lean");
+            await File.WriteAllTextAsync(broken, "theorem broken : 1 = 2 := rfl\n");
+            await File.WriteAllTextAsync(fine, $"theorem fine : {Environment.ProcessId} = {Environment.ProcessId} := rfl\n"); // new each run, so it is built
+            await File.WriteAllTextAsync(proofsRoot2, rootBefore.TrimEnd() + "\nimport Proofs.Broken\nimport Proofs.Fine\n");
+            bool verifyAfter = vm.Settings.VerifyAfterBuild;
+            vm.Settings.VerifyAfterBuild = false;
+            try
+            {
+                await vm.BuildCommand.ExecuteAsync(null);
+                Check(vm.BuildMarkOf(broken) == "✗" && vm.BuildMarkOf(Path.GetDirectoryName(broken)!) == "✗" && vm.BuildMarkOf(fine) == "✓",
+                    $"the file tree marks what failed ✗ (and its folder) and what was built ✓ ({vm.BuildMarkOf(broken)} {vm.BuildMarkOf(fine)})");
+            }
+            finally
+            {
+                File.Delete(broken);
+                File.Delete(fine);
+                await File.WriteAllTextAsync(proofsRoot2, rootBefore);
+                await vm.BuildCommand.ExecuteAsync(null);
+                vm.Settings.VerifyAfterBuild = verifyAfter;
+            }
             vm.ActiveDocument = doc;
         }
 

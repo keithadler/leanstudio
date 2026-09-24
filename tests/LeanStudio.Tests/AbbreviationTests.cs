@@ -33,4 +33,8 @@ public sealed class AbbreviationTests
         Assert.Equal("all", c[0]);
         Assert.Contains("alpha", c);
     }
+
+    [Fact]
+    public void ThereAreAboutFourHundredThirtyAbbreviations() =>
+        Assert.InRange(Abbreviations.BuiltInTable.Count, 400, 470); // the README says "about 430"
 }

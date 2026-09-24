@@ -130,6 +130,37 @@ public sealed class AssistTests
         Assert.Equal("a = false, b = true", results[1].Counterexample);
         Assert.Null(results[2].Counterexample); // true (and proved by omega)
         Assert.NotNull(results[2].Best);
+
+        // An Int variable: the counterexample can be negative or zero.
+        const string ints = "theorem sq (x : Int) (h : x < 1) : x * x > 0 := by\n  sorry\n";
+        IReadOnlyList<SearchResult> intResults = await ProofSearch.RunAsync(server, Path.Combine(dir, "Wrong.lean"), ints, ProofSearch.Sites(ints), TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Null(intResults[0].Best);
+        Assert.Equal("x = 0", intResults[0].Counterexample);
+    }
+
+    [Fact]
+    public async Task ExactQuestionsAnswerGoesIntoTheProof()
+    {
+        // Lean's real "Try this" from exact?, read and put in place of the sorry, with how long the search took.
+        Lean.RequireLean();
+        const string text = "theorem swapMul (a b : Nat) : a * b = b * a := by\n  sorry\n";
+        string dir = Lean.Sample("Demo");
+        await using LeanServer server = await StartAsync(dir);
+        IReadOnlyList<SorrySite> sites = ProofSearch.Sites(text);
+        string[] only = ["exact?"];
+        IReadOnlyList<Diagnostic> diags = await Scratch.CheckAsync(server, Path.Combine(dir, "Exact.lean"), "Prove", ProofSearch.Instrument(text, sites, only), TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        SearchResult result = Assert.Single(ProofSearch.Parse(diags.Where(d => d.Severity == DiagnosticSeverity.Information).Select(d => d.Message), sites, only));
+        TacticTrial found = Assert.Single(result.Trials);
+        Assert.Equal(TrialOutcome.Closes, found.Outcome);
+        Assert.Equal("Nat.mul_comm a b", found.Term);
+        Assert.True(found.Milliseconds >= 0);
+        string filled = ProofSearch.Apply(text, [(result, found)]);
+        Assert.Contains("exact Nat.mul_comm a b", filled, StringComparison.Ordinal);
+        IReadOnlyList<Diagnostic> check = await Scratch.CheckAsync(server, Path.Combine(dir, "Exact.lean"), "Filled", filled, TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(check, d => d.Severity <= DiagnosticSeverity.Warning);
     }
 
     [Fact]
@@ -241,11 +272,18 @@ public sealed class AssistTests
               omega
             """;
         var project = new Core.Projects.LeanProject(dir);
+        // The file on disk says something else: the unsaved text is what is profiled, and the file is left as it is.
+        string slowFile = Path.Combine(dir, "Slow.lean");
+        const string onDisk = "-- an older version\n";
+        File.WriteAllText(slowFile, onDisk);
+        DateTime written = File.GetLastWriteTimeUtc(slowFile);
         try
         {
-            var (timings, error) = await Profiler.RunAsync(project, Path.Combine(dir, "Slow.lean"), text, TestContext.Current.CancellationToken)
+            var (timings, error) = await Profiler.RunAsync(project, slowFile, text, TestContext.Current.CancellationToken)
                 .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
             Assert.Null(error);
+            Assert.Equal(onDisk, File.ReadAllText(slowFile));
+            Assert.Equal(written, File.GetLastWriteTimeUtc(slowFile));
             DeclarationTiming top = timings[0];
             Assert.Equal(7, top.Line);
             Assert.Contains("slow", top.Declaration, StringComparison.Ordinal);
@@ -254,6 +292,7 @@ public sealed class AssistTests
         finally
         {
             Directory.Delete(Path.Combine(dir, ".lake"), true);
+            File.Delete(slowFile);
         }
     }
 

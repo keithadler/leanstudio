@@ -86,4 +86,47 @@ public sealed class ProofStepTests
         Assert.Equal(2, changes[0].GoalsAfter);
         Assert.True(changes[^1].ClosedAll, changes[^1].Summary);
     }
+
+    [Fact]
+    public async Task StepsSayWhatTheyAddedRemovedAndChanged()
+    {
+        Lean.RequireLean();
+        string[] lines =
+        [
+            "theorem steps (p q : Prop) (x : Nat) (h : p ∧ q) (hx : x = 1) : q ∧ x = 1 := by",
+            "  obtain ⟨hp, hq⟩ := h",
+            "  rw [← Nat.add_zero x] at hx",
+            "  constructor",
+            "  · exact hq",
+            "  · simpa using hx",
+        ];
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        string uri = LeanServer.UriOf(Path.Combine(dir, "Steps.lean"));
+        var ct = TestContext.Current.CancellationToken;
+        await server.StartAsync(ct);
+        await server.OpenAsync(uri, string.Join('\n', lines));
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+        Assert.DoesNotContain(server.DiagnosticsOf(uri), d => d.Severity == DiagnosticSeverity.Error);
+
+        TacticProof proof = ProofSteps.Find(lines, 1)!;
+        InteractiveGoals before = await server.InteractiveGoalsAsync(uri, proof.Start, ct);
+        var summaries = new List<string>();
+        foreach (ProofStep step in proof.Steps.Take(3))
+        {
+            InteractiveGoals after = await server.InteractiveGoalsAsync(uri, step.After, ct);
+            summaries.Add(StepChange.Between(before, after).Summary);
+            before = after;
+        }
+        Assert.Equal("+hp  +hq  −h", summaries[0]);
+        Assert.Equal("~hx", summaries[1]);
+        Assert.Equal("+1 goal", summaries[2]);
+
+        // In the Tactic State: after `obtain`, hp and hq are marked as added; before it, h as removed.
+        InteractiveGoal afterObtain = Assert.Single((await server.InteractiveGoalsAsync(uri, proof.Steps[0].After, ct)).Goals);
+        Assert.Contains(afterObtain.Hypotheses, x => x.Names.Contains("hp") && x.IsInserted);
+        Assert.DoesNotContain(afterObtain.Hypotheses, x => x.Names.Contains("x") && x.IsInserted);
+        InteractiveGoal beforeObtain = Assert.Single((await server.InteractiveGoalsAsync(uri, new Position(1, 2), ct)).Goals);
+        Assert.Contains(beforeObtain.Hypotheses, x => x.Names.Contains("h") && x.IsRemoved);
+    }
 }
