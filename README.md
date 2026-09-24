@@ -339,7 +339,42 @@ This is tested with a real assistant. Claude Code, given the sample project and 
 
 Lean Studio needs **[elan](https://github.com/leanprover/elan#installation)**, Lean's toolchain manager. elan is the standard way to install Lean, so you may have it already. If not, Lean Studio offers to install it for you with the official installer, together with the latest stable Lean. Lean Studio has the right Lean version for each project installed through it.
 
-Download builds from the [Releases](../../releases) page:
+Every build is self-contained, so nothing else needs installing. Pick whichever way suits you:
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| **Package manager** | [Homebrew](#homebrew-macos) | [winget](#winget-windows) | [AppImage](#appimage-linux) |
+| **Download** | [`.zip` with `Lean Studio.app`](#download) | [`.zip`](#download) | [`.tar.gz`](#download) |
+
+### Homebrew (macOS)
+
+```bash
+brew install --cask keithadler/tap/lean-studio
+```
+
+This installs `Lean Studio.app` for Apple silicon or Intel, and puts `leanstudio` on your PATH (for `leanstudio --mcp` in AI assistants' settings). `brew upgrade` keeps it current. The cask lives in [keithadler/homebrew-tap](https://github.com/keithadler/homebrew-tap), and works once the tap is published ([docs/packaging/homebrew.md](docs/packaging/homebrew.md)).
+
+### winget (Windows)
+
+```powershell
+winget install KeithAdler.LeanStudio
+```
+
+This installs the x64 or ARM64 build and puts `leanstudio` on your PATH; `winget upgrade` keeps it current. It works once the package is accepted into the winget repository ([docs/packaging/winget.md](docs/packaging/winget.md)).
+
+### AppImage (Linux)
+
+One file that runs on most distributions, for x86_64 and aarch64. Download `LeanStudio-<version>-x86_64.AppImage` (or `-aarch64.AppImage`) from the [Releases](../../releases) page, then:
+
+```bash
+chmod +x LeanStudio-*.AppImage && ./LeanStudio-*.AppImage
+```
+
+It doesn't need FUSE 2 on the host. AppImages are attached to releases after 0.5.0 ([docs/packaging/appimage.md](docs/packaging/appimage.md)).
+
+### Download
+
+Every release on the [Releases](../../releases) page has:
 
 | Platform | File |
 |---|---|
@@ -347,9 +382,13 @@ Download builds from the [Releases](../../releases) page:
 | Windows (x64 / ARM64) | `LeanStudio-<version>-win-x64.zip` / `-win-arm64.zip`: run `LeanStudio.exe` |
 | Linux (x64 / ARM64) | `LeanStudio-<version>-linux-x64.tar.gz` / `-linux-arm64.tar.gz`: run `LeanStudio` |
 
-The builds are self-contained, so nothing else needs installing. Lean Studio checks GitHub for a newer release once a day and offers to download it (Help ▸ Check for Updates…; you can turn the automatic check off there). They aren't code-signed yet:
+Lean Studio checks GitHub for a newer release once a day and offers to download it (Help ▸ Check for Updates…; you can turn the automatic check off there).
 
-- **macOS**: right-click the app and choose **Open** the first time.
+### Unsigned builds
+
+Until releases are code-signed ([docs/packaging/signing.md](docs/packaging/signing.md)), your system asks you to confirm the first launch:
+
+- **macOS**: if macOS says it can't check the app, open **System Settings ▸ Privacy & Security** and click **Open Anyway** for Lean Studio. On macOS 14 and earlier, you can also right-click the app and choose **Open**.
 - **Windows**: choose **More info → Run anyway** in SmartScreen.
 
 ## How it works
