@@ -549,7 +549,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **0.7**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.8**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - User widgets render in the Infoview tab, not in the Tactic State panel, which shows Lean's interactive text. On Linux the tab needs WebKitGTK; without it, widgets open in the browser.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.

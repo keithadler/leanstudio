@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 **For Mathlib contributors and everyone who writes a lot of Lean**:
 - *Lean ▸ Remove Unused Imports* removes the imports a file doesn't need, as one undoable edit, and says why for each: nothing uses it, or another import already brings it in. Lean elaborates the file and every constant, tactic, macro and notation is traced to its module, so an import needed only for `ring` or a notation stays. Works on any file, not only `module` files like `lake shake`.
