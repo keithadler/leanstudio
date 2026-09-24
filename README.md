@@ -523,9 +523,9 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **0.5**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.6**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
-- ProofWidgets and other user widgets aren't rendered. Goals are Lean's interactive text, and you can hover into subterms, but there are no custom widget views.
+- ProofWidgets and other user widgets render in Lean's own infoview, which opens in a browser (*View ▸ Lean Infoview in Browser*), not inside the app's window. The Tactic State panel shows Lean's interactive text without custom widget views.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.
 - Release builds aren't signed or notarized.
 

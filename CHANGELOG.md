@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 **Vim mode** (off by default):
 - Normal, insert and visual modes.
@@ -23,7 +23,7 @@ widget. It runs on 127.0.0.1 only, with a secret token.
 - Who Uses This / What This Uses, from Lean's call hierarchy.
 - Trace messages are expandable trees, fetched level by level.
 
-These are Preferences options, both on by default.
+Semantic highlighting and inlay hints are Preferences options, both on by default.
 
 **C and Lean's FFI**:
 - Go to definition goes from an `@[extern]` to its C function and back.
@@ -32,12 +32,19 @@ These are Preferences options, both on by default.
 - clangd serves C files, with Lean's headers on the include path.
 - MCP tool `ffi_bindings`.
 
-**Fixes**: when an MCP tool failed in an unexpected way, the assistant got no answer to that request, and the server could stop when the assistant disconnected. It now answers with an internal error and keeps serving.
+**Installing**:
+- A Homebrew cask for Apple silicon and Intel Macs, and winget manifests for Windows x64 and ARM64, published once the tap and the winget submission are live.
+- An AppImage for Linux x86_64 and aarch64 with every release.
+- Releases can be signed with a Developer ID and notarized on macOS, and Authenticode-signed on Windows, when the signing secrets are set.
+
+**Fixes**:
+- A second Lean Studio window could take over the assistant bridge from the first. The first window now keeps it.
+- When an MCP tool failed in an unexpected way, the assistant got no answer to that request, and the server could stop when the assistant disconnected. It now answers with an internal error and keeps serving.
 
 **Documentation**:
 - An architecture guide ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) and a contributor guide ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - Every public type and member in `src/` has an XML doc comment, and the build fails without one.
-- The README's status section is brought up to date.
+- The README's status section is brought up to date, and it compares Lean Studio with VS Code and the lean4 extension, gaps included.
 
 ## 0.5.0
 
