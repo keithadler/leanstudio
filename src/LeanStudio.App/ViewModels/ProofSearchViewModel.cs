@@ -54,7 +54,7 @@ public sealed partial class SearchResultView : ObservableObject
     public string Verdict =>
         IsApplied ? "✓ filled in"
         : !Result.Reached ? "not reached: an error earlier in the file stops Lean before it"
-        : Result.Best is TacticTrial b ? $"{Result.Successes.Count()} of {Result.Trials.Count(t => t.Outcome != TrialOutcome.Unavailable)} tactics close it; the simplest is {b.Replacement}"
+        : Result.Best is TacticTrial b ? $"{Result.Successes.Count()} of {Result.Trials.Count(t => t.Outcome is TrialOutcome.Closes or TrialOutcome.Fails)} tactics close it; the simplest is {b.Replacement}"
         : Result.Counterexample is not null ? "no tactic closes it, and it cannot be proved as stated:"
         : "none of the tactics closes this goal: it needs a real idea (or a lemma)";
 

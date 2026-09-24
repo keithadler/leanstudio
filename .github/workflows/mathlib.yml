@@ -1,0 +1,34 @@
+name: Mathlib
+
+# Lean Studio against a real Mathlib project, weekly and on demand: Prove It with Mathlib's tactics, counterexamples,
+# the profiler, and Tenet reading Mathlib's compiled library. Too heavy (a Mathlib cache is several GB) for every push.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  mathlib:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install elan and Lean
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain leanprover/lean4:v4.34.0
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Make a Mathlib project (fetches Mathlib's cache)
+        run: |
+          cd "$RUNNER_TEMP"
+          lake new MathDemo math
+          cd MathDemo && lake build
+          echo "LEANSTUDIO_MATHLIB_PROJECT=$RUNNER_TEMP/MathDemo" >> "$GITHUB_ENV"
+      - name: Build
+        run: dotnet build tests/LeanStudio.Tests -c Release
+      - name: Mathlib tests
+        run: dotnet test --project tests/LeanStudio.Tests -c Release --no-build -- --filter-class LeanStudio.Tests.MathlibTests

@@ -466,7 +466,7 @@ public static class LeanTools
                         sb.Append("  not reached (an error earlier in the file stops Lean before it)\n");
                         continue;
                     }
-                    foreach (TacticTrial t in res.Trials.Where(t => t.Outcome != TrialOutcome.Unavailable))
+                    foreach (TacticTrial t in res.Trials.Where(t => t.Outcome is TrialOutcome.Closes or TrialOutcome.Fails))
                     {
                         sb.Append(CultureInfo.InvariantCulture, $"  {(t.Closes ? "closes" : "fails ")}  {(t.Closes ? t.Replacement : t.Tactic)}  ({t.Time})\n");
                     }

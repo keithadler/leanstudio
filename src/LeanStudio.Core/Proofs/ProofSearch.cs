@@ -46,6 +46,7 @@ public sealed record TacticTrial(string Tactic, TrialOutcome Outcome, int Millis
 
     /// <summary>The time taken for display (<c>840 ms</c>, <c>2.3 s</c>), or a note that the tactic was not available.</summary>
     public string Time => Outcome == TrialOutcome.Unavailable ? "not available here"
+        : Outcome == TrialOutcome.Skipped ? "not needed"
         : Milliseconds < 1000 ? $"{Milliseconds} ms" : $"{Milliseconds / 1000.0:F1} s";
 }
 
@@ -58,6 +59,8 @@ public enum TrialOutcome
     Fails,
     /// <summary>The tactic does not exist with this file's imports (Mathlib's, in a file without Mathlib).</summary>
     Unavailable,
+    /// <summary>Not tried: a library search, and another tactic already closes the goal.</summary>
+    Skipped,
 }
 
 /// <summary>What proof search found for one <c>sorry</c>.</summary>
@@ -103,7 +106,7 @@ public static partial class ProofSearch
     public static IReadOnlyList<string> Portfolio { get; } =
     [
         "rfl", "trivial", "assumption", "decide", "simp", "simp_all", "omega",
-        "norm_num", "ring", "linarith", "nlinarith", "positivity", "field_simp", "tauto", "aesop", "grind", "exact?",
+        "norm_num", "ring", "linarith", "positivity", "nlinarith", "field_simp", "tauto", "aesop", "grind", "exact?",
     ];
 
     /// <summary>The heartbeat budget for each tactic, in Lean's thousands (the default for a whole declaration is 200000).</summary>
@@ -310,6 +313,10 @@ public static partial class ProofSearch
               let mut closed := false
               for i in [0:tacs.size] do
                 s.restore
+                -- A library search (exact?) can take a minute in Mathlib: only worth it when nothing else worked.
+                if closed && tacs[i]!.endsWith "?" then
+                  out := out ++ s!"\n{i}\tskipped\t0\t"
+                  continue
                 match Parser.runParserCategory (← getEnv) `tactic tacs[i]! with
                 | .error _ => out := out ++ s!"\n{i}\tunavailable\t0\t"
                 | .ok stx =>
@@ -373,7 +380,13 @@ public static partial class ProofSearch
                 {
                     continue;
                 }
-                TrialOutcome o = f[1] switch { "ok" => TrialOutcome.Closes, "fail" => TrialOutcome.Fails, _ => TrialOutcome.Unavailable };
+                TrialOutcome o = f[1] switch
+                {
+                    "ok" => TrialOutcome.Closes,
+                    "fail" => TrialOutcome.Fails,
+                    "skipped" => TrialOutcome.Skipped,
+                    _ => TrialOutcome.Unavailable,
+                };
                 int ms = int.TryParse(f[2], CultureInfo.InvariantCulture, out int x) ? x : 0;
                 string? term = f.Length > 3 && f[3].Trim().Length > 0 ? Regex.Replace(f[3].Trim(), @"\s+", " ") : null;
                 trials.Add(new TacticTrial(portfolio[i], o, ms, term));

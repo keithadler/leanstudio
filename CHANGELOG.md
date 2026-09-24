@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Tested against real Mathlib**, weekly in CI:
+- In Prove It, `positivity` is suggested before `nlinarith`.
+- Library searches (`exact?`, a minute in Mathlib) only run when no other tactic closed the goal.
+
+
 **The editor knows what Lean knows**:
 - Semantic highlighting of variables and fields, with deprecated names struck through.
 - Inlay hints.
