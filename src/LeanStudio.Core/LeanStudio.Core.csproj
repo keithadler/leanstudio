@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../LeanStudio.Lsp/LeanStudio.Lsp.csproj" />
+    <ProjectReference Include="../LeanStudio.Plugins/LeanStudio.Plugins.csproj" />
     <ProjectReference Include="../../external/tenet/src/Tenet.Olean/Tenet.Olean.csproj" />
   </ItemGroup>
 </Project>

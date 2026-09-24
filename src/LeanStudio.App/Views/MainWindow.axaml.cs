@@ -89,6 +89,7 @@ public sealed partial class MainWindow : Window, IDialogs
         };
         Closing += OnClosing;
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        _vm.PluginHost.Load();
         WatchUserKeys();
         Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
         AddHandler(DragDrop.DropEvent, OnDrop);
@@ -996,6 +997,12 @@ public sealed partial class MainWindow : Window, IDialogs
         {
             yield return ("Project: " + pc.Title, "", () => _vm.RunProjectCommandAsync(pc));
         }
+        foreach ((string title, Func<Task> run) in _vm.PluginHost.Commands)
+        {
+            yield return (title, "", run);
+        }
+        yield return ("Plugins: Open the Plugins Folder", "", OpenPluginsFolderAsync);
+        yield return ("Plugins: List Loaded Plugins", "", Act(ListPlugins));
         yield return ("Preferences: Keyboard Shortcuts File (keybindings.json)", "", EditKeybindingsAsync);
         yield return ("Preferences: Unicode Abbreviations File (abbreviations.json)", "", EditAbbreviationsAsync);
         yield return ("View: Toggle Emacs Keys", "", Act(() => { _vm.Settings.EmacsMode = !_vm.Settings.EmacsMode; ApplySettings(); _vm.Log("Emacs keys: " + (_vm.Settings.EmacsMode ? "on" : "off")); }));
@@ -1127,6 +1134,27 @@ public sealed partial class MainWindow : Window, IDialogs
 
     /// <inheritdoc/>
     public async Task LaunchAsync(Uri uri) => await Launcher.LaunchUriAsync(uri);
+
+    private async Task OpenPluginsFolderAsync()
+    {
+        Directory.CreateDirectory(PluginHost.Folder);
+        _vm.Log("Plugins load from " + PluginHost.Folder + " when Lean Studio starts: Name.dll, or Name/Name.dll with its dependencies.");
+        await Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(PluginHost.Folder));
+    }
+
+    private void ListPlugins()
+    {
+        _vm.BottomTab = MainViewModel.OutputPanel;
+        if (_vm.PluginHost.Plugins.Count == 0)
+        {
+            _vm.Log("No plugins are loaded. Put them in " + PluginHost.Folder + " and restart Lean Studio.");
+            return;
+        }
+        foreach (Core.Plugins.LoadedPlugin p in _vm.PluginHost.Plugins)
+        {
+            _vm.Log($"Plugin: {p.Plugin.Name} ({p.Path})");
+        }
+    }
 
     /// <summary>Show a file selected in Finder or Explorer (by starting <c>open -R</c> or <c>explorer.exe</c>); elsewhere open its folder.</summary>
     public async Task RevealAsync(string path)

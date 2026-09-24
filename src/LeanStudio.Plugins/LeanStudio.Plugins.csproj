@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>What a Lean Studio plugin builds against: the interfaces a plugin implements and the host it talks to. It depends on nothing else, so a plugin needs only this.</Description>
+    <PackageId>LeanStudio.Plugins</PackageId>
+  </PropertyGroup>
+</Project>

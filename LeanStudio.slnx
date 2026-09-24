@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/LeanStudio.Plugins/LeanStudio.Plugins.csproj" />
     <Project Path="src/LeanStudio.Lsp/LeanStudio.Lsp.csproj" />
     <Project Path="src/LeanStudio.Core/LeanStudio.Core.csproj" />
     <Project Path="src/LeanStudio.Mcp/LeanStudio.Mcp.csproj" />
@@ -10,6 +11,9 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/LeanStudio.Snapshot/LeanStudio.Snapshot.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Plugins/HelloLean/HelloLean.csproj" />
   </Folder>
   <Folder Name="/external/">
     <Project Path="external/tenet/src/Tenet.Kernel/Tenet.Kernel.csproj" />

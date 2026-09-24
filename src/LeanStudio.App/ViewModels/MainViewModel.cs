@@ -786,6 +786,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             ApplyVerdicts(doc);
             RememberOpenFiles();
             ScheduleGitRefresh(full: false);
+            FileOpened?.Invoke(path);
         }
         ActiveDocument = doc;
         if (line is int l)
@@ -795,6 +796,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         return doc;
     }
+
+    /// <summary>Lean Studio as compiled plugins see it: what they add, and loading them.</summary>
+    public Services.PluginHost PluginHost => _pluginHost ??= new Services.PluginHost(this);
+
+    private Services.PluginHost? _pluginHost;
+
+    /// <summary>A file was opened in the editor (its full path); raised once per file, when it is first opened.</summary>
+    public event Action<string>? FileOpened;
+
+    /// <summary>A file was saved (its full path).</summary>
+    public event Action<string>? FileSaved;
 
     /// <summary>Ask for a new file's name and place, create it empty (unless it exists), and open it.</summary>
     [RelayCommand]
@@ -983,6 +995,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await s.SaveAsync(d.Uri, d.Document.Text);
             }
+            FileSaved?.Invoke(d.Path);
             RecordHistory(d);
             ScheduleGitRefresh();
             _ = RefreshMarkersAsync();

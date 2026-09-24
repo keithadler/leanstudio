@@ -1081,6 +1081,28 @@ internal static class Scenario
             Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
         }
 
+        Console.WriteLine("a compiled plugin");
+        {
+            // Build the example plugin into the plugins folder, as its README says, and load it.
+            string pluginDir = Path.Combine(LeanStudio.App.Services.PluginHost.Folder, "HelloLean");
+            LeanStudio.Core.Processes.ProcessResult built = await LeanStudio.Core.Processes.ProcessRunner.RunAsync("dotnet", ["build", Path.Combine(repo, "samples", "Plugins", "HelloLean"), "-c", "Release", "-o", pluginDir, "--nologo", "-v", "q"]);
+            Check(built.Success && File.Exists(Path.Combine(pluginDir, "HelloLean.dll")), "the example plugin builds into the plugins folder" + (built.Success ? "" : ": " + built.Output));
+            vm.PluginHost.Load();
+            Check(vm.Output.Text.Contains("Plugin: Hello Lean (HelloLean.dll)", StringComparison.Ordinal), "Lean Studio loads it and says so");
+            Check(vm.PluginHost.Commands.Any(c => c.Title == "Hello Lean: Sorries in This File"), "its commands join the command palette");
+            vm.ActiveDocument = doc;
+            await vm.PluginHost.Commands.Single(c => c.Title == "Hello Lean: Sorries in This File").Run();
+            Check(await WaitFor(() => vm.Output.Text.Contains("in Basic.lean", StringComparison.Ordinal) && doc.Document.Text.Split('\n')[doc.CaretLine].Contains("sorry", StringComparison.Ordinal), 5),
+                "a plugin command reads the file and moves the caret to its first sorry");
+            LeanStudio.Plugins.PluginProcessResult check = await vm.PluginHost.CheckLeanAsync("#check Nat.add_comm");
+            Check(check.Success && check.Output.Contains("Nat.add_comm", StringComparison.Ordinal), "a plugin can check Lean with the project's Lean");
+            await vm.SaveCommand.ExecuteAsync(null);
+            Check(vm.Output.Text.Contains("Hello Lean: Basic.lean saved", StringComparison.Ordinal), "and hear when a file is saved");
+            vm.BottomTab = MainViewModel.OutputPanel;
+            await WaitFor(() => false, 0.5);
+            Snap(window, outDir, "35-plugin");
+        }
+
         Console.WriteLine("the project's own commands");
         string commandsFile = Path.Combine(repo, "samples", "Proofs", LeanStudio.Core.Workflow.ProjectCommands.RelativePath);
         try

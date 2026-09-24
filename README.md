@@ -268,6 +268,7 @@ What CI and reviewers check, before you push:
 - **Several cursors.** ⌘D (Ctrl+D) adds the next occurrence of the selection, ⌘⇧L (Ctrl+Shift+L) selects every occurrence, ⌘⌥↑/↓ (Ctrl+Alt+↑/↓) add a cursor above or below, and ⌥-click (Alt+click) adds one anywhere. Typing, Backspace and Delete happen at every cursor, as one undo step. ⌥-drag (Alt+drag) selects a column.
 - **Your own shortcuts.** *View ▸ Keyboard Shortcuts File* opens `keybindings.json`, which binds any command in the command palette to any key: `{ "key": "Cmd+Alt+L", "command": "Lean: Lint File (the linters CI runs)" }`. `Cmd` means ⌘ on a Mac and Ctrl elsewhere. It starts with every command listed, and applies when you save it.
 - **A project's own commands.** `.leanstudio/commands.json` in a project lists commands that belong to it: a program and its arguments, with `${file}`, `${module}`, `${line}`, `${word}`, `${selection}` and `${root}` filled in from where you are. Each shows in the command palette as *Project: …*, runs in the project folder with its output in Output, and can be bound to a key. *Project: Edit This Project's Commands* starts the file with an example.
+- **Plugins.** A plugin is a .NET class library built against `LeanStudio.Plugins` (which depends on nothing else). Lean Studio loads plugins from the `plugins` folder in its settings folder at start, each in a load context of its own, and says in Output which loaded and why any didn't. A plugin adds commands to the palette (which keybindings.json can bind), reads and edits the file in the editor, reads Lean's messages, checks Lean with the project's Lean and dependencies, runs programs in the project folder, and hears when files open and save. [samples/Plugins/HelloLean](samples/Plugins/HelloLean) is a small, complete one, with how to build and install it. Plugins run with Lean Studio's permissions, like editor extensions: install only ones you trust.
 - **Screen readers.** The editor is announced as an edit field named after its file, with its text readable, and every button, box and list has a spoken name. The tests check this through the accessibility API VoiceOver and Windows' UI Automation use.
 - **Emacs keys.** *View ▸ Emacs Keys* turns on C-f/b/n/p/a/e, M-f/b, C-k and C-y (kills in a row add up, and go to the clipboard), the mark and region (C-SPC, C-w, M-w, C-x C-x), C-/ to undo, C-s to search, and C-x C-s to save.
 
@@ -506,11 +507,12 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | `src/LeanStudio.Lsp` | JSON-RPC and LSP client for Lean's server, including Lean's goal and RPC extensions |
 | `src/LeanStudio.Core` | Projects, Lake, elan, proof-step analysis, Unicode abbreviations, Tenet verification and navigation, and the workbench and bridge that AI assistants drive |
 | `src/LeanStudio.Mcp` | The MCP server and its tools (`LeanStudio --mcp`) |
+| `src/LeanStudio.Plugins` | The plugin API: what a compiled plugin implements and the host it talks to |
 | `src/LeanStudio.App` | The Avalonia desktop app |
 | `tests/LeanStudio.Tests` | Unit tests and integration tests against real Lean |
 | `tools/LeanStudio.Snapshot` | Headless end-to-end run with screenshots |
 | `external/tenet` | [Tenet](https://github.com/keithadler/tenet), as a git submodule |
-| `samples/` | Small Lean projects the tests and snapshots use |
+| `samples/` | Small Lean projects the tests and snapshots use, and an example plugin |
 | `docs/` | The architecture guide, and the screenshots in this README |
 | `packaging/` | Release scripts, the macOS bundle template, icons, the Linux desktop entry |
 
