@@ -884,14 +884,32 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         var cts = new CancellationTokenSource();
         _pendingChanges[doc] = cts;
-        _ = SendChangeAsync(server, doc, cts.Token);
+        _ = SendChangeAsync(server, doc, cts);
     }
 
-    private static async Task SendChangeAsync(LeanServer server, DocumentViewModel doc, CancellationToken ct)
+    /// <summary>
+    /// Send a document's edit to Lean now if it is still being held back (edits wait a moment, so typing sends one
+    /// change, not one per key). Anything that asks Lean about the text as it is, such as completion, calls this first.
+    /// </summary>
+    public async Task FlushChangesAsync(DocumentViewModel doc)
+    {
+        if (_pendingChanges.Remove(doc, out CancellationTokenSource? pending) && !pending.IsCancellationRequested
+            && _server is { State: LeanServerState.Running } server && server.IsOpen(doc.Uri))
+        {
+            pending.Cancel();
+            await server.ChangeAsync(doc.Uri, doc.Document.Text);
+        }
+    }
+
+    private async Task SendChangeAsync(LeanServer server, DocumentViewModel doc, CancellationTokenSource cts)
     {
         try
         {
-            await Task.Delay(120, ct);
+            await Task.Delay(120, cts.Token);
+            if (_pendingChanges.TryGetValue(doc, out CancellationTokenSource? current) && current == cts)
+            {
+                _pendingChanges.Remove(doc);
+            }
             await server.ChangeAsync(doc.Uri, doc.Document.Text);
         }
         catch (OperationCanceledException)
@@ -951,10 +969,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await Task.Delay(60, ct);
             // Make sure Lean has the text the caret position refers to.
-            if (_pendingChanges.TryGetValue(doc, out CancellationTokenSource? pending) && !pending.IsCancellationRequested)
-            {
-                await Task.Delay(150, ct);
-            }
+            await FlushChangesAsync(doc);
             await Info.RefreshAsync(server, doc, pos);
         }
         catch (OperationCanceledException)

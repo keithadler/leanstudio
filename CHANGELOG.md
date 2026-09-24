@@ -16,6 +16,7 @@
 - Prove It's counterexamples from Plausible (in Mathlib projects, for lists, reals and more) are reported again, as `xs = [1, 0]`: Plausible's message starts with a rule of `=` signs, which hid it.
 - When LeanSearch's service has trouble, the Library says so ("LeanSearch is having trouble right now (it answered HTTP 500)"), instead of saying it could not be reached.
 - Comments fold, as the README says: Lean's server folds declarations and namespaces but not comments, so the editor now finds multi-line `/- … -/` comments itself.
+- Completion right after typing answers about what was just typed: the edit Lean hadn't been sent yet is sent first, instead of waiting a fixed moment and hoping.
 - Move to Trash on macOS uses the system's Trash directly, so it no longer asks for permission to control Finder, and Put Back still works.
 
 ## 0.8.0

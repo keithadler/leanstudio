@@ -1405,8 +1405,12 @@ internal static class Scenario
             int? pid = vm.ServerProcessId;
             Key(Avalonia.Input.Key.R, cmdKey | Shift);
             Check(await WaitFor(() => vm.ServerProcessId is int p && p != pid && vm.ServerStatus == "Lean: ready", 60), "⌘⇧R restarts Lean");
+            bool couldBuild = vm.BuildCommand.CanExecute(null), wasBusy = vm.IsBusy;
+            int outputBefore = vm.Output.TextLength;
             Key(Avalonia.Input.Key.B, cmdKey);
-            Check(await WaitFor(() => vm.IsBusy, 5) && await WaitFor(() => !vm.IsBusy && !vm.Verification.IsRunning, 180), "⌘B builds");
+            Check(await WaitFor(() => vm.Output.TextLength > outputBefore && vm.Output.Text[outputBefore..].Contains("Building…", StringComparison.Ordinal), 10)
+                && await WaitFor(() => !vm.IsBusy && !vm.Verification.IsRunning, 180),
+                $"⌘B builds (Build could run: {couldBuild}, busy before: {wasBusy})");
             DialogHooks.Opened -= Grab;
         }
 

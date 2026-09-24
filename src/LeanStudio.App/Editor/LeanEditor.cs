@@ -953,8 +953,11 @@ public sealed class LeanEditor : UserControl
         }
         TextViewPosition p = _editor.TextArea.Caret.Position;
         int caret = _editor.CaretOffset;
-        // Completion answers about the text the server has; give the pending edit a moment to arrive.
-        await Task.Delay(200);
+        // Completion answers about the text the server has: send the edit being held back first.
+        if (Main is not null)
+        {
+            await Main.FlushChangesAsync(doc);
+        }
         IReadOnlyList<CompletionItem> items;
         try
         {
