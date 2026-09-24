@@ -17,6 +17,11 @@ MCP tools: `extract_lemma` and `project_map`, and `prove` now reports counterexa
 - Empty panels say what will appear in them.
 - The welcome screen is redesigned, and the light theme is fixed throughout.
 
+**Documentation**:
+- An architecture guide ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) and a contributor guide ([CONTRIBUTING.md](CONTRIBUTING.md)).
+- Every public type and member in `src/` has an XML doc comment, and the build fails without one.
+- The README's status section is brought up to date.
+
 ## 0.4.0
 
 **Five new features**:

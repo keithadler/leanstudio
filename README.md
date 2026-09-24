@@ -17,7 +17,8 @@
   <a href="#use-it-with-ai-assistants">AI assistants</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#building-from-source">Build from source</a> ·
-  <a href="#keyboard-shortcuts">Shortcuts</a>
+  <a href="#keyboard-shortcuts">Shortcuts</a> ·
+  <a href="#documentation">Docs</a>
 </p>
 
 ![Lean Studio: the editor, the tactic state with the hypotheses in scope, and the proof's steps](docs/images/tactic-state.png)
@@ -329,11 +330,13 @@ Lean Studio divides the work so it never has to trust itself about Lean:
 
 ## Building from source
 
-You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and elan.
+You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and elan. [CONTRIBUTING.md](CONTRIBUTING.md) has the full setup, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the code is organized.
 
 ```bash
 git clone --recurse-submodules https://github.com/keithadler/leanstudio
 ```
+
+Tenet is a git submodule. If you cloned without `--recurse-submodules`, run `git submodule update --init --recursive` before building.
 
 ```bash
 cd leanstudio && dotnet run --project src/LeanStudio.App
@@ -355,7 +358,7 @@ The runtime IDs are `osx-arm64`, `osx-x64`, `win-x64`, `win-arm64`, `linux-x64` 
 dotnet test --project tests/LeanStudio.Tests
 ```
 
-The tests run against a **real Lean server** and a **real Lake build**. They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
+The tests run against a **real Lean server** and a **real Lake build**, on the toolchain `leanprover/lean4:v4.34.0` (`elan toolchain install leanprover/lean4:v4.34.0`). They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
 
 ```bash
 dotnet run --project tools/LeanStudio.Snapshot -- . snapshots
@@ -375,7 +378,10 @@ This drives the **whole app** without a display, against a live Lean server. It 
 | `tools/LeanStudio.Snapshot` | Headless end-to-end run with screenshots |
 | `external/tenet` | [Tenet](https://github.com/keithadler/tenet), as a git submodule |
 | `samples/` | Small Lean projects the tests and snapshots use |
+| `docs/` | The architecture guide, and the screenshots in this README |
 | `packaging/` | Release scripts, the macOS bundle template, icons, the Linux desktop entry |
+
+The build generates XML documentation for every project in `src/`, and a public type or member without a `///` comment fails it, so hovering anything in an IDE gives its documentation.
 
 ## Keyboard shortcuts
 
@@ -406,12 +412,22 @@ This drives the **whole app** without a display, against a live Lean server. It 
 
 ## Status
 
-Lean Studio is at **0.3**. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.4**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
-- Goals are shown as text. You can't yet hover a subterm inside a goal to see its type.
-- ProofWidgets and other user widgets aren't rendered.
+- ProofWidgets and other user widgets aren't rendered. Goals are Lean's interactive text, and you can hover into subterms, but there are no custom widget views.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.
 - Release builds aren't signed or notarized.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [README](README.md) (this page) | What Lean Studio does, installing it, connecting AI assistants |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized: the projects, how each feature talks to Lean, Lake and Tenet, settings and environment variables, and the conventions the code follows |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Building, running the tests and the headless snapshot run, and what a good change looks like |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
+| [samples/Proofs](samples/Proofs) | The small Lake project the tests, the snapshot run and the screenshots use |
+| XML doc comments in `src/` | Every public type and member, documented where it is defined |
 
 ## Author
 
