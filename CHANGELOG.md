@@ -24,7 +24,7 @@
 - The end of each proof is marked in the editor: a quiet ✔ where Lean says the goals are accomplished, "⊢ goals left" where they aren't (Preferences can turn it off). Lean's silent "Goals accomplished!" messages are asked for and kept apart, so they never show as messages.
 
 **Tools for large projects and for troubleshooting**:
-- Math in docstrings reads as text in hovers and the Library: `$\\sum_{i < n} x_i^2 \\le C$` shows as `∑_(i < n) xᵢ² ≤ C`, with ℝ, ℕ, fractions, roots and Greek.
+- Math in docstrings reads as text in hovers and the Library: `$\sum_{i < n} x_i^2 \le C$` shows as `∑_(i < n) xᵢ² ≤ C`, with ℝ, ℕ, fractions, roots and Greek.
 - Unicode abbreviations of your own: *View ▸ Unicode Abbreviations File* opens abbreviations.json (`{ "zeta5": "ζ(5)" }`, VS Code's `customTranslations` format). Yours win over built-in ones, and apply when saved.
 - *Lean ▸ Imports and Imported By* lists what a module imports and which of the project's modules import it, and says how many modules rebuild when it changes.
 - *Lean ▸ Instances of Class at Cursor* asks Lean for every instance of a type class the file can see, with its type. Pick one to see it in the Library.
