@@ -57,7 +57,8 @@ public static class StudioBridge
         NamedPipeServerStream first;
         try
         {
-            first = Create();
+            // The first instance claims the name: this fails while another window holds it.
+            first = Create(PipeOptions.FirstPipeInstance);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -67,16 +68,23 @@ public static class StudioBridge
         return true;
     }
 
-    private static NamedPipeServerStream Create() =>
-        new(PipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+    /// <summary>
+    /// Two instances at most: the one serving a request, and the next, made before the first is let go, so the
+    /// name is never free for another window to take between requests.
+    /// </summary>
+    private static NamedPipeServerStream Create(PipeOptions extra = PipeOptions.None) =>
+        new(PipeName, PipeDirection.InOut, 2, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | extra);
 
     private static async Task LoopAsync(NamedPipeServerStream pipe, Func<JsonObject, Task<JsonObject>> handle, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
+            NamedPipeServerStream? next = null;
             try
             {
                 await pipe.WaitForConnectionAsync(ct).ConfigureAwait(false);
+                // Hold the name for the next request before this one is answered and closed.
+                next = Create();
                 using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
                 await using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
                 string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
@@ -104,6 +112,10 @@ public static class StudioBridge
             finally
             {
                 await pipe.DisposeAsync().ConfigureAwait(false);
+                if (ct.IsCancellationRequested && next is not null)
+                {
+                    await next.DisposeAsync().ConfigureAwait(false);
+                }
             }
             if (ct.IsCancellationRequested)
             {
@@ -111,7 +123,7 @@ public static class StudioBridge
             }
             try
             {
-                pipe = Create();
+                pipe = next ?? Create();
             }
             catch (IOException)
             {

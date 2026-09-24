@@ -207,8 +207,14 @@ public sealed class McpTests
             JsonObject? r = await StudioBridge.RequestAsync(new JsonObject { ["method"] = "context" }, ct: TestContext.Current.CancellationToken);
             Assert.NotNull(r);
             Assert.Equal("context", r["echo"]!.GetValue<string>());
-            // A second window does not take the pipe from the first.
-            Assert.False(StudioBridge.TryServe(_ => Task.FromResult(new JsonObject()), cts.Token));
+            // A second window does not take the pipe from the first, not even right after a request, when the
+            // first is closing one connection and opening the next.
+            for (int i = 0; i < 20; i++)
+            {
+                JsonObject? again = await StudioBridge.RequestAsync(new JsonObject { ["method"] = "context" }, ct: TestContext.Current.CancellationToken);
+                Assert.Equal("context", again?["echo"]?.GetValue<string>());
+                Assert.False(StudioBridge.TryServe(_ => Task.FromResult(new JsonObject()), cts.Token), $"the pipe was free after request {i + 1}");
+            }
             cts.Cancel();
         }
         finally
