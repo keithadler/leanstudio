@@ -1600,6 +1600,37 @@ internal static class Scenario
             await SetMarks(true);
             Check(off && vm.Settings.ShowProofMarks && window.MainEditorControl.ProofMarksShown, "Preferences turn the proof-end marks off, and on again");
 
+            // Drop a file on the window, and it opens.
+            string dropped = Path.Combine(sourceDir, "Dropped.lean");
+            await File.WriteAllTextAsync(dropped, "-- dropped here\n");
+            try
+            {
+                Avalonia.Platform.Storage.IStorageFile? item = await window.StorageProvider.TryGetFileFromPathAsync(new Uri(dropped));
+                if (item is null)
+                {
+                    Console.WriteLine("  skip dropping a file: the headless platform has no file items");
+                }
+                else
+                {
+                    var data = new Avalonia.Input.DataTransfer();
+                    data.Add(Avalonia.Input.DataTransferItem.CreateFile(item));
+                    var dropAt = new Point(600, 400);
+                    window.DragDrop(dropAt, Avalonia.Input.Raw.RawDragEventType.DragEnter, data, Avalonia.Input.DragDropEffects.Copy);
+                    window.DragDrop(dropAt, Avalonia.Input.Raw.RawDragEventType.DragOver, data, Avalonia.Input.DragDropEffects.Copy);
+                    window.DragDrop(dropAt, Avalonia.Input.Raw.RawDragEventType.Drop, data, Avalonia.Input.DragDropEffects.Copy);
+                    Check(await WaitFor(() => vm.ActiveDocument?.Path == dropped, 10), "a file dropped on the window opens");
+                    if (vm.ActiveDocument?.Path == dropped)
+                    {
+                        await vm.CloseDocumentCommand.ExecuteAsync(vm.ActiveDocument);
+                    }
+                }
+            }
+            finally
+            {
+                File.Delete(dropped);
+            }
+            vm.ActiveDocument = doc;
+
             // Session restore: a new window starts where this one is, with the same files open.
             string? active = vm.ActiveDocument?.Path;
             var openFiles = vm.Documents.Where(d => !d.IsVirtual).Select(d => d.Path).ToHashSet();
