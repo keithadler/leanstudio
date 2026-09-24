@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+**C and Lean's FFI**:
+- Go to definition goes from an `@[extern]` to its C function and back.
+- `@[extern]` bindings are checked against the project's C files (missing functions, wrong argument counts) in Problems.
+- C stubs are written with the signature Lean expects, and New C Binding… writes both sides.
+- clangd serves C files, with Lean's headers on the include path.
+- MCP tool `ffi_bindings`.
+
 ## 0.5.0
 
 **Four more features**:

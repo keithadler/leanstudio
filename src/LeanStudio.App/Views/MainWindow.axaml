@@ -114,6 +114,11 @@
         <MenuItem Header="Extract Goal as Lemma…" Command="{Binding ExtractLemmaCommand}" />
         <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
         <MenuItem Header="REPL (evaluate Lean at the cursor)" Click="OnShowRepl" InputGesture="{OnPlatform Default='Ctrl+Alt+R', macOS='Cmd+Alt+R'}" />
+        <MenuItem Header="C and FFI">
+          <MenuItem Header="New C Binding…" Command="{Binding NewFfiBindingCommand}" />
+          <MenuItem Header="Write C Stub for This Extern" Command="{Binding WriteCStubCommand}" />
+          <MenuItem Header="Check C Bindings" Click="OnCheckFfi" />
+        </MenuItem>
         <Separator />
         <MenuItem Header="Restart File (rebuild its imports)" Command="{Binding RestartFileCommand}" />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />

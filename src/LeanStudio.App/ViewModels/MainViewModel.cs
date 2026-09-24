@@ -222,6 +222,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _buildMessages = [];
         await SourceControl.OpenAsync(project.Root);
         _ = RefreshMarkersAsync();
+        await StopClangdAsync();
+        ScheduleFfiCheck();
         await StartServerAsync();
         await Toolchains.RefreshAsync();
         await ReopenTenetAsync();
@@ -530,6 +532,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         var items = Documents.SelectMany(d => d.Diagnostics.Where(x => x.Severity <= DiagnosticSeverity.Warning).Select(x => new ProblemItem(d, x)))
             .Concat(BuildProblems())
+            .Concat(FfiProblems())
             .OrderBy(p => p.Severity).ThenBy(p => p.File, StringComparer.Ordinal).ThenBy(p => p.Diagnostic.Range.Start)
             .ToList();
         Problems.Reset(items);
@@ -584,6 +587,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 await s.OpenAsync(doc.Uri, doc.Document.Text);
             }
+            else if (doc.IsC)
+            {
+                _ = COpenedAsync(doc);
+            }
             ApplyVerdicts(doc);
             RememberOpenFiles();
             ScheduleGitRefresh(full: false);
@@ -617,6 +624,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void OnDocumentEdited(DocumentViewModel doc)
     {
         ScheduleAutoSave(doc);
+        if (doc.IsC)
+        {
+            CEdited(doc);
+            return;
+        }
         if (doc.Timings.Count > 0)
         {
             doc.Timings = []; // they describe the text as it was
@@ -664,6 +676,13 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _caretCts?.Cancel();
         var cts = new CancellationTokenSource();
         _caretCts = cts;
+        if (doc.IsC)
+        {
+            Info.Clear(_clangd is { IsRunning: true }
+                ? "A C file. clangd checks it as you type, with Lean's headers: hover for types, Ctrl+Space to complete. Go to definition (F12) on a function Lean calls opens its @[extern] declaration."
+                : "A C file. Install clangd for errors, hover and completion here. Go to definition (F12) on a function Lean calls opens its @[extern] declaration.");
+            return;
+        }
         if (!doc.IsLean)
         {
             Info.Clear("Not a Lean file");
@@ -753,6 +772,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             RecordHistory(d);
             ScheduleGitRefresh();
             _ = RefreshMarkersAsync();
+            if (d.IsLean || d.IsC)
+            {
+                ScheduleFfiCheck();
+            }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -777,6 +800,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (d.IsLean && _server is { State: LeanServerState.Running } s)
         {
             await s.CloseAsync(d.Uri);
+        }
+        else if (d.IsC)
+        {
+            await CClosedAsync(d);
         }
         if (ActiveDocument == d)
         {
@@ -840,6 +867,27 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private async Task GoToDefinitionAsync()
     {
+        // Across the FFI boundary first: an @[extern] to its C function, a C function to its Lean declaration.
+        if (ActiveDocument is DocumentViewModel fd && (fd.IsLean || fd.IsC) && await GoAcrossFfiAsync(fd))
+        {
+            return;
+        }
+        if (ActiveDocument is { IsC: true } cd && _clangd is { IsRunning: true } c)
+        {
+            try
+            {
+                IReadOnlyList<Location> cl = await c.DefinitionAsync(cd.Uri, new Position(cd.CaretLine, cd.CaretColumn));
+                if (cl.FirstOrDefault() is Location loc)
+                {
+                    await OpenFileAsync(LeanServer.PathOf(loc.Uri), loc.Range.Start.Line, loc.Range.Start.Character);
+                }
+            }
+            catch (Exception e) when (e is JsonRpcException or IOException or InvalidOperationException)
+            {
+                Log("Go to definition: " + e.Message);
+            }
+            return;
+        }
         if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } s)
         {
             return;
@@ -1117,6 +1165,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _watcher?.Dispose();
         RememberOpenFiles();
         await StopServerAsync();
+        await StopClangdAsync();
         _tenet?.Dispose();
     }
 }
