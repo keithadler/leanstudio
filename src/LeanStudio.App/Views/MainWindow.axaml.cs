@@ -690,6 +690,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
+        yield return ("View: Lean Infoview in Browser (ProofWidgets and other widgets)", "", Cmd(_vm.OpenInfoviewCommand));
         yield return ("View: REPL (evaluate Lean at the cursor)", "", Act(() => { _vm.BottomTab = MainViewModel.ReplPanel; this.FindControl<TextBox>("ReplBox")?.Focus(); }));
         yield return ("Help: Keyboard Shortcuts", "", Act(() => OnShortcuts(null, new RoutedEventArgs())));
         yield return ("Help: About Lean Studio", "", Act(() => OnAbout(null, new RoutedEventArgs())));

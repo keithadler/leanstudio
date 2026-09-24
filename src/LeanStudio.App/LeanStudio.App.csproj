@@ -11,6 +11,8 @@
   </PropertyGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+    <!-- Lean's infoview (@leanprover/infoview), served to the browser by the infoview bridge. -->
+    <EmbeddedResource Include="Infoview/**" LogicalName="infoview/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="$(AvaloniaVersion)" />

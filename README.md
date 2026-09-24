@@ -45,7 +45,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
 | An MCP server so AI assistants can use Lean | | ✓ |
-| ProofWidgets and other JavaScript widgets in the infoview | ✓ | shown as text |
+| ProofWidgets and other JavaScript widgets in the infoview | ✓ | ✓ (Lean's own infoview, in the browser) |
 | The VS Code ecosystem: its extensions, remote development, Vim mode | ✓ | |
 
 Lean Studio is tested against real Lean on macOS, Windows and Linux on every change, and against a real Mathlib project every week.
@@ -240,6 +240,12 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 - **Trace trees.** A message from `set_option trace.… true` is a tree you expand one step at a time in the Tactic State. Lean sends each level only when you open it, so even huge traces (instance search, `simp`) stay fast. Failed steps are marked in red.
 
 ![Inlay hints, semantic colours, the callers of square, and an instance-search trace expanded](docs/images/editor-intelligence.png)
+
+### Lean's own infoview, widgets and all
+
+*View ▸ Lean Infoview in Browser* opens the infoview VS Code uses (the official `@leanprover/infoview`) in a browser tab. It's connected to Lean Studio, follows the cursor there, and renders what that infoview renders. That includes user widgets such as those from **ProofWidgets**, because it's the same infoview loading them the same way. The tests check a widget defined in a Lean file. It shares Lean Studio's Lean server, so nothing starts twice. "Try this", "go to definition" and "insert" from the infoview act on Lean Studio's editor. It only accepts connections from this machine, with a secret token in the page's address. The Tactic State panel stays the everyday view.
+
+![Lean's own infoview in the browser, rendering a user widget from a Lean file open in Lean Studio](docs/images/infoview-widgets.png)
 
 ### Everything else a Lean IDE needs
 

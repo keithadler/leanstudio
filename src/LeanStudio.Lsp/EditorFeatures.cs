@@ -55,6 +55,25 @@ public sealed record InteractiveMessage(Range Range, DiagnosticSeverity Severity
 
 public sealed partial class LeanServer
 {
+    /// <summary>Every notification the server sends, as it arrives (on the reader's thread).</summary>
+    public event Action<string, JsonElement>? ServerNotification;
+
+    /// <summary>Every document notification this client sends (open, change, save, close), as it is sent.</summary>
+    public event Action<string, JsonNode>? ClientNotification;
+
+    private Task NotifyClientAsync(string method, JsonObject parameters)
+    {
+        ClientNotification?.Invoke(method, parameters);
+        return Rpc.NotifyAsync(method, parameters);
+    }
+
+    /// <summary>Send any request to the server and return its raw result (for relaying, as the infoview does).</summary>
+    public Task<JsonElement> RequestRawAsync(string method, JsonNode? parameters, CancellationToken ct = default) =>
+        Rpc.RequestAsync(method, parameters, ct);
+
+    /// <summary>Send any notification to the server (for relaying, as the infoview does).</summary>
+    public Task NotifyRawAsync(string method, JsonNode? parameters) => Rpc.NotifyAsync(method, parameters);
+
     /// <summary>
     /// Lean's classification of every token in a file (<c>textDocument/semanticTokens/full</c>), decoded with the
     /// legend the server announced. Empty if the server has no semantic tokens.

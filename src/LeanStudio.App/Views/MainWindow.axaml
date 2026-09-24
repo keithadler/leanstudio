@@ -85,6 +85,7 @@
         <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
         <MenuItem Header="Toggle Bottom Panel" Click="OnTogglePanel" InputGesture="{OnPlatform Default='Ctrl+J', macOS='Cmd+J'}" />
         <MenuItem Header="Toggle Tactic State" Click="OnToggleInfo" InputGesture="{OnPlatform Default='Ctrl+Alt+I', macOS='Cmd+Alt+I'}" />
+        <MenuItem Header="Lean Infoview in Browser (widgets)" Command="{Binding OpenInfoviewCommand}" />
         <MenuItem Header="Zen Mode (just the editor and the goals)" Click="OnZen" InputGesture="{OnPlatform Default='Ctrl+Alt+Z', macOS='Cmd+Alt+Z'}" />
       </MenuItem>
       <MenuItem Header="_Go">

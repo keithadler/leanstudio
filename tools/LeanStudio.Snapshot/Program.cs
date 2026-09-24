@@ -647,6 +647,19 @@ internal static class Scenario
         }
         vm.ActiveDocument = doc;
 
+        Console.WriteLine("Lean's own infoview, for widgets");
+        Uri infoviewPage = vm.StartInfoview();
+        using (var http = new HttpClient())
+        {
+            string html = await http.GetStringAsync(infoviewPage);
+            var js = await http.GetAsync(new Uri(infoviewPage, "iv/index.production.min.js"));
+            var css = await http.GetAsync(new Uri(infoviewPage, "iv/index.css"));
+            var noToken = await http.GetAsync(new Uri(infoviewPage.GetLeftPart(UriPartial.Path)));
+            Check(html.Contains("loadRenderInfoview", StringComparison.Ordinal) && js.IsSuccessStatusCode && css.IsSuccessStatusCode
+                && noToken.StatusCode == System.Net.HttpStatusCode.Forbidden,
+                "the app serves Lean's infoview (with its widgets' runtime) to the browser, only with its token");
+        }
+
         Console.WriteLine("C and the FFI");
         string nativeLean = Path.Combine(proofsDir, "Native.lean");
         string cDir = Path.Combine(repo, "samples", "Proofs", "c");

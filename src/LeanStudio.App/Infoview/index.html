@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lean Infoview · Lean Studio</title>
+<link rel="stylesheet" href="iv/index.css">
+<style>
+  /* The infoview is styled with VS Code's theme variables; these are Lean Studio's colours in their names. */
+  :root, :root[data-theme="dark"] {
+    --vscode-font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    --vscode-font-size: 13px;
+    --vscode-font-weight: normal;
+    --vscode-editor-font-family: "JuliaMono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    --vscode-editor-font-size: 13px;
+    --vscode-editor-font-weight: normal;
+    --vscode-editor-line-height: 1.5;
+    --vscode-editor-font-feature-settings: normal;
+    --vscode-editor-background: #1b1e23;
+    --vscode-editor-foreground: #d4d4d4;
+    --vscode-foreground: #cccccc;
+    --vscode-disabledForeground: #808080;
+    --vscode-errorForeground: #f14c4c;
+    --vscode-focusBorder: #6fb3ff;
+    --vscode-contrastBorder: transparent;
+    --vscode-icon-foreground: #c5c5c5;
+    --vscode-widget-shadow: rgba(0, 0, 0, 0.36);
+    --vscode-editor-selectionBackground: #264f78;
+    --vscode-editor-findMatchBackground: #515c6a;
+    --vscode-editor-inlineValuesForeground: rgba(255, 255, 255, 0.5);
+    --vscode-editorHoverWidget-background: #252526;
+    --vscode-editorHoverWidget-foreground: #cccccc;
+    --vscode-editorHoverWidget-border: #454545;
+    --vscode-editorWidget-border: #454545;
+    --vscode-editorGroup-border: #2c3038;
+    --vscode-editorOverviewRuler-rangeHighlightForeground: rgba(0, 122, 204, 0.6);
+    --vscode-textCodeBlock-background: #262a31;
+    --vscode-diffEditor-insertedTextBackground: rgba(63, 185, 80, 0.2);
+    --vscode-diffEditor-insertedTextBorder: transparent;
+    --vscode-diffEditor-removedTextBackground: rgba(241, 76, 76, 0.2);
+    --vscode-diffEditor-removedTextBorder: transparent;
+    --vscode-dropdown-background: #262a31;
+    --vscode-dropdown-foreground: #cccccc;
+    --vscode-dropdown-border: #3c3c3c;
+    --vscode-button-background: #0e639c;
+    --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #1177bb;
+    --vscode-button-border: transparent;
+    --vscode-button-secondaryBackground: #3a3d41;
+    --vscode-button-secondaryForeground: #ffffff;
+    --vscode-button-secondaryHoverBackground: #45494e;
+    --vscode-badge-background: #4d4d4d;
+    --vscode-badge-foreground: #ffffff;
+    --vscode-activityBarBadge-background: #007acc;
+    --vscode-activityBarBadge-foreground: #ffffff;
+    --vscode-input-background: #262a31;
+    --vscode-input-foreground: #cccccc;
+    --vscode-input-border: #3c3c3c;
+    --vscode-textLink-foreground: #6fb3ff;
+    --vscode-textLink-activeForeground: #8cc4ff;
+    --vscode-list-hoverBackground: #2a2e36;
+    --vscode-scrollbarSlider-background: rgba(121, 121, 121, 0.4);
+    --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
+    --vscode-scrollbarSlider-activeBackground: rgba(191, 191, 191, 0.4);
+    --vscode-lean4-infoView-hypothesisName: #6fb3ff;
+    --vscode-lean4-infoView-inaccessibleHypothesisName: #808080;
+    --vscode-lean4-infoView-goalCaseName: #6fb3ff;
+    --vscode-lean4-infoView-turnstile: #6fb3ff;
+    --vscode-lean4-infoView-caseLabel: #6fb3ff;
+    --studio-bar: #16181c;
+    --studio-accent: #6fb3ff;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --vscode-editor-background: #fafafb;
+    --vscode-editor-foreground: #1d1d1f;
+    --vscode-foreground: #333333;
+    --vscode-disabledForeground: #9a9a9a;
+    --vscode-errorForeground: #c72e2e;
+    --vscode-focusBorder: #1f5fbf;
+    --vscode-icon-foreground: #424242;
+    --vscode-widget-shadow: rgba(0, 0, 0, 0.16);
+    --vscode-editor-selectionBackground: #add6ff;
+    --vscode-editor-findMatchBackground: #a8ac94;
+    --vscode-editor-inlineValuesForeground: rgba(0, 0, 0, 0.5);
+    --vscode-editorHoverWidget-background: #f3f3f3;
+    --vscode-editorHoverWidget-foreground: #333333;
+    --vscode-editorHoverWidget-border: #c8c8c8;
+    --vscode-editorWidget-border: #c8c8c8;
+    --vscode-editorGroup-border: #d6d9df;
+    --vscode-textCodeBlock-background: #f1f3f6;
+    --vscode-diffEditor-insertedTextBackground: rgba(63, 185, 80, 0.18);
+    --vscode-diffEditor-removedTextBackground: rgba(241, 76, 76, 0.18);
+    --vscode-dropdown-background: #ffffff;
+    --vscode-dropdown-foreground: #333333;
+    --vscode-dropdown-border: #cecece;
+    --vscode-button-secondaryBackground: #e4e6ea;
+    --vscode-button-secondaryForeground: #333333;
+    --vscode-button-secondaryHoverBackground: #d6d9df;
+    --vscode-badge-background: #c4c4c4;
+    --vscode-badge-foreground: #333333;
+    --vscode-input-background: #ffffff;
+    --vscode-input-foreground: #333333;
+    --vscode-input-border: #cecece;
+    --vscode-textLink-foreground: #1f5fbf;
+    --vscode-textLink-activeForeground: #174a96;
+    --vscode-list-hoverBackground: #e8ebf0;
+    --vscode-lean4-infoView-hypothesisName: #1f5fbf;
+    --vscode-lean4-infoView-goalCaseName: #1f5fbf;
+    --vscode-lean4-infoView-turnstile: #1f5fbf;
+    --vscode-lean4-infoView-caseLabel: #1f5fbf;
+    --studio-bar: #eceef2;
+    --studio-accent: #1f5fbf;
+    color-scheme: light;
+  }
+  html, body { margin: 0; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground);
+               font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+  #bar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; padding: 6px 12px;
+         background: var(--studio-bar); border-bottom: 1px solid var(--vscode-editorGroup-border); font-size: 12px; }
+  #bar b { font-weight: 600; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: #808080; flex: none; }
+  #dot.on { background: #3fb950; }
+  #status { opacity: 0.75; }
+  #infoview { padding: 4px 8px; }
+</style>
+</head>
+<body>
+<div id="bar"><span id="dot"></span><b>Lean Infoview</b><span id="status">connecting to Lean Studio…</span></div>
+<div id="infoview"></div>
+<script type="module">
+  import { loadRenderInfoview } from './iv/loader.production.min.js';
+
+  const query = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = query.get('theme') === 'light' ? 'light' : 'dark';
+  const status = (text, on) => {
+    document.getElementById('status').textContent = text;
+    document.getElementById('dot').classList.toggle('on', !!on);
+  };
+
+  // The bridge in Lean Studio: requests carry an id and get an answer; everything else is one-way.
+  const socket = new WebSocket(`ws://${location.host}/ws?t=${encodeURIComponent(query.get('t') ?? '')}`);
+  const opened = new Promise(resolve => socket.addEventListener('open', resolve));
+  const pending = new Map();
+  let nextId = 1;
+  const call = async (op, fields) => {
+    await opened;
+    return new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, { resolve, reject });
+      socket.send(JSON.stringify({ id, op, ...fields }));
+    });
+  };
+  const tell = async (op, fields) => { await opened; socket.send(JSON.stringify({ op, ...fields })); };
+
+  const editorApi = {
+    saveConfig: async config => tell('saveConfig', { config }),
+    sendClientRequest: (uri, method, params) => call('request', { uri, method, params }),
+    sendClientNotification: (uri, method, params) => tell('notify', { uri, method, params }),
+    subscribeServerNotifications: method => tell('subscribeServer', { method }),
+    unsubscribeServerNotifications: method => tell('unsubscribeServer', { method }),
+    subscribeClientNotifications: method => tell('subscribeClient', { method }),
+    unsubscribeClientNotifications: method => tell('unsubscribeClient', { method }),
+    copyToClipboard: async text => { try { await navigator.clipboard.writeText(text); } catch { await tell('copy', { text }); } },
+    insertText: (text, kind, pos) => tell('insertText', { text, kind, pos }),
+    applyEdit: edit => tell('applyEdit', { edit }),
+    showDocument: show => tell('showDocument', { show }),
+    restartFile: uri => tell('restartFile', { uri }),
+    createRpcSession: uri => call('createRpcSession', { uri }),
+    closeRpcSession: sessionId => tell('closeRpcSession', { sessionId }),
+  };
+
+  let infoview = null;
+  const early = [];
+  const deliver = msg => {
+    switch (msg.op) {
+      case 'serverRestarted': infoview.serverRestarted(msg.result); break;
+      case 'initialize': infoview.initialize(msg.loc); break;
+      case 'cursor': infoview.changedCursorLocation(msg.loc); break;
+      case 'serverNotification': infoview.gotServerNotification(msg.method, msg.params); break;
+      case 'clientNotification': infoview.sentClientNotification(msg.method, msg.params); break;
+    }
+  };
+  socket.addEventListener('message', event => {
+    const msg = JSON.parse(event.data);
+    if (msg.id !== undefined && pending.has(msg.id)) {
+      const { resolve, reject } = pending.get(msg.id);
+      pending.delete(msg.id);
+      if (msg.error) reject(msg.error); else resolve(msg.result);
+      return;
+    }
+    if (infoview) deliver(msg); else early.push(msg);
+  });
+  socket.addEventListener('open', () => status('connected to Lean Studio: follows the cursor there', true));
+  socket.addEventListener('close', () => status('disconnected: open it again from Lean Studio (View ▸ Lean Infoview in Browser)', false));
+
+  const base = new URL('./iv/', location.href).href;
+  loadRenderInfoview({
+    '@leanprover/infoview': base + 'index.production.min.js',
+    'react': base + 'react.production.min.js',
+    'react/jsx-runtime': base + 'react-jsx-runtime.production.min.js',
+    'react-dom': base + 'react-dom.production.min.js',
+  }, [editorApi, document.getElementById('infoview')], api => {
+    infoview = api;
+    window.leanStudioInfoview = api;
+    for (const msg of early.splice(0)) deliver(msg);
+    tell('ready', {});
+  });
+</script>
+</body>
+</html>

@@ -206,6 +206,7 @@ public sealed partial class LeanServer : IAsyncDisposable
 
     private void OnNotification(string method, JsonElement p)
     {
+        ServerNotification?.Invoke(method, p);
         switch (method)
         {
             case "textDocument/publishDiagnostics":
@@ -265,7 +266,7 @@ public sealed partial class LeanServer : IAsyncDisposable
     {
         _versions[uri] = 1;
         _elaborated.TryRemove(uri, out _);
-        return Rpc.NotifyAsync("textDocument/didOpen", new JsonObject
+        return NotifyClientAsync("textDocument/didOpen", new JsonObject
         {
             ["textDocument"] = new JsonObject
             {
@@ -282,7 +283,7 @@ public sealed partial class LeanServer : IAsyncDisposable
     {
         int version = _versions.AddOrUpdate(uri, 1, (_, v) => v + 1);
         _sessions.TryRemove(uri, out _);
-        return Rpc.NotifyAsync("textDocument/didChange", new JsonObject
+        return NotifyClientAsync("textDocument/didChange", new JsonObject
         {
             ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = version },
             ["contentChanges"] = new JsonArray(new JsonObject { ["text"] = text }),
@@ -291,7 +292,7 @@ public sealed partial class LeanServer : IAsyncDisposable
 
     /// <summary>Tell the server a document was saved (<c>didSave</c>), with the saved text. It does not write the file.</summary>
     public Task SaveAsync(string uri, string text) =>
-        Rpc.NotifyAsync("textDocument/didSave", new JsonObject
+        NotifyClientAsync("textDocument/didSave", new JsonObject
         {
             ["textDocument"] = new JsonObject { ["uri"] = uri },
             ["text"] = text,
@@ -304,7 +305,7 @@ public sealed partial class LeanServer : IAsyncDisposable
         _sessions.TryRemove(uri, out _);
         _elaborated.TryRemove(uri, out _);
         _diagnostics.TryRemove(uri, out _);
-        return Rpc.NotifyAsync("textDocument/didClose", new JsonObject
+        return NotifyClientAsync("textDocument/didClose", new JsonObject
         {
             ["textDocument"] = new JsonObject { ["uri"] = uri },
         });

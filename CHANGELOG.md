@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+**Lean's own infoview, with widgets**: *View ▸ Lean Infoview in Browser* opens the official `@leanprover/infoview`,
+connected to Lean Studio's Lean server and following its cursor. It renders ProofWidgets and every other user
+widget. It runs on 127.0.0.1 only, with a secret token.
+
 **Tested against real Mathlib**, weekly in CI:
 - In Prove It, `positivity` is suggested before `nlinarith`.
 - Library searches (`exact?`, a minute in Mathlib) only run when no other tactic closed the goal.

@@ -552,6 +552,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 Dispatcher.UIThread.Post(OnServerCrashed);
             }
+            if (s == LeanServerState.Running && _server == server)
+            {
+                _infoviewBridge?.ServerRestarted();
+            }
         };
         server.StateChanged += s => Dispatcher.UIThread.Post(() => ServerStatus = s switch
         {
@@ -816,6 +820,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <param name="column">The 0-based column.</param>
     public void CaretMoved(DocumentViewModel doc, int line, int column)
     {
+        InfoviewCursor(doc, line, column);
         doc.CaretLine = line;
         doc.CaretColumn = column;
         if (doc != ActiveDocument)
@@ -1360,6 +1365,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         RememberOpenFiles();
         await StopServerAsync();
         await StopClangdAsync();
+        await StopInfoviewAsync();
         _tenet?.Dispose();
     }
 }
