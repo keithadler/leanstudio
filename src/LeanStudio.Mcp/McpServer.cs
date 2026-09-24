@@ -5,9 +5,17 @@ using System.Text.Json.Nodes;
 namespace LeanStudio.Mcp;
 
 /// <summary>A tool an MCP client can call: its name, what it is for, the JSON Schema of its arguments, and the code.</summary>
+/// <param name="Name">The name clients call it by, unique among the server's tools.</param>
+/// <param name="Description">What it does, for the model deciding whether to call it.</param>
+/// <param name="InputSchema">The JSON Schema of its arguments object (sent to clients as a copy).</param>
+/// <param name="Run">
+/// The code: takes the arguments (an empty object when none were sent) and returns the text the client sees. Throw
+/// <see cref="ToolException"/> for a failure the caller should read.
+/// </param>
 public sealed record McpTool(string Name, string Description, JsonObject InputSchema, Func<JsonObject, CancellationToken, Task<string>> Run);
 
 /// <summary>A tool failed in a way the caller should read (bad arguments, Lean not installed), not a protocol error.</summary>
+/// <param name="message">What went wrong, returned to the client as the tool's result with <c>isError</c> set.</param>
 public sealed class ToolException(string message) : Exception(message);
 
 /// <summary>
@@ -17,6 +25,9 @@ public sealed class ToolException(string message) : Exception(message);
 /// </summary>
 public sealed class McpServer
 {
+    /// <summary>
+    /// The MCP protocol versions this server speaks, newest first. A client asking for any other gets the first.
+    /// </summary>
     public static readonly string[] SupportedProtocolVersions = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
     private readonly IReadOnlyList<McpTool> _tools;
@@ -25,6 +36,11 @@ public sealed class McpServer
     private readonly string _instructions;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
+    /// <summary>Create a server. It does nothing until <see cref="RunAsync"/> or <see cref="HandleAsync"/>.</summary>
+    /// <param name="name">The server's name, reported in <c>serverInfo</c>.</param>
+    /// <param name="version">The server's version, reported in <c>serverInfo</c>.</param>
+    /// <param name="instructions">Guidance for the model on how to use the tools, sent in the <c>initialize</c> result.</param>
+    /// <param name="tools">The tools it offers, in the order they are listed.</param>
     public McpServer(string name, string version, string instructions, IReadOnlyList<McpTool> tools)
     {
         _name = name;
@@ -33,9 +49,14 @@ public sealed class McpServer
         _tools = tools;
     }
 
+    /// <summary>The tools the server offers.</summary>
     public IReadOnlyList<McpTool> Tools => _tools;
 
     /// <summary>Serve until the input ends. Requests run concurrently, so a long build does not block a quick question.</summary>
+    /// <remarks>
+    /// Reads one JSON-RPC message (or batch) per line and writes each response as one line, so responses can come back
+    /// out of order. Returns once every request still running has finished.
+    /// </remarks>
     public async Task RunAsync(TextReader input, TextWriter output, CancellationToken ct = default)
     {
         var running = new List<Task>();
@@ -86,6 +107,11 @@ public sealed class McpServer
     }
 
     /// <summary>Handle one message; returns the response, or null for notifications and responses.</summary>
+    /// <remarks>
+    /// An unknown method gives a -32601 error and bad <c>tools/call</c> parameters (no name, unknown tool) a -32602 error.
+    /// A tool's own failures (<see cref="ToolException"/>, I/O, Lean and Tenet errors) come back as a successful result with
+    /// <c>isError</c> set; any other exception from a tool propagates.
+    /// </remarks>
     public async Task<JsonObject?> HandleAsync(JsonObject msg, CancellationToken ct = default)
     {
         JsonNode? id = msg["id"]?.DeepClone();
@@ -211,6 +237,7 @@ public sealed class McpServer
     }
 
     /// <summary>Run on the process's stdin and stdout, with UTF-8 both ways and nothing buffered.</summary>
+    /// <remarks>Nothing else may write to stdout while this runs, or the client will read it as a broken message.</remarks>
     public static async Task RunStdioAsync(McpServer server, CancellationToken ct = default)
     {
         var input = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));

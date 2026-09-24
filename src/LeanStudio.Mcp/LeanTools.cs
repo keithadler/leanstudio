@@ -18,6 +18,10 @@ namespace LeanStudio.Mcp;
 /// </summary>
 public static class LeanTools
 {
+    /// <summary>
+    /// The guidance sent to clients in the <c>initialize</c> result: which tool to use when, and what counts as proved.
+    /// Keep it in step with the tools in <see cref="Tools"/>.
+    /// </summary>
     public const string Instructions = """
         Lean Studio gives you Lean 4 itself: Lean's language server and build tool, and Tenet, an independent
         checker of Lean's output. Use it to write and fix Lean with real feedback instead of guessing.
@@ -43,11 +47,18 @@ public static class LeanTools
           at, and studio_show opens a file at a line in their window so they can review your change.
         """;
 
+    /// <summary>The Lean Studio MCP server, named <c>leanstudio</c>, with every tool in <see cref="Tools"/>.</summary>
+    /// <param name="bench">The workbench the tools run Lean through; it owns the language servers and must outlive the server.</param>
+    /// <param name="version">The version reported to clients.</param>
     public static McpServer Create(Workbench bench, string version) =>
         new("leanstudio", version, Instructions, Tools(bench));
 
     // ---- schema helpers ----
 
+    /// <summary>
+    /// The JSON Schema of a tool's arguments object. A property's type is a JSON Schema type, or <c>string[]</c> for an
+    /// array of strings.
+    /// </summary>
     private static JsonObject Schema(params (string Name, string Type, string Description, bool Required)[] props)
     {
         var properties = new JsonObject();
@@ -71,6 +82,7 @@ public static class LeanTools
 
     private static string? OptStr(JsonObject a, string name) => a[name] is JsonValue v && v.TryGetValue(out string? s) && s.Length > 0 ? s : null;
 
+    /// <summary>A required integer argument; a number written as a string is accepted too, since some clients send them so.</summary>
     private static int Int(JsonObject a, string name)
     {
         JsonNode? n = a[name] ?? throw new ToolException($"missing required argument '{name}'");
@@ -87,6 +99,7 @@ public static class LeanTools
 
     private static int? OptInt(JsonObject a, string name) => a.ContainsKey(name) ? Int(a, name) : null;
 
+    /// <summary>The resolved <c>path</c> argument; it must exist unless the call passes <c>content</c> to check instead.</summary>
     private static string LeanFile(Workbench bench, JsonObject a)
     {
         string path = bench.Resolve(Str(a, "path"));
@@ -99,6 +112,15 @@ public static class LeanTools
 
     // ---- the tools ----
 
+    /// <summary>
+    /// Every tool, in the order clients list them. Arguments and results use 1-based lines and columns. Some tools have
+    /// side effects: <c>build</c> runs <c>lake build</c> and <c>profile</c> runs Lean's profiler; <c>suggestions</c>
+    /// (with <c>apply</c>), <c>prove</c> and <c>extract_lemma</c> can rewrite the file on disk; <c>run_lean</c> writes a
+    /// scratch file under the project's <c>.lake/leanstudio</c>; <c>export_walkthrough</c> writes an HTML file;
+    /// <c>search_mathlib</c> queries leansearch.net over the network; the <c>studio_</c> tools talk to a running Lean
+    /// Studio window.
+    /// </summary>
+    /// <param name="bench">The workbench the tools run Lean through.</param>
     public static IReadOnlyList<McpTool> Tools(Workbench bench) =>
     [
         new("project_info",
@@ -688,12 +710,20 @@ public static class LeanTools
         _ => "hint",
     };
 
+    /// <summary>
+    /// One diagnostic as <c>File.lean:line:column: severity: message</c>, with the file name only, a 1-based position, and
+    /// continuation lines of the message indented.
+    /// </summary>
     public static string FormatDiagnostic(string path, Diagnostic d) =>
         $"{Path.GetFileName(path)}:{d.Range.Start.Line + 1}:{d.Range.Start.Character + 1}: {Severity(d.Severity)}: {d.Message.Trim().Replace("\n", "\n    ", StringComparison.Ordinal)}";
 
     private static string FormatDiagnostics(FileReport r, string? label = null) =>
         string.Join('\n', r.Diagnostics.OrderBy(d => d.Range.Start).Select(d => FormatDiagnostic(label ?? r.Path, d)));
 
+    /// <summary>
+    /// A file's check result for a model to read: a verdict line (error and warning counts, and whether something still
+    /// uses <c>sorry</c>), then every diagnostic in order of position.
+    /// </summary>
     public static string FormatReport(FileReport r)
     {
         string verdict = r.Errors > 0 ? $"{r.Errors} error{(r.Errors == 1 ? "" : "s")}"
@@ -703,6 +733,10 @@ public static class LeanTools
         return r.Diagnostics.Count == 0 ? head + ". Lean accepts the file." : head + "\n\n" + FormatDiagnostics(r);
     }
 
+    /// <summary>
+    /// Goals as text, with each hypothesis marked <c>+</c> when the tactic adds it and <c>-</c> when it removes it, and
+    /// named cases marked new or closed; <c>no goals</c> when there are none.
+    /// </summary>
     public static string FormatGoals(InteractiveGoals goals)
     {
         if (goals.Goals.Count == 0)
@@ -737,6 +771,10 @@ public static class LeanTools
 
     private static string Indent(string s, string by = "  ") => by + s.Replace("\n", "\n" + by, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Tenet's verdicts as text: the totals, then each rejected declaration with its message, each that rests on
+    /// <c>sorry</c> or a project axiom, and the names of up to 100 verified ones.
+    /// </summary>
     public static string FormatVerification(VerificationReport r)
     {
         var sb = new StringBuilder();
@@ -761,6 +799,7 @@ public static class LeanTools
         return sb.ToString();
     }
 
+    /// <summary>The editor context Lean Studio reported (the <c>context</c> bridge request) as text.</summary>
     private static string FormatContext(JsonObject r)
     {
         if (r["file"] is null)

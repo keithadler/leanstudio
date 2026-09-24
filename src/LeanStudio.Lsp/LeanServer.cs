@@ -6,16 +6,25 @@ using System.Text.Json.Nodes;
 namespace LeanStudio.Lsp;
 
 /// <summary>How to start a Lean language server: the command, its arguments, and the directory it runs in.</summary>
+/// <param name="FileName">The executable, such as <c>lake</c> or <c>lean</c>, or a full path to one.</param>
+/// <param name="Arguments">The arguments, such as <c>serve</c> or <c>--server</c>; each is passed as it is, without shell quoting.</param>
+/// <param name="WorkingDirectory">The directory to run in, normally the project root; also sent to the server as its <c>rootUri</c>.</param>
 public sealed record LeanServerCommand(string FileName, IReadOnlyList<string> Arguments, string WorkingDirectory)
 {
+    /// <summary>The command line, for messages; arguments are joined with spaces and not quoted.</summary>
     public override string ToString() => FileName + " " + string.Join(' ', Arguments);
 }
 
+/// <summary>Where a <see cref="LeanServer"/> is in its life.</summary>
 public enum LeanServerState
 {
+    /// <summary>Not started yet, or shut down by <see cref="LeanServer.DisposeAsync"/>.</summary>
     Stopped,
+    /// <summary>The process is starting and the LSP handshake is under way.</summary>
     Starting,
+    /// <summary>Initialized and answering requests.</summary>
     Running,
+    /// <summary>The process could not be started, or exited without being asked to.</summary>
     Crashed,
 }
 
@@ -44,21 +53,46 @@ public sealed class LeanServer : IAsyncDisposable
     private Timer? _keepAlive;
     private bool _disposed;
 
+    /// <summary>Prepare a server. Nothing runs until <see cref="StartAsync"/>.</summary>
+    /// <param name="command">How to start the server process.</param>
     public LeanServer(LeanServerCommand command) => _command = command;
 
+    /// <summary>How the server is started.</summary>
     public LeanServerCommand Command => _command;
+    /// <summary>Where the server is in its life; <see cref="StateChanged"/> reports each change.</summary>
     public LeanServerState State { get; private set; } = LeanServerState.Stopped;
+    /// <summary>The <c>capabilities</c> from the server's <c>initialize</c> response; undefined until started.</summary>
     public JsonElement ServerCapabilities { get; private set; }
+    /// <summary>The Lean version the server reported when it started, or null when it did not say (or has not started).</summary>
     public string? ServerVersion { get; private set; }
 
+    /// <summary>
+    /// <see cref="State"/> changed. Raised on whichever thread made the change (a crash is reported from the process's
+    /// exit handler), so handlers that touch UI must marshal.
+    /// </summary>
     public event Action<LeanServerState>? StateChanged;
+    /// <summary>
+    /// Lean published the diagnostics for a file (URI, and the full current list, which replaces any before). It publishes
+    /// several times while elaborating. Raised on the connection's read thread.
+    /// </summary>
     public event Action<string, IReadOnlyList<Diagnostic>>? DiagnosticsPublished;
+    /// <summary>
+    /// Lean reported which ranges of a file (URI) it has still to elaborate; an empty list means it is done. Raised on the
+    /// connection's read thread.
+    /// </summary>
     public event Action<string, IReadOnlyList<LeanFileProgressRange>>? FileProgress;
     /// <summary>A line of the server's stderr, or a message it logged.</summary>
     public event Action<string>? Log;
     /// <summary>The server asked the client to re-request semantic tokens and inlay hints: its view of the file moved on.</summary>
     public event Action? RefreshRequested;
 
+    /// <summary>
+    /// Start the server process and complete the LSP handshake. Does nothing if it is already running or starting.
+    /// Also starts a timer that keeps the RPC sessions alive every ten seconds. If the process dies during the
+    /// handshake, the connection's <see cref="IOException"/> propagates.
+    /// </summary>
+    /// <exception cref="System.ComponentModel.Win32Exception">The executable could not be run; <see cref="State"/> is then <see cref="LeanServerState.Crashed"/>.</exception>
+    /// <exception cref="InvalidOperationException">The process could not be started; <see cref="State"/> is then <see cref="LeanServerState.Crashed"/>.</exception>
     public async Task StartAsync(CancellationToken ct = default)
     {
         if (State is LeanServerState.Running or LeanServerState.Starting)
@@ -216,10 +250,17 @@ public sealed class LeanServer : IAsyncDisposable
 
     // ---- documents ----
 
+    /// <summary>The <c>file://</c> URI LSP uses for a path (made absolute against the current directory first).</summary>
     public static string UriOf(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
 
+    /// <summary>The local file path of a <c>file://</c> URI; the inverse of <see cref="UriOf"/>.</summary>
     public static string PathOf(string uri) => new Uri(uri).LocalPath;
 
+    /// <summary>
+    /// Open a document in the server (<c>didOpen</c>) with its text, as version 1. Lean starts elaborating it at once;
+    /// diagnostics follow through <see cref="DiagnosticsPublished"/>.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The server has not been started.</exception>
     public Task OpenAsync(string uri, string text)
     {
         _versions[uri] = 1;
@@ -248,6 +289,7 @@ public sealed class LeanServer : IAsyncDisposable
         });
     }
 
+    /// <summary>Tell the server a document was saved (<c>didSave</c>), with the saved text. It does not write the file.</summary>
     public Task SaveAsync(string uri, string text) =>
         Rpc.NotifyAsync("textDocument/didSave", new JsonObject
         {
@@ -255,6 +297,7 @@ public sealed class LeanServer : IAsyncDisposable
             ["text"] = text,
         });
 
+    /// <summary>Close a document in the server (<c>didClose</c>) and forget its version, diagnostics and RPC session.</summary>
     public Task CloseAsync(string uri)
     {
         _versions.TryRemove(uri, out _);
@@ -274,12 +317,13 @@ public sealed class LeanServer : IAsyncDisposable
             ["textDocument"] = new JsonObject { ["uri"] = uri, ["version"] = _versions.GetValueOrDefault(uri, 1) },
         });
 
+    /// <summary>Whether the document has been opened with <see cref="OpenAsync"/> and not closed since.</summary>
     public bool IsOpen(string uri) => _versions.ContainsKey(uri);
 
-    /// <summary>The version of the text Lean was last sent for a file.</summary>
+    /// <summary>The version of the text Lean was last sent for a file; 0 when it is not open.</summary>
     public int VersionOf(string uri) => _versions.GetValueOrDefault(uri);
 
-    /// <summary>The newest diagnostics Lean published for a file.</summary>
+    /// <summary>The newest diagnostics Lean published for a file; empty when there are none yet or it is not open.</summary>
     public IReadOnlyList<Diagnostic> DiagnosticsOf(string uri) =>
         _diagnostics.TryGetValue(uri, out var d) ? d.Diagnostics : [];
 
@@ -288,6 +332,10 @@ public sealed class LeanServer : IAsyncDisposable
     /// that text have arrived. What a caller that edits and then asks "did it work?" needs: an answer about the
     /// text it sent, not the one before.
     /// </summary>
+    /// <remarks>
+    /// Waits indefinitely for elaboration (use <paramref name="ct"/> to bound it), then up to about four more seconds
+    /// for the diagnostics to arrive and settle.
+    /// </remarks>
     public async Task WaitForElaborationAsync(string uri, CancellationToken ct = default)
     {
         int version = VersionOf(uri);
@@ -345,6 +393,10 @@ public sealed class LeanServer : IAsyncDisposable
 
     // ---- queries ----
 
+    /// <summary>The tactic goals at a position as plain text (<c>$/lean/plainGoal</c>); null when there is no tactic proof there.</summary>
+    /// <param name="uri">The document, which must be open.</param>
+    /// <param name="pos">The 0-based position of the caret.</param>
+    /// <param name="ct">Cancels the request.</param>
     public async Task<PlainGoal?> PlainGoalAsync(string uri, Position pos, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("$/lean/plainGoal", At(uri, pos), ct).ConfigureAwait(false);
@@ -357,12 +409,14 @@ public sealed class LeanServer : IAsyncDisposable
             r.TryGetProperty("goals", out JsonElement goals) ? goals.EnumerateArray().Select(g => g.GetString() ?? "").ToList() : []);
     }
 
+    /// <summary>The expected type at a position in a term (<c>$/lean/plainTermGoal</c>); null when there is none.</summary>
     public async Task<PlainTermGoal?> PlainTermGoalAsync(string uri, Position pos, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("$/lean/plainTermGoal", At(uri, pos), ct).ConfigureAwait(false);
         return r.As<PlainTermGoal>();
     }
 
+    /// <summary>The hover at a 0-based position: usually the type and docstring of the name there; null when there is none.</summary>
     public async Task<Hover?> HoverAsync(string uri, Position pos, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("textDocument/hover", At(uri, pos), ct).ConfigureAwait(false);
@@ -381,6 +435,7 @@ public sealed class LeanServer : IAsyncDisposable
         return new Hover(text, r.TryGetProperty("range", out JsonElement range) ? range.As<Range>() : null);
     }
 
+    /// <summary>Where the name at a 0-based position is defined; empty when Lean does not know. Links are reduced to their target's name range.</summary>
     public async Task<IReadOnlyList<Location>> DefinitionAsync(string uri, Position pos, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("textDocument/definition", At(uri, pos), ct).ConfigureAwait(false);
@@ -406,6 +461,7 @@ public sealed class LeanServer : IAsyncDisposable
         return list;
     }
 
+    /// <summary>The completions at a 0-based position, in the server's order; empty when there are none.</summary>
     public async Task<IReadOnlyList<CompletionItem>> CompletionAsync(string uri, Position pos, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("textDocument/completion", At(uri, pos), ct).ConfigureAwait(false);
@@ -434,6 +490,7 @@ public sealed class LeanServer : IAsyncDisposable
         return list;
     }
 
+    /// <summary>The outline of a document: its declarations and sections, nested.</summary>
     public async Task<IReadOnlyList<DocumentSymbol>> DocumentSymbolsAsync(string uri, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("textDocument/documentSymbol", new JsonObject
@@ -451,6 +508,14 @@ public sealed class LeanServer : IAsyncDisposable
         e.TryGetProperty("detail", out JsonElement d) ? d.GetString() : null,
         e.TryGetProperty("children", out JsonElement c) && c.ValueKind == JsonValueKind.Array ? c.EnumerateArray().Select(ParseSymbol).ToList() : []);
 
+    /// <summary>
+    /// The code actions for a range, such as Lean's "Try this" suggestions. Some come without their edit; fill it in with
+    /// <see cref="ResolveAsync"/>.
+    /// </summary>
+    /// <param name="uri">The document.</param>
+    /// <param name="range">The range, usually the caret or selection.</param>
+    /// <param name="diagnostics">The diagnostics at that range, sent as the request's context.</param>
+    /// <param name="ct">Cancels the request.</param>
     public async Task<IReadOnlyList<CodeAction>> CodeActionsAsync(string uri, Range range, IReadOnlyList<Diagnostic> diagnostics, CancellationToken ct = default)
     {
         var p = new JsonObject
@@ -492,6 +557,11 @@ public sealed class LeanServer : IAsyncDisposable
         return action with { Edit = r.ValueKind == JsonValueKind.Object && r.TryGetProperty("edit", out JsonElement e) ? WorkspaceEdit.Parse(e) : WorkspaceEdit.Empty };
     }
 
+    /// <summary>Every use of the name at a 0-based position, as far as Lean's reference index for the project goes.</summary>
+    /// <param name="uri">The document.</param>
+    /// <param name="pos">The position of the name.</param>
+    /// <param name="includeDeclaration">Whether the declaration itself is included.</param>
+    /// <param name="ct">Cancels the request.</param>
     public async Task<IReadOnlyList<Location>> ReferencesAsync(string uri, Position pos, bool includeDeclaration = true, CancellationToken ct = default)
     {
         JsonObject p = At(uri, pos);
@@ -511,6 +581,7 @@ public sealed class LeanServer : IAsyncDisposable
         return r.TryGetProperty("range", out JsonElement inner) ? inner.As<Range>() : r.As<Range>();
     }
 
+    /// <summary>The edits that rename the name at a 0-based position everywhere. Nothing is applied; the caller applies the edit.</summary>
     public async Task<WorkspaceEdit> RenameAsync(string uri, Position pos, string newName, CancellationToken ct = default)
     {
         JsonObject p = At(uri, pos);
@@ -519,6 +590,7 @@ public sealed class LeanServer : IAsyncDisposable
         return WorkspaceEdit.Parse(r);
     }
 
+    /// <summary>Declarations across the workspace whose names match <paramref name="query"/> (fuzzily, as the server matches).</summary>
     public async Task<IReadOnlyList<SymbolLocation>> WorkspaceSymbolsAsync(string query, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("workspace/symbol", new JsonObject { ["query"] = query }, ct).ConfigureAwait(false);
@@ -536,6 +608,7 @@ public sealed class LeanServer : IAsyncDisposable
             .ToList();
     }
 
+    /// <summary>The spans of lines the editor can fold in a document.</summary>
     public async Task<IReadOnlyList<FoldingRange>> FoldingRangesAsync(string uri, CancellationToken ct = default)
     {
         JsonElement r = await Rpc.RequestAsync("textDocument/foldingRange", new JsonObject
@@ -570,6 +643,16 @@ public sealed class LeanServer : IAsyncDisposable
     }
 
     /// <summary>Call a server-side RPC method (an <c>@[server_rpc_method]</c>) at a position in a file.</summary>
+    /// <remarks>
+    /// Connects an RPC session for the file on first use and reuses it. If the server has forgotten the session
+    /// (<see cref="RpcNeedsReconnect"/>), it reconnects and tries once more.
+    /// </remarks>
+    /// <param name="uri">The document, which must be open.</param>
+    /// <param name="pos">The 0-based position the call is made at.</param>
+    /// <param name="method">The method's full name, such as <c>Lean.Widget.getInteractiveGoals</c>.</param>
+    /// <param name="parameters">The method's parameters (copied), or null.</param>
+    /// <param name="ct">Cancels the request.</param>
+    /// <exception cref="JsonRpcException">The server answered with an error.</exception>
     public async Task<JsonElement> RpcCallAsync(string uri, Position pos, string method, JsonNode? parameters, CancellationToken ct = default)
     {
         for (int attempt = 0; ; attempt++)
@@ -633,6 +716,10 @@ public sealed class LeanServer : IAsyncDisposable
         return info;
     }
 
+    /// <summary>
+    /// The expected type at a position in a term, as an interactive goal; <see cref="InteractiveGoals.None"/> when there
+    /// is none. Its subterm references are released before it returns.
+    /// </summary>
     public async Task<InteractiveGoals> InteractiveTermGoalAsync(string uri, Position pos, CancellationToken ct = default)
     {
         var p = At(uri, pos);
@@ -648,6 +735,12 @@ public sealed class LeanServer : IAsyncDisposable
         return goals;
     }
 
+    /// <summary>
+    /// Hand subterm references back to the server so it can free what they point to. Does nothing when there are none
+    /// or the file has no connected RPC session; errors sending the notification are ignored.
+    /// </summary>
+    /// <param name="uri">The document the references came from.</param>
+    /// <param name="refs">The references (<see cref="TaggedSpan.Reference"/> values).</param>
     public async Task ReleaseAsync(string uri, List<string> refs)
     {
         if (refs.Count == 0 || !_sessions.TryGetValue(uri, out Task<string>? s) || !s.IsCompletedSuccessfully)
@@ -687,6 +780,11 @@ public sealed class LeanServer : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Shut the server down: ask it politely (<c>shutdown</c>, then <c>exit</c>, waiting up to two seconds), then kill the
+    /// process tree if it has not exited within another second and a half. The state becomes <see cref="LeanServerState.Stopped"/>.
+    /// Calling it again does nothing.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         if (_disposed)

@@ -7,9 +7,17 @@ using System.Text.Json.Nodes;
 namespace LeanStudio.Lsp;
 
 /// <summary>An error the other side returned in place of a result.</summary>
+/// <param name="code">The JSON-RPC error code.</param>
+/// <param name="message">The error message the other side sent.</param>
+/// <param name="data">The error's <c>data</c>, or null when it had none.</param>
 public sealed class JsonRpcException(int code, string message, JsonElement? data = null) : Exception(message)
 {
+    /// <summary>
+    /// The JSON-RPC error code, such as <see cref="LeanServer.RpcNeedsReconnect"/> or
+    /// <see cref="LeanServer.ContentModified"/>; 0 when the error had none.
+    /// </summary>
     public int Code { get; } = code;
+    /// <summary>The error's <c>data</c> member, or null when it had none.</summary>
     public JsonElement? ErrorData { get; } = data;
 }
 
@@ -29,23 +37,43 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private long _nextId;
     private Task? _readLoop;
 
+    /// <summary>Set up a connection. Nothing is read until <see cref="Start"/>.</summary>
+    /// <param name="input">The stream messages arrive on (a server's stdout).</param>
+    /// <param name="output">The stream messages are written to (a server's stdin).</param>
     public JsonRpcConnection(Stream input, Stream output)
     {
         _input = input;
         _output = output;
     }
 
-    /// <summary>A notification arrived: method and params (params may be undefined).</summary>
+    /// <summary>A notification arrived: method and params (params may be undefined). Raised on the read loop's thread.</summary>
     public event Action<string, JsonElement>? NotificationReceived;
 
-    /// <summary>The input closed or could not be read; every pending request has been failed.</summary>
+    /// <summary>
+    /// The input closed or could not be read; every pending request has been failed. The exception is null for a
+    /// clean end of stream or a cancellation.
+    /// </summary>
     public event Action<Exception?>? Closed;
 
-    /// <summary>Answers requests from the other side. Return null for a null result.</summary>
+    /// <summary>
+    /// Answers requests from the other side. Return null for a null result; an exception becomes an error response
+    /// (code -32603). Called on a thread-pool thread, possibly for several requests at once.
+    /// </summary>
     public Func<string, JsonElement, Task<JsonNode?>>? RequestHandler { get; set; }
 
+    /// <summary>Start reading messages in the background. Calling it again does nothing.</summary>
     public void Start() => _readLoop ??= Task.Run(ReadLoopAsync);
 
+    /// <summary>Send a request and wait for its result.</summary>
+    /// <param name="method">The method name.</param>
+    /// <param name="parameters">
+    /// The params: a <see cref="JsonNode"/> or <see cref="JsonElement"/> is sent as it is (copied), anything else is
+    /// serialized with camelCase names; null sends <c>"params": null</c>.
+    /// </param>
+    /// <param name="ct">Cancelling fails the request with <see cref="OperationCanceledException"/> and sends <c>$/cancelRequest</c>.</param>
+    /// <returns>The result, or an undefined element when the response had none. Thread-safe.</returns>
+    /// <exception cref="JsonRpcException">The other side answered with an error.</exception>
+    /// <exception cref="IOException">The connection closed before the answer came.</exception>
     public async Task<JsonElement> RequestAsync(string method, object? parameters, CancellationToken ct = default)
     {
         long id = Interlocked.Increment(ref _nextId);
@@ -78,6 +106,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         return await tcs.Task.ConfigureAwait(false);
     }
 
+    /// <summary>Send a notification, which has no answer. Parameters are converted as for <see cref="RequestAsync"/>.</summary>
+    /// <param name="method">The method name.</param>
+    /// <param name="parameters">The params, or null for none.</param>
+    /// <returns>A task that completes once the message has been written and flushed.</returns>
     public Task NotifyAsync(string method, object? parameters)
     {
         var msg = new JsonObject
@@ -89,6 +121,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         return WriteAsync(msg);
     }
 
+    /// <summary>A value as JSON: nodes are deep-copied, elements re-parsed, anything else serialized with the LSP options.</summary>
     internal static JsonNode? ToNode(object? value) => value switch
     {
         null => null,
@@ -277,6 +310,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         }
     }
 
+    /// <summary>Stop the read loop (waiting up to two seconds for it) and release the connection's resources. The streams are not closed.</summary>
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync().ConfigureAwait(false);
