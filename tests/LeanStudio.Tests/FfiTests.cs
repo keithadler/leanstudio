@@ -135,6 +135,7 @@ public sealed class FfiTests
         Assert.SkipWhen(clangd is null, "clangd is not installed");
         string dir = Lean.Sample("Demo");
         var project = new Core.Projects.LeanProject(dir);
+        var filesBefore = Directory.EnumerateFileSystemEntries(dir).Order().ToList();
         await using var server = new CLanguageServer(clangd!, dir, Ffi.CompileFlags(project));
         await server.StartAsync(TestContext.Current.CancellationToken);
         string uri = LeanServer.UriOf(Path.Combine(dir, "native.c"));
@@ -146,5 +147,14 @@ public sealed class FfiTests
         Assert.Contains("undefined_thing", d.Message, StringComparison.Ordinal); // and nothing about lean.h: the header was found
         Hover? h = await server.HoverAsync(uri, new Position(3, 12), TestContext.Current.CancellationToken);
         Assert.Contains("lean_box", h?.Contents ?? "", StringComparison.Ordinal);
+
+        // Completion and go to definition, into Lean's own header.
+        IReadOnlyList<CompletionItem> items = await server.CompletionAsync(uri, new Position(3, 14), TestContext.Current.CancellationToken);
+        Assert.Contains(items, i => i.Label.Contains("lean_box", StringComparison.Ordinal));
+        IReadOnlyList<Location> def = await server.DefinitionAsync(uri, new Position(3, 12), TestContext.Current.CancellationToken);
+        Assert.Contains(def, l => l.Uri.EndsWith("/lean/lean.h", StringComparison.Ordinal));
+
+        // Nothing was written into the project (no compile_commands.json, no .clangd).
+        Assert.Equal(filesBefore, Directory.EnumerateFileSystemEntries(dir).Order().ToList());
     }
 }

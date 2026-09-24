@@ -155,4 +155,61 @@ public sealed class GitTests
             Lean.DeleteTree(dir);
         }
     }
+
+    [Fact]
+    public async Task PublishesToGitHubAndOpensAPullRequestWithGh()
+    {
+        // A stand-in for gh on the PATH, which does what the real one does for these commands: `repo create --push`
+        // adds the remote and pushes; `pr create` answers with the pull request's URL.
+        Assert.SkipWhen(OperatingSystem.IsWindows() || !GitRepository.IsGitInstalled, "the stand-in for gh is a shell script");
+        string dir = Directory.CreateTempSubdirectory("leanstudio-gh").FullName;
+        var ct = TestContext.Current.CancellationToken;
+        string oldPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+        try
+        {
+            string bin = Path.Combine(dir, "bin"), log = Path.Combine(dir, "gh.log"), remote = Path.Combine(dir, "remote.git");
+            Directory.CreateDirectory(bin);
+            File.WriteAllText(Path.Combine(bin, "gh"), $$"""
+                #!/bin/sh
+                echo "$@" >> '{{log}}'
+                case "$1 $2" in
+                  "repo create")
+                    git init -q --bare -b main '{{remote}}'
+                    while [ $# -gt 0 ]; do [ "$1" = "--source" ] && src="$2"; shift; done
+                    git -C "$src" remote add origin '{{remote}}' && git -C "$src" push -q -u origin HEAD ;;
+                  "pr create") echo "https://github.com/me/proofs/pull/1" ;;
+                esac
+                """);
+            if (!OperatingSystem.IsWindows())
+            {
+                File.SetUnixFileMode(Path.Combine(bin, "gh"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            }
+            Environment.SetEnvironmentVariable("PATH", bin + Path.PathSeparator + oldPath);
+            Assert.Equal(Path.Combine(bin, "gh"), GitHub.Gh);
+
+            string work = Path.Combine(dir, "proofs");
+            Directory.CreateDirectory(work);
+            await GitRepository.InitAsync(work, ct);
+            GitRepository repo = GitRepository.Find(work)!;
+            await repo.RunAsync(["config", "user.email", "test@example.com"], ct: ct);
+            await repo.RunAsync(["config", "user.name", "Test"], ct: ct);
+            await repo.RunAsync(["config", "commit.gpgsign", "false"], ct: ct);
+            await File.WriteAllTextAsync(Path.Combine(work, "A.lean"), "def a := 1\n", ct);
+            await repo.CommitAsync("first", ct);
+
+            var published = await GitHub.PublishAsync(repo, "proofs", isPrivate: true, description: null, ct: ct);
+            Assert.True(published.Success, published.Output);
+            Assert.Contains($"repo create proofs --private --source {work} --remote origin --push", File.ReadAllText(log), StringComparison.Ordinal);
+            Assert.Equal("origin/main", (await repo.StatusAsync(ct)).Upstream);
+
+            var pr = await GitHub.CreatePullRequestAsync(repo, "Prove it", null, draft: false, ct: ct);
+            Assert.Contains("https://github.com/me/proofs/pull/1", pr.Output, StringComparison.Ordinal);
+            Assert.Contains("pr create --title Prove it --body", File.ReadAllText(log), StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", oldPath);
+            Lean.DeleteTree(dir);
+        }
+    }
 }

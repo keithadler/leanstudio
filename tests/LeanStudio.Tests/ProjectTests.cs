@@ -72,4 +72,25 @@ public sealed class ProjectTests
             Lean.DeleteTree(parent);
         }
     }
+
+    [Fact]
+    public async Task InstallsAndSetsTheDefaultThroughElan()
+    {
+        // Without downloading anything or changing the machine: install a toolchain that is already installed, and
+        // make the default what it already is. Both go through elan as the Toolchains panel does.
+        Lean.RequireLean();
+        Assert.SkipWhen(!Elan.IsInstalled, "elan is not installed");
+        var ct = TestContext.Current.CancellationToken;
+        IReadOnlyList<Toolchain> before = await Elan.ListAsync(ct);
+        Assert.Contains(before, t => t.Name == Lean.Toolchain);
+        var install = await Elan.InstallAsync(Lean.Toolchain, ct: ct);
+        Assert.True(install.Success, install.Output);
+        Assert.Equal(before.Select(t => t.Name), (await Elan.ListAsync(ct)).Select(t => t.Name));
+
+        Toolchain? current = before.FirstOrDefault(t => t.IsDefault);
+        Assert.SkipWhen(current is null, "elan has no default here");
+        var set = await Elan.SetDefaultAsync(current.Name, ct: ct);
+        Assert.True(set.Success, set.Output);
+        Assert.Equal(current.Name, (await Elan.ListAsync(ct)).Single(t => t.IsDefault).Name);
+    }
 }

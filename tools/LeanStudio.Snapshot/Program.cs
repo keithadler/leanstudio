@@ -839,6 +839,29 @@ internal static class Scenario
             Check(await WaitFor(() => File.ReadAllText(nativeC).Contains("LEAN_EXPORT lean_obj_res proofs_twice(b_lean_obj_arg s, lean_obj_arg world)", StringComparison.Ordinal), 10),
                 "Write C Stub writes the function with the signature Lean expects");
             Check((await vm.CheckFfiNowAsync()).Count == 0, "and then every binding has its C function");
+
+            // New C Binding: a name and a type, and both sides are written.
+            int prompts = 0;
+            void AnswerBinding(Window w) => Dispatcher.UIThread.Post(async () =>
+            {
+                Button? ok = null;
+                await WaitFor(() => (ok = w.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault)) is not null, 10);
+                if (prompts++ == 0 && w.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is TextBox box)
+                {
+                    box.Text = "addU64 (a b : UInt64) : UInt64"; // the second prompt, the C name, keeps its suggestion
+                }
+                ok?.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            });
+            vm.ActiveDocument = nl;
+            nl.Reveal(nl.Document.LineCount - 1, 0);
+            DialogHooks.Opened += AnswerBinding;
+            await vm.NewFfiBindingCommand.ExecuteAsync(null);
+            DialogHooks.Opened -= AnswerBinding;
+            Check(nl.Document.Text.Contains("@[extern \"proofs_addu64\"]", StringComparison.Ordinal) && nl.Document.Text.Contains("opaque addU64 (a b : UInt64) : UInt64", StringComparison.Ordinal)
+                && File.ReadAllText(nativeC).Contains("proofs_addu64(uint64_t a, uint64_t b)", StringComparison.Ordinal),
+                "New C Binding writes the Lean declaration and its C function from a name and a type");
+            await nl.SaveAsync();
+            Check((await vm.CheckFfiNowAsync()).Count == 0, "and the two agree");
             foreach (DocumentViewModel d in vm.Documents.Where(d => d.Path == nativeC || d.Path == nativeLean).ToList())
             {
                 await d.SaveAsync();
@@ -1454,11 +1477,15 @@ internal static class Scenario
             // Move to the trash: the file goes, and so does its tab.
             if (!OperatingSystem.IsLinux() || LeanStudio.Core.Toolchains.Elan.FindExecutable("gio") is not null)
             {
-                string trashFile = Path.Combine(sourceDir, $"TrashMe{Environment.ProcessId}.lean");
-                await File.WriteAllTextAsync(trashFile, "-- a file to throw away\n");
-                DocumentViewModel? trash = await vm.OpenFileAsync(trashFile);
+                string trashName = $"TrashMe{Environment.ProcessId}";
+                string trashFile = Path.Combine(sourceDir, trashName + ".lean");
+                string rootFile = Path.Combine(repo, "samples", "Proofs", "Proofs.lean");
+                Check(await vm.CreateFileAsync(sourceDir, trashName) is null && File.ReadAllText(rootFile).Contains("import Proofs." + trashName, StringComparison.Ordinal),
+                    "(a new module joins the library root)");
+                DocumentViewModel? trash = vm.Documents.FirstOrDefault(d => d.Path == trashFile) ?? await vm.OpenFileAsync(trashFile);
                 string? problem = await vm.TrashAsync(trashFile);
                 Check(problem is null && !File.Exists(trashFile) && !vm.Documents.Contains(trash!), "Move to Trash takes the file away, and closes its tab" + (problem is null ? "" : ": " + problem));
+                Check(!File.ReadAllText(rootFile).Contains(trashName, StringComparison.Ordinal), "and a deleted module is taken out of the library root");
                 string inTrash = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".Trash", Path.GetFileName(trashFile));
                 if (OperatingSystem.IsMacOS() && File.Exists(inTrash))
                 {
@@ -1654,6 +1681,20 @@ internal static class Scenario
         vm.SidebarTab = MainViewModel.ToolchainsTab;
         await vm.Toolchains.RefreshAsync();
         Check(vm.Toolchains.Installed.Count > 0, "installed toolchains are listed");
+        {
+            // Use for Project pins the toolchain in lean-toolchain and restarts Lean on it.
+            var pinned = vm.Project!;
+            string pinFile = pinned.ToolchainPath, pinBefore = await File.ReadAllTextAsync(pinFile);
+            var otherToolchain = vm.Toolchains.Installed.FirstOrDefault(t => t.Name != pinned.Toolchain) ?? vm.Toolchains.Installed[0];
+            int? pinPid = vm.ServerProcessId;
+            vm.Toolchains.Selected = otherToolchain;
+            await vm.Toolchains.UseForProjectCommand.ExecuteAsync(null);
+            Check((await File.ReadAllTextAsync(pinFile)).Trim() == otherToolchain.Name && await WaitFor(() => vm.ServerProcessId is int p && p != pinPid, 60),
+                $"Use for Project pins {otherToolchain.Name} in lean-toolchain and restarts Lean");
+            await File.WriteAllTextAsync(pinFile, pinBefore);
+            await vm.RestartServerCommand.ExecuteAsync(null);
+            await WaitFor(() => vm.ServerStatus == "Lean: ready", 60);
+        }
         Snap(window, outDir, "05-toolchains");
 
         if (!OperatingSystem.IsWindows())
