@@ -1718,9 +1718,9 @@ internal static class Scenario
             Check(ed.MultiCursor.Cursors.Count == doubles, $"⌘⇧L puts a cursor on every occurrence ({ed.MultiCursor.Cursors.Count} of {doubles})");
             ed.MultiCursor.Clear();
 
-            // Copy Goals puts the goals on the clipboard as text.
+            // Copy Goals puts the goals on the clipboard as text: the ones at the cursor, once Lean has them.
             doc.Reveal(16, 14);
-            await WaitFor(() => vm.Info.HasGoals, 30);
+            await WaitFor(() => vm.Info.PlainGoals.Contains("⊢ p", StringComparison.Ordinal), 30);
             await vm.CopyGoalsAsync();
             string? copied = window.Clipboard is { } clip ? await Avalonia.Input.Platform.ClipboardExtensions.TryGetTextAsync(clip) : null;
             Check(copied?.Contains("⊢ p", StringComparison.Ordinal) == true, $"Copy Goals puts the goals on the clipboard ({copied?.Split('\n').LastOrDefault()})");
