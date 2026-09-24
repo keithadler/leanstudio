@@ -911,6 +911,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
         yield return ("Lean: Imports and Imported By", "", Cmd(_vm.ShowImportGraphCommand));
         yield return ("Lean: Count Heartbeats in File", "", Cmd(_vm.CountHeartbeatsCommand));
+        yield return ("Tenet: Check the Blueprint Against Lean", "", Cmd(_vm.CheckBlueprintCommand));
         yield return ("Lean: Update Mathlib (and see what broke)…", "", () => { OnUpdateMathlib(null, new RoutedEventArgs()); return Task.CompletedTask; });
         yield return ("Lean: Undo Last Dependency Update", "", Cmd(_vm.UndoDependencyUpdateCommand));
         yield return ("Lean: Instances of Class at Cursor…", "", InstancesOfClassAsync);

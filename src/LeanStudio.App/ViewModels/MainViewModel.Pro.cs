@@ -180,6 +180,44 @@ public sealed partial class MainViewModel
         await RestartServerAsync();
     }
 
+    // ---- the blueprint ----
+
+    /// <summary>
+    /// Check the project's blueprint (leanblueprint's <c>blueprint/src/*.tex</c>) against the last build and list
+    /// every node in the References panel, disagreements first: a <c>\leanok</c> over a sorry or a missing
+    /// declaration, then what is proved but not marked, what is ready to prove, and what isn't started. Click one
+    /// to go to it in the .tex file. Returns the checks.
+    /// </summary>
+    [RelayCommand]
+    public async Task<IReadOnlyList<BlueprintCheck>> CheckBlueprintAsync()
+    {
+        if (Project is not LeanProject p || Blueprint.SourceFolder(p.Root) is not string folder)
+        {
+            Log("Blueprint: this project has no blueprint folder (blueprint/src, as leanblueprint makes it).");
+            return [];
+        }
+        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        {
+            await ReopenTenetAsync();
+        }
+        if (_tenet is not { } ws || ws.OwnModules.Count == 0)
+        {
+            Log("Blueprint: build the project first (Lean ▸ Build Project): the blueprint is checked against what Lean built.");
+            return [];
+        }
+        IReadOnlyList<BlueprintCheck> checks = await Task.Run(() => Blueprint.Check(Blueprint.Read(folder), ws.BlueprintStatus));
+        static string Mark(BlueprintCheck c) => c.Disagrees ? "✗" : c.Verdict == "done" ? "✓" : c.Verdict.StartsWith("proved", StringComparison.Ordinal) || c.Verdict.StartsWith("done in", StringComparison.Ordinal) ? "✓?" : c.Verdict == "not started" ? "·" : "◐";
+        References.Reset(checks.OrderBy(c => c.Disagrees ? 0 : c.Verdict == "done" ? 3 : 1).ThenBy(c => c.Node.File, StringComparer.Ordinal).ThenBy(c => c.Node.Line)
+            .Select(c => new LocationItem(c.Node.File, c.Node.Line, 0,
+                $"{Mark(c)} {(c.Node.Label.Length > 0 ? c.Node.Label : c.Node.Kind)}{(c.Node.Title.Length > 0 ? " (" + c.Node.Title + ")" : "")}: {c.Verdict}")));
+        int done = checks.Count(c => c.Verdict == "done"), disagree = checks.Count(c => c.Disagrees);
+        ReferencesTitle = $"Blueprint: {done} of {checks.Count} done · {disagree} disagree{(disagree == 1 ? "s" : "")} with Lean";
+        BottomTab = ReferencesPanel;
+        Log($"Blueprint: {checks.Count} nodes, {done} done, {checks.Count(c => c.Verdict == "ready to prove")} ready to prove, "
+            + $"{checks.Count(c => c.Verdict == "not started")} not started, {disagree} where the blueprint says more than Lean does.");
+        return checks;
+    }
+
     // ---- heartbeats ----
 
     /// <summary>

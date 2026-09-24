@@ -702,6 +702,26 @@ public static class LeanTools
                 }
             }),
 
+        new("blueprint",
+            "Check the project's leanblueprint blueprint (blueprint/src/*.tex) against the last build, with Tenet: for each node, whether the declarations its \\lean{…} names exist and are proved, and where a \\leanok says more than Lean does. Run build first.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                ProjectSession s = bench.Session(OptStr(a, "project"));
+                if (Blueprint.SourceFolder(s.Project.Root) is not string folder)
+                {
+                    throw new ToolException("this project has no blueprint folder (blueprint/src)");
+                }
+                TenetWorkspace ws = s.Tenet();
+                IReadOnlyList<BlueprintCheck> checks = Blueprint.Check(Blueprint.Read(folder), ws.BlueprintStatus);
+                var sb = new StringBuilder($"{checks.Count(c => c.Verdict == "done")} of {checks.Count} done; {checks.Count(c => c.Disagrees)} disagree with Lean.\n");
+                foreach (BlueprintCheck c in checks.OrderBy(c => c.Disagrees ? 0 : 1))
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{(c.Disagrees ? "DISAGREES " : "")}{c.Node.Label} ({Path.GetFileName(c.Node.File)}:{c.Node.Line + 1}): {c.Verdict}\n");
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
+            }),
+
         new("export_walkthrough",
             "Write a proof walkthrough of a Lean file as one self-contained web page: every tactic proof, step by step, with the goals before and after each tactic and what the tactic does in plain words. Also returns a link that opens the file in the Lean 4 web editor.",
             Schema(("path", "string", "The .lean file.", true),

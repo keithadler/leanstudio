@@ -515,6 +515,20 @@ public sealed class TenetWorkspace : IDisposable
         };
     }
 
+    /// <summary>
+    /// What the build says about a declaration a blueprint names: missing, resting on sorry or a project axiom, or
+    /// proved. A name the project declares twice is read in the first module that does.
+    /// </summary>
+    public Workflow.LeanStatus BlueprintStatus(string name)
+    {
+        string? module = ModulesDeclaring(name).FirstOrDefault();
+        if (Details(name, module) is null)
+        {
+            return Workflow.LeanStatus.Missing;
+        }
+        return AxiomsOf(name, module).All(a => StandardAxioms.Contains(TenetName.Parse(a))) ? Workflow.LeanStatus.Proved : Workflow.LeanStatus.Sorry;
+    }
+
     /// <summary>The project's modules that declare <paramref name="name"/>, when more than one does; empty otherwise.</summary>
     public IReadOnlyList<string> ModulesDeclaring(string name)
     {

@@ -31,7 +31,8 @@
 - *Lean ▸ Lean's Processes* lists Lean's file workers, biggest first, with their memory and time running. Pick one to stop it (the file restarts if it's open).
 - *Lean ▸ Count Heartbeats* measures each declaration in `maxHeartbeats`' units, heaviest first, with its share of the default limit, and warns about any past half of it. It works in core Lean, without Mathlib's `#count_heartbeats`.
 - *Lean ▸ Update Mathlib (and see what broke)* updates Mathlib and moves the project to Mathlib's toolchain. It then fetches the cache, builds, and reports the commits before and after and the errors by file. It also offers to rename every use of a name the update deprecated, to what Lean says to use instead. *Undo Last Dependency Update* puts lake-manifest.json and lean-toolchain back.
-- MCP tools `heartbeats` and `instances`.
+- *Tenet ▸ Check the Blueprint Against Lean* reads a leanblueprint blueprint (`blueprint/src/*.tex`) and checks each node against the last build: done, proved but not marked `\leanok`, ready to prove, not started. Disagreements come first: a `\leanok` over a declaration that rests on sorry, or a `\lean{…}` that names a declaration Lean doesn't have. Click one to go to it in the .tex file.
+- MCP tools `heartbeats`, `instances` and `blueprint`.
 - Preferences: arguments for Lean's server (such as `-DmaxHeartbeats=400000`), and a log of every message with it, for troubleshooting.
 
 **Progress you can read**:

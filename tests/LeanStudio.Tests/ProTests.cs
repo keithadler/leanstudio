@@ -603,4 +603,30 @@ public sealed class ProTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public async Task ChecksABlueprintAgainstTheBuild()
+    {
+        Lean.RequireLean();
+        LeanProject project = await BuiltProjectAsync("Blue", ("Blue.lean", "import Blue.Basic\n"),
+            ("Blue/Basic.lean", "theorem Blue.good : 1 + 1 = 2 := rfl\ntheorem Blue.pending : 2 + 2 = 4 := by\n  sorry\n"),
+            ("blueprint/src/content.tex",
+                "\\begin{lemma}\\label{lem:good}\\lean{Blue.good}\\leanok\\end{lemma}\n\\begin{proof}\\leanok\\end{proof}\n"
+                + "\\begin{lemma}\\label{lem:pending}\\lean{Blue.pending}\\leanok\\end{lemma}\n\\begin{proof}\\leanok\\end{proof}\n"
+                + "\\begin{lemma}\\label{lem:gone}\\lean{Blue.gone}\\end{lemma}\n"));
+        try
+        {
+            using var ws = Core.Verification.TenetWorkspace.Open(project);
+            Assert.Equal(LeanStatus.Proved, ws.BlueprintStatus("Blue.good"));
+            Assert.Equal(LeanStatus.Sorry, ws.BlueprintStatus("Blue.pending"));
+            Assert.Equal(LeanStatus.Missing, ws.BlueprintStatus("Blue.gone"));
+            IReadOnlyList<BlueprintCheck> checks = Blueprint.Check(Blueprint.Read(Blueprint.SourceFolder(project.Root)!), ws.BlueprintStatus);
+            Assert.Equal([("lem:good", false), ("lem:pending", true), ("lem:gone", false)], checks.Select(c => (c.Node.Label, c.Disagrees)));
+            Assert.Equal("proof marked \\leanok, but Blue.pending rests on sorry", checks[1].Verdict);
+        }
+        finally
+        {
+            Directory.Delete(project.Root, true);
+        }
+    }
 }
