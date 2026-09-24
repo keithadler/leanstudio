@@ -254,10 +254,16 @@ public sealed partial class MainViewModel
             {
                 return;
             }
+            // Where the declaration is, to offer keeping the old name once it is renamed.
+            Location? definition = (await s.DefinitionAsync(d.Uri, pos)).FirstOrDefault();
             WorkspaceEdit edit = await s.RenameAsync(d.Uri, pos, name.Trim());
             int count = edit.Changes.Values.Sum(e => e.Count);
             await ApplyWorkspaceEditAsync(edit);
             Log($"Renamed {current} to {name.Trim()}: {count} place{(count == 1 ? "" : "s")} in {edit.Changes.Count} file{(edit.Changes.Count == 1 ? "" : "s")}. Save to keep it.");
+            if (definition is not null)
+            {
+                await OfferDeprecatedAliasAsync(definition, current, name.Trim());
+            }
         }
         catch (Exception e) when (e is JsonRpcException or IOException)
         {

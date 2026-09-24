@@ -670,6 +670,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var items = Documents.SelectMany(d => d.Diagnostics.Where(x => x.Severity <= DiagnosticSeverity.Warning).Select(x => new ProblemItem(d, x)))
             .Concat(BuildProblems())
             .Concat(FfiProblems())
+            .Concat(ToolProblems())
             .OrderBy(p => p.Severity).ThenBy(p => p.File, StringComparer.Ordinal).ThenBy(p => p.Diagnostic.Range.Start)
             .ToList();
         Problems.Reset(items);
@@ -763,17 +764,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             return;
         }
-        if (!File.Exists(path))
+        bool created = !File.Exists(path);
+        if (created)
         {
             await File.WriteAllTextAsync(path, "");
         }
         RefreshFiles();
         await OpenFileAsync(path);
+        if (created)
+        {
+            await AddToLibraryRootAsync(path);
+        }
     }
 
     private void OnDocumentEdited(DocumentViewModel doc)
     {
         ScheduleAutoSave(doc);
+        ForgetToolProblems(doc.Path);
         if (doc.IsC)
         {
             CEdited(doc);

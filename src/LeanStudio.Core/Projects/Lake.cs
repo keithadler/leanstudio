@@ -36,6 +36,13 @@ public static class Lake
         ProcessRunner.RunAsync(Exe, ["exe", "cache", "get"], project.Root, onLine, ct: ct);
 
     /// <summary>
+    /// In the Mathlib repository: fetch the cache only for <paramref name="files"/> and what they import
+    /// (<c>lake exe cache get</c> with their paths relative to the root).
+    /// </summary>
+    public static Task<ProcessResult> GetCacheForAsync(LeanProject project, IEnumerable<string> files, Action<string>? onLine = null, CancellationToken ct = default) =>
+        ProcessRunner.RunAsync(Exe, ["exe", "cache", "get", .. files.Select(f => Path.GetRelativePath(project.Root, f))], project.Root, onLine, ct: ct);
+
+    /// <summary>
     /// Run <c>lake update</c>, which moves dependencies to the newest versions the lakefile allows and rewrites
     /// <c>lake-manifest.json</c>.
     /// </summary>

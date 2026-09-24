@@ -252,6 +252,13 @@ public sealed class TenetWorkspace : IDisposable
                         .Replace(Path.DirectorySeparatorChar, '.').Replace('/', '.')), f));
                 }
             }
+            // A module whose source was deleted leaves its build behind; it is no longer part of the project. (Only
+            // when sources sit where their module names say, under the root: otherwise none would be found.)
+            string SourceOf(string olean) => Path.Combine(project.Root, Path.GetRelativePath(project.BuildLibDirectory, olean)[..^".olean".Length] + ".lean");
+            if (own.Any(o => File.Exists(SourceOf(o.Path))))
+            {
+                own.RemoveAll(o => !File.Exists(SourceOf(o.Path)));
+            }
         }
 
         string? toolchainLib = project.Toolchain is string tc ? Path.Combine(Elan.ToolchainDirectory(tc), "lib", "lean") : null;

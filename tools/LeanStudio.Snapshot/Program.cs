@@ -419,6 +419,7 @@ internal static class Scenario
         Check(await WaitFor(() => doc.CaretLine == 19, 5), "F8 moves to the next problem (the sorry)");
 
         string scratchA = Path.Combine(proofsDir, "Scratch1.lean"), scratchB = Path.Combine(proofsDir, "Scratch2.lean"), scratchDir = Path.Combine(proofsDir, "ScratchDir");
+        string proofsRootFile = Path.Combine(repo, "samples", "Proofs", "Proofs.lean"), proofsRootText = await File.ReadAllTextAsync(proofsRootFile);
         string modX = Path.Combine(proofsDir, "ModX.lean"), modY = Path.Combine(proofsDir, "ModY.lean");
         try
         {
@@ -458,6 +459,7 @@ internal static class Scenario
             {
                 File.Delete(f);
             }
+            await File.WriteAllTextAsync(proofsRootFile, proofsRootText); // the new module joined the library root
             if (Directory.Exists(scratchDir))
             {
                 Directory.Delete(scratchDir, true);
@@ -805,6 +807,66 @@ internal static class Scenario
                 Directory.Delete(cDir, true);
             }
             await vm.CheckFfiNowAsync();
+        }
+        vm.ActiveDocument = doc;
+
+        Console.WriteLine("for people who write a lot of Lean");
+        string proofsRoot = Path.Combine(repo, "samples", "Proofs", "Proofs.lean");
+        string rootText = await File.ReadAllTextAsync(proofsRoot);
+        string tidyFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "Tidy.lean");
+        // Answer the rename prompt and the alias confirmation as a person would.
+        void Answer(Window w) => Dispatcher.UIThread.Post(async () =>
+        {
+            // Wait for the dialog's controls to be laid out, then type the new name (the prompt) and press OK.
+            Button? ok = null;
+            await WaitFor(() => (ok = w.GetVisualDescendants().OfType<Button>().FirstOrDefault(b => b.IsDefault)) is not null, 10);
+            if (w.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is TextBox box)
+            {
+                box.Text = "doubleIt";
+            }
+            ok?.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        });
+        try
+        {
+            Check(await vm.CreateFileAsync(Path.GetDirectoryName(tidyFile)!, "Tidy") is null
+                && (await File.ReadAllTextAsync(proofsRoot)).Contains("import Proofs.Tidy", StringComparison.Ordinal),
+                "a new module is imported by the library root, which imports every module");
+            DocumentViewModel td = vm.ActiveDocument!;
+            td.Document.Text = "import Proofs.Basic\n\n/-- Twice `n`. -/\ndef twiceIt (n : Nat) : Nat := 2 * n\n\ntheorem twiceIt_zero : twiceIt 0 = 0 := rfl\n\ndef undocumented : Nat := twiceIt 1\n";
+            await td.SaveAsync();
+            Check(await WaitFor(() => !td.IsProcessing, 60), "it elaborates");
+            LeanStudio.Core.Workflow.ImportReport? imports = await vm.RemoveUnusedImportsAsync();
+            Check(imports?.Removable.Select(r => r.Module).SequenceEqual(["Proofs.Basic"]) == true && !td.Document.Text.Contains("import Proofs.Basic", StringComparison.Ordinal),
+                "Remove Unused Imports takes out the import nothing uses, as one edit");
+            IReadOnlyList<LeanStudio.Core.Workflow.LintFinding> lint = await vm.LintFileAsync();
+            Check(lint.Any(f => f.Linter == "linter.missingDocs" && f.Line == 6) && vm.Problems.Any(p => p.Diagnostic.Source == "lint"),
+                "Lint File runs the linters CI runs and lists what they find in Problems");
+            Snap(window, outDir, "28-lint");
+            Check(await WaitFor(() => !td.IsProcessing, 60), "Lean has the saved file");
+            td.Reveal(2, 6); // on twiceIt, where it is declared
+            DialogHooks.Opened += Answer;
+            await vm.RenameSymbolCommand.ExecuteAsync(null);
+            DialogHooks.Opened -= Answer;
+            Check(td.Document.Text.Contains("def doubleIt", StringComparison.Ordinal)
+                && td.Document.Text.Contains("@[deprecated doubleIt (since := ", StringComparison.Ordinal)
+                && td.Document.Text.Contains("def twiceIt : type_of% @doubleIt := @doubleIt", StringComparison.Ordinal),
+                "renaming a declaration keeps the old name as a deprecated alias");
+            await Task.Delay(500);
+            Check(await WaitFor(() => !td.IsProcessing, 60) && td.Diagnostics.All(x => x.Severity != LeanStudio.Lsp.DiagnosticSeverity.Error), "and Lean accepts it");
+            Snap(window, outDir, "29-rename-alias");
+            await td.SaveAsync();
+            await vm.CloseDocumentCommand.ExecuteAsync(td);
+        }
+        finally
+        {
+            DialogHooks.Opened -= Answer;
+            File.Delete(tidyFile);
+            await File.WriteAllTextAsync(proofsRoot, rootText);
+            string built = Path.Combine(repo, "samples", "Proofs", ".lake", "build");
+            foreach (string f in Directory.Exists(built) ? Directory.GetFiles(built, "Tidy.*", SearchOption.AllDirectories) : [])
+            {
+                File.Delete(f); // Lint File built it
+            }
         }
         vm.ActiveDocument = doc;
 

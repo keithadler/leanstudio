@@ -114,6 +114,10 @@
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
         <Separator />
+        <MenuItem Header="Remove Unused Imports" Command="{Binding RemoveUnusedImportsCommand}" />
+        <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
+        <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
+        <Separator />
         <MenuItem Header="Prove It (try tactics on this sorry)" Command="{Binding ProveItCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+P', macOS='Cmd+Alt+P'}" />
         <MenuItem Header="Prove Every Sorry in File" Command="{Binding ProveAllSorriesCommand}" />
         <MenuItem Header="Extract Goal as Lemma…" Command="{Binding ExtractLemmaCommand}" />
@@ -133,6 +137,7 @@
         <MenuItem Header="Run Task…" Click="OnRunTask" InputGesture="{OnPlatform Default='Ctrl+Shift+B', macOS='Cmd+Shift+B'}" />
         <MenuItem Header="Run Shell Command…" Click="OnRunShell" />
         <MenuItem Header="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
+        <MenuItem Header="Get Mathlib Cache for Open Files" Command="{Binding GetCacheForOpenFilesCommand}" />
         <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
         <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
         <MenuItem Header="Cancel Running Task" Command="{Binding CancelTaskCommand}" />

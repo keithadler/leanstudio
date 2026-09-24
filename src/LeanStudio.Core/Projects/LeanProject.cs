@@ -74,6 +74,17 @@ public sealed class LeanProject
         (File.Exists(ManifestPath) && File.ReadAllText(ManifestPath).Contains("\"mathlib\"", StringComparison.OrdinalIgnoreCase))
         || (Lakefile is string lf && File.ReadAllText(lf).Contains("mathlib", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>Whether this is the Mathlib repository itself (its lakefile declares the package <c>mathlib</c>).</summary>
+    public bool IsMathlib => Lakefile is string lf && System.Text.RegularExpressions.Regex.IsMatch(File.ReadAllText(lf),
+        @"^\s*(?:name\s*=\s*""mathlib""|package\s+mathlib\b)", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    /// <summary>
+    /// Whether the project depends on Batteries, directly or through Mathlib (its lake-manifest lists it), so its
+    /// linters (<c>lake exe runLinter</c>) are available.
+    /// </summary>
+    public bool DependsOnBatteries =>
+        File.Exists(ManifestPath) && File.ReadAllText(ManifestPath).Contains("\"name\": \"batteries\"", StringComparison.Ordinal);
+
     /// <summary>
     /// The nearest folder at or above <paramref name="path"/> (a file or a folder) with a lakefile, else the nearest
     /// with a toolchain file, else <see langword="null"/>. Folders inside <c>.lake</c> are skipped, so a file in a

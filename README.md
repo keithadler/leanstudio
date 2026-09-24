@@ -252,6 +252,16 @@ The infoview shares Lean Studio's Lean server, so nothing starts twice. "Try thi
 
 ![Lean's own infoview in the browser, rendering a user widget from a Lean file open in Lean Studio](docs/images/infoview-widgets.png)
 
+### For Mathlib contributors
+
+What CI and reviewers check, before you push:
+
+- **Remove Unused Imports** (*Lean ▸ Remove Unused Imports*) takes out the imports a file doesn't need, as one undoable edit, and says why for each: nothing uses it, or another import already brings it in. Lean elaborates the file, and every constant, tactic, macro and notation it uses is traced to its module, so an import needed only for `ring` or a notation stays. It works on any file, not only `module` files like `lake shake`. It takes seconds on Mathlib files.
+- **Lint File** runs the linters CI runs and lists what they find in Problems. In a Mathlib project that's Mathlib's standard set, its style linters among them. Wherever Batteries is available it also runs Batteries' environment linters: missing docstrings, `simp` normal form, unused arguments. Elsewhere it runs every linter Lean has.
+- **Renames keep the old name working.** After Rename Symbol on a declaration, Lean Studio offers to add `@[deprecated (since := "…")] alias old := new` after it, as Mathlib asks. Without Batteries it writes the core Lean equivalent.
+- **The library root stays complete.** A new file is added to its library's root file when that imports every module (as `Mathlib.lean` does), and a deleted one is taken out. *Import Every Module in the Library Root* adds any that are missing, like `lake exe mk_all`.
+- **In the Mathlib repository,** *Get Mathlib Cache for Open Files* fetches only what the open files need.
+
 ### Vim mode
 
 *View ▸ Vim Mode* (or Preferences) makes the editor modal:

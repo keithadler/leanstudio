@@ -272,6 +272,7 @@ public sealed partial class MainViewModel
         await File.WriteAllTextAsync(path, "");
         RefreshFiles();
         await OpenFileAsync(path);
+        await AddToLibraryRootAsync(path);
         return null;
     }
 
@@ -359,6 +360,7 @@ public sealed partial class MainViewModel
         {
             ActiveDocument = Documents.LastOrDefault();
         }
+        await RemoveFromLibraryRootAsync(path);
         bool ok = await FileOps.MoveToTrashAsync(path);
         RefreshFiles();
         if (!ok)

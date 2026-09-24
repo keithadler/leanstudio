@@ -654,6 +654,10 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Edit: Find…", m + "F", Act(() => EditorControl.TextEditor.SearchPanel.Open()));
         yield return ("Lean: Quick Fix / Try This…", m + ".", QuickFixAsync);
         yield return ("Lean: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
+        yield return ("Lean: Remove Unused Imports", "", Cmd(_vm.RemoveUnusedImportsCommand));
+        yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));
+        yield return ("Lean: Import Every Module in the Library Root", "", Cmd(_vm.ImportAllModulesCommand));
+        yield return ("Lean: Get Mathlib Cache for Open Files", "", Cmd(_vm.GetCacheForOpenFilesCommand));
         yield return ("Lean: Restart Server", m + "⇧R", Cmd(_vm.RestartServerCommand));
         yield return ("Lean: Refresh File Dependencies", "", Cmd(_vm.RefreshFileDependenciesCommand));
         yield return ("Lean: Build Project", m + "B", Cmd(_vm.BuildCommand));

@@ -6,6 +6,7 @@ using LeanStudio.Core.Projects;
 using LeanStudio.Core.Proofs;
 using LeanStudio.Core.Toolchains;
 using LeanStudio.Core.Verification;
+using LeanStudio.Core.Workflow;
 using LeanStudio.Lsp;
 
 namespace LeanStudio.Mcp;
@@ -97,6 +98,8 @@ public static class LeanTools
         }
         throw new ToolException($"'{name}' must be a number");
     }
+
+    private static bool? OptBool(JsonObject a, string name) => a[name] is JsonValue v && v.TryGetValue(out bool b) ? b : null;
 
     private static int? OptInt(JsonObject a, string name) => a.ContainsKey(name) ? Int(a, name) : null;
 
@@ -577,6 +580,71 @@ public static class LeanTools
                 foreach (DeclarationTiming t in timings.Take(25))
                 {
                     sb.Append(CultureInfo.InvariantCulture, $"  line {t.Line + 1}: {t.Detail}\n    {t.Declaration}\n");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("unused_imports",
+            "Which imports of a Lean file it doesn't need: those nothing in it uses, and those another import already brings in. Lean elaborates the file and the check follows every constant, tactic, macro and notation it uses to the module that provides it, so imports needed only for a tactic or a notation are kept. With apply=true, removes them from the file on disk. The file's imports must be built.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("content", "string", "Optional full text to check instead of what is on disk.", false),
+                   ("apply", "boolean", "Remove the imports it doesn't need from the file on disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = OptStr(a, "content") ?? await File.ReadAllTextAsync(path, ct);
+                ImportReport report;
+                try
+                {
+                    report = await ImportCheck.RunAsync(bench.ProjectFor(path), path, text, ct);
+                }
+                catch (InvalidOperationException e)
+                {
+                    throw new ToolException("Lean couldn't check the imports (are they built?): " + e.Message);
+                }
+                var sb = new StringBuilder();
+                if (report.Errors > 0)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"warning: the file has {report.Errors} error(s), so some uses may be missed; fix them first.\n");
+                }
+                foreach (ImportVerdict i in report.Imports)
+                {
+                    sb.Append(i.Keep
+                        ? $"keep   {i.Module}{(i.Uses.Count > 0 ? " (for " + string.Join(", ", i.Uses) + ")" : "")}\n"
+                        : $"remove {i.Module}: {i.Explanation}\n");
+                }
+                if (report.Removable.Count == 0)
+                {
+                    sb.Append("every import is needed");
+                }
+                else if (OptBool(a, "apply") == true && report.Errors == 0)
+                {
+                    await File.WriteAllTextAsync(path, ImportCheck.Remove(text, report.Removable.Select(r => r.Module)), ct);
+                    sb.Append(CultureInfo.InvariantCulture, $"removed {report.Removable.Count} import(s) from {path}");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("lint",
+            "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
+            Schema(("path", "string", "The .lean file.", true)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                LeanProject project = bench.ProjectFor(path);
+                var (findings, error) = await Lint.RunAsync(project, path, ct);
+                if (error is not null)
+                {
+                    throw new ToolException(error);
+                }
+                if (findings.Count == 0)
+                {
+                    return $"no findings ({Lint.LintersFor(project)}{(project.DependsOnBatteries ? " and Batteries' environment linters" : "")})";
+                }
+                var sb = new StringBuilder();
+                foreach (LintFinding f in findings)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{Path.GetFileName(f.Path)}:{f.Line + 1}:{f.Column + 1}: {(f.IsError ? "error" : "warning")}{(f.Linter is null ? "" : " [" + f.Linter + "]")}: {f.Message}\n");
                 }
                 return sb.ToString().TrimEnd();
             }),

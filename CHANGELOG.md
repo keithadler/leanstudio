@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+**For Mathlib contributors and everyone who writes a lot of Lean**:
+- *Lean ▸ Remove Unused Imports* removes the imports a file doesn't need, as one undoable edit, and says why for each: nothing uses it, or another import already brings it in. Lean elaborates the file and every constant, tactic, macro and notation is traced to its module, so an import needed only for `ring` or a notation stays. Works on any file, not only `module` files like `lake shake`.
+- *Lean ▸ Lint File* runs the linters CI runs and lists what they find in Problems: Mathlib's standard set (its style linters among them) in a Mathlib project, every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, `simp` normal form, unused arguments) wherever Batteries is available.
+- Renaming a declaration offers to keep the old name as a deprecated alias, as Mathlib asks: `@[deprecated (since := "…")] alias old := new` with Batteries, and the same in core Lean without it.
+- A new file joins its library's root file when that file imports every module (as `Mathlib.lean` does), and *Import Every Module in the Library Root* adds any that are missing, like `lake exe mk_all`.
+- In the Mathlib repository, *Get Mathlib Cache for Open Files* fetches only what the open files need.
+- MCP tools `unused_imports` and `lint`.
+
+**Fixes**: Tenet no longer counts a module whose source file was deleted but whose build was left behind.
+
 ## 0.7.0
 
 **Lean's infoview, widgets and all, inside the window**:

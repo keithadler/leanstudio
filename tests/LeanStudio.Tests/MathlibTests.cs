@@ -74,4 +74,45 @@ public sealed class MathlibTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public async Task ImportsAndLintersWorkWithMathlib()
+    {
+        string root = RequireMathlib();
+        var project = new Core.Projects.LeanProject(root);
+        // The project's library folder (Name/ next to Name.lean), so the file is a module Lake can lint.
+        string lib = Directory.GetFiles(root, "*.lean").Select(Path.GetFileNameWithoutExtension).First(n => Directory.Exists(Path.Combine(root, n!)))!;
+        string file = Path.Combine(root, lib, "LeanStudioPro.lean");
+        const string text = """
+            import Mathlib.Tactic.Ring
+            import Mathlib.Data.Nat.Prime.Basic
+            import Mathlib.Order.Basic
+            import Mathlib.Topology.Basic
+
+            theorem sq_expand (a b : ℕ) : (a + b) ^ 2 = a ^ 2 + 2 * a * b + b ^ 2 := by ring
+
+            theorem two_prime : Nat.Prime 2 := Nat.prime_two
+
+            def noDoc (n : ℕ) : ℕ := n + 1
+            """;
+        File.WriteAllText(file, text);
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+            Core.Workflow.ImportReport report = await Core.Workflow.ImportCheck.RunAsync(project, file, text, ct);
+            Assert.Equal([("Mathlib.Tactic.Ring", true), ("Mathlib.Data.Nat.Prime.Basic", true), ("Mathlib.Order.Basic", false), ("Mathlib.Topology.Basic", false)],
+                report.Imports.Select(i => (i.Module, i.Keep)));
+            Assert.Equal("Mathlib.Order.Basic is already imported by Mathlib.Tactic.Ring", report.Imports[2].Explanation);
+
+            Assert.Equal("linter.mathlibStandardSet", Core.Workflow.Lint.LintersFor(project));
+            var (findings, error) = await Core.Workflow.Lint.RunAsync(project, file, ct);
+            Assert.Null(error);
+            Assert.Contains(findings, f => f.Linter == "linter.style.header" && f.Path == file);          // Mathlib's style linters
+            Assert.Contains(findings, f => f.Linter == "docBlame" && f.Line == 9 && f.Path == file);      // and Batteries' environment linters
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
 }
