@@ -9,6 +9,8 @@
 - clangd serves C files, with Lean's headers on the include path.
 - MCP tool `ffi_bindings`.
 
+**Fixes**: when an MCP tool failed in an unexpected way, the assistant got no answer to that request, and the server could stop when the assistant disconnected. It now answers with an internal error and keeps serving.
+
 **Documentation**:
 - An architecture guide ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)) and a contributor guide ([CONTRIBUTING.md](CONTRIBUTING.md)).
 - Every public type and member in `src/` has an XML doc comment, and the build fails without one.

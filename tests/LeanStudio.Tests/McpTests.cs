@@ -54,6 +54,31 @@ public sealed class McpTests
     }
 
     [Fact]
+    public async Task AnswersEveryRequestWhenAToolThrowsUnexpectedly()
+    {
+        var boom = new McpTool("boom", "Throws a bug, not a ToolException.", new JsonObject { ["type"] = "object" },
+            (_, _) => throw new NullReferenceException("a bug in the tool"));
+        var server = new McpServer("test", "0", "", [boom]);
+        string input = string.Join('\n',
+            Request(1, "tools/call", new JsonObject { ["name"] = "boom" }).ToJsonString(),
+            new JsonObject { ["jsonrpc"] = "2.0", ["id"] = 2, ["method"] = 42 }.ToJsonString(),
+            Request(3, "ping").ToJsonString());
+        using var output = new StringWriter();
+
+        // The server neither throws nor stops: every request gets its answer.
+        await server.RunAsync(new StringReader(input), output, TestContext.Current.CancellationToken);
+
+        var replies = output.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => JsonNode.Parse(l)!.AsObject())
+            .ToDictionary(r => r["id"]!.GetValue<int>());
+        Assert.Equal(3, replies.Count);
+        Assert.Equal(-32603, replies[1]["error"]!["code"]!.GetValue<int>());
+        Assert.Contains("a bug in the tool", replies[1]["error"]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(-32600, replies[2]["error"]!["code"]!.GetValue<int>());
+        Assert.NotNull(replies[3]["result"]);
+    }
+
+    [Fact]
     public async Task ChecksFilesReadsGoalsAndRunsSnippets()
     {
         Lean.RequireLean();

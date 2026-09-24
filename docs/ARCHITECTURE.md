@@ -118,7 +118,7 @@ stdout.
 `LeanTools.cs` defines every tool (`check_file`, `goals`, `prove`, `verify`, `studio_context` and the rest; the
 README has the full table). Each tool is a thin wrapper around a Core call on a `Workbench`. A tool reports a
 problem the assistant should read, such as bad arguments or Lean not being installed, by throwing
-`ToolException`. The server returns that message as the tool's result rather than as a protocol error.
+`ToolException`. The server returns that message as the tool's result rather than as a protocol error. Any other exception is a bug. It is logged to stderr and answered with a JSON-RPC internal error, so the assistant always gets a reply and the server keeps running.
 
 `Workbench` keeps one `ProjectSession` per project: a Lean server started on first use, plus a Tenet workspace.
 It opens files, keeps them in sync with the disk (or with text the caller passes), and waits until Lean has

@@ -108,19 +108,22 @@ public sealed class McpServer
 
     /// <summary>Handle one message; returns the response, or null for notifications and responses.</summary>
     /// <remarks>
-    /// An unknown method gives a -32601 error and bad <c>tools/call</c> parameters (no name, unknown tool) a -32602 error.
+    /// An unknown method gives a -32601 error, a method that is not a string a -32600 error, and bad <c>tools/call</c>
+    /// parameters (no name, unknown tool) a -32602 error.
     /// A tool's own failures (<see cref="ToolException"/>, I/O, Lean and Tenet errors) come back as a successful result with
-    /// <c>isError</c> set; any other exception from a tool propagates.
+    /// <c>isError</c> set. Any other exception is logged to stderr and answered with a -32603 internal error, so the
+    /// client is never left waiting and one faulty request cannot bring the server down. Only cancellation through
+    /// <paramref name="ct"/> propagates.
     /// </remarks>
     public async Task<JsonObject?> HandleAsync(JsonObject msg, CancellationToken ct = default)
     {
         JsonNode? id = msg["id"]?.DeepClone();
-        string? method = msg["method"]?.GetValue<string>();
-        if (method is null)
-        {
-            return null; // a response to something we never send
-        }
         bool isNotification = !msg.ContainsKey("id");
+        if (msg["method"] is not JsonValue m || !m.TryGetValue(out string? method))
+        {
+            // No method: a response to something we never send. A method that is not a string: an invalid request.
+            return msg["method"] is null || isNotification ? null : Error(id, -32600, "invalid request: method must be a string");
+        }
         JsonObject parameters = msg["params"] as JsonObject ?? new JsonObject();
         try
         {
@@ -148,6 +151,12 @@ public sealed class McpServer
         catch (ArgumentException e)
         {
             return isNotification ? null : Error(id, -32602, e.Message);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            // A bug in a tool, not something the caller did: say so, and keep serving.
+            await Console.Error.WriteLineAsync($"[leanstudio] {method} failed: {e}").ConfigureAwait(false);
+            return isNotification ? null : Error(id, -32603, $"internal error in {method}: {e.Message}");
         }
     }
 
