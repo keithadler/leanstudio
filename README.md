@@ -206,6 +206,16 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 - **Settings, windows, resilience.** Preferences (⌘, / Ctrl+,) has every setting in one place. File ▸ New Window opens a second project. If Lean crashes it is started again, and an unexpected error is logged instead of closing the app.
 - **Your layout.** Hide the sidebar (⌘⌥B), the bottom panel (⌘J) or the goals (⌘⌥I), or use zen mode (⌘⌥Z) for just the editor and the goals. There's also word wrap (⌥Z). Each file reopens with the cursor where you left it, and the file you were on comes back when the app starts.
 
+### The editor knows what Lean knows
+
+- **Semantic highlighting.** Bound variables and fields are coloured as Lean classifies them, which a grammar can't do. Deprecated names are struck through.
+- **Inlay hints.** What Lean fills in for you shows in the text, dimmed and boxed, such as `{α}` for a type variable it binds automatically.
+- **Every use of the name under the cursor** is highlighted, by Lean's own resolution rather than a text search.
+- **Who Uses This / What This Uses** (⌘⌥H / Ctrl+Alt+H). Lean's call hierarchy lists every declaration that uses the one at the cursor, at the place it uses it, and everything it uses.
+- **Trace trees.** A message from `set_option trace.… true` is a tree you expand one step at a time in the Tactic State. Lean sends each level only when you open it, so even huge traces (instance search, `simp`) stay fast. Failed steps are marked in red.
+
+![Inlay hints, semantic colours, the callers of square, and an instance-search trace expanded](docs/images/editor-intelligence.png)
+
 ### Everything else a Lean IDE needs
 
 - **Lean-aware editor**:
@@ -414,6 +424,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 | Quick fix / Try this | ⌘. | Ctrl+. |
 | Prove It (tactics on the sorry at the cursor) | ⌘⌥P | Ctrl+Alt+P |
 | REPL at the cursor | ⌘⌥R | Ctrl+Alt+R |
+| Who uses this (callers) | ⌘⌥H | Ctrl+Alt+H |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
 | Fix all in file | ⌘⌥. | Ctrl+Alt+. |

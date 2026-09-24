@@ -292,6 +292,57 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>The declarations that use the one at the cursor, each at the place it uses it (Lean's call hierarchy).</summary>
+    [RelayCommand]
+    private Task ShowCallersAsync() => ShowCallsAsync(incoming: true);
+
+    /// <summary>The declarations the one at the cursor uses, each at its definition.</summary>
+    [RelayCommand]
+    private Task ShowCalleesAsync() => ShowCallsAsync(incoming: false);
+
+    private async Task ShowCallsAsync(bool incoming)
+    {
+        if (ActiveDocument is not { IsLean: true } d || _server is not { State: LeanServerState.Running } s)
+        {
+            return;
+        }
+        try
+        {
+            IReadOnlyList<CallHierarchyItem> roots = await s.PrepareCallHierarchyAsync(d.Uri, new Position(d.CaretLine, d.CaretColumn));
+            if (roots.FirstOrDefault() is not CallHierarchyItem root)
+            {
+                Log("Put the cursor on the name of a declaration (where it is defined or used).");
+                return;
+            }
+            IReadOnlyList<CallSite> calls = incoming ? await s.IncomingCallsAsync(root) : await s.OutgoingCallsAsync(root);
+            var items = new List<LocationItem>();
+            foreach (CallSite c in calls.OrderBy(c => c.Item.Name, StringComparer.Ordinal))
+            {
+                string path = LeanServer.PathOf(incoming ? c.Item.Uri : c.Item.Uri);
+                if (incoming)
+                {
+                    // Each place the caller uses it, in the caller's file.
+                    foreach (Lsp.Range r in c.FromRanges.DefaultIfEmpty(c.Item.SelectionRange))
+                    {
+                        items.Add(new LocationItem(path, r.Start.Line, r.Start.Character, c.Item.Name + "   " + LineOf(path, r.Start.Line).Trim()));
+                    }
+                }
+                else
+                {
+                    items.Add(new LocationItem(path, c.Item.SelectionRange.Start.Line, c.Item.SelectionRange.Start.Character, c.Item.Name + (c.Item.Detail is { Length: > 0 } det ? "   " + det : "")));
+                }
+            }
+            References.Reset(items);
+            ReferencesTitle = incoming ? $"Used by ({calls.Count})" : $"Uses ({calls.Count})";
+            BottomTab = ReferencesPanel;
+            Log(incoming ? $"{root.Name} is used by {calls.Count} declaration(s)." : $"{root.Name} uses {calls.Count} declaration(s).");
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException)
+        {
+            Log("Call hierarchy: " + e.Message);
+        }
+    }
+
     private string LineOf(string path, int line)
     {
         DocumentViewModel? open = Documents.FirstOrDefault(x => string.Equals(x.Path, path, StringComparison.Ordinal));

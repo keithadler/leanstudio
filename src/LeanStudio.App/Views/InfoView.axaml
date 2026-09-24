@@ -169,7 +169,23 @@
               <DataTemplate x:DataType="vm:MessageView">
                 <Border Classes="card">
                   <StackPanel Spacing="6">
-                    <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" />
+                    <SelectableTextBlock Text="{Binding Text}" Classes="mono" TextWrapping="Wrap" IsVisible="{Binding HasText}" />
+                    <TreeView ItemsSource="{Binding Traces}" IsVisible="{Binding HasTraces}" Background="Transparent" Margin="-6,0,0,0">
+                      <TreeView.ItemContainerTheme>
+                        <ControlTheme TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}" x:DataType="vm:TraceNodeView">
+                          <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                          <Setter Property="MinHeight" Value="20" />
+                        </ControlTheme>
+                      </TreeView.ItemContainerTheme>
+                      <TreeView.ItemTemplate>
+                        <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TraceNodeView">
+                          <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding Class}" Classes="mono dim" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Text}" Classes="mono" FontSize="12" Classes.bad="{Binding Failed}" TextTrimming="CharacterEllipsis" MaxWidth="900" ToolTip.Tip="{Binding Text}" />
+                          </StackPanel>
+                        </TreeDataTemplate>
+                      </TreeView.ItemTemplate>
+                    </TreeView>
                     <TextBlock Text="{Binding Explanation}" IsVisible="{Binding HasExplanation}" FontSize="12" TextWrapping="Wrap"
                                Foreground="{DynamicResource GoalAccent}" />
                     <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}">

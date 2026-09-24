@@ -75,7 +75,22 @@ public sealed partial class MessageView : ObservableObject
         DiagnosticSeverity.Error => "error: ",
         DiagnosticSeverity.Warning => "warning: ",
         _ => "",
-    }) + Diagnostic.Message;
+    }) + (InteractiveText ?? Diagnostic.Message);
+
+    /// <summary>The message's text from Lean's interactive form, which spells out what the plain one abbreviates.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Text), nameof(HasText))]
+    private string? _interactiveText;
+
+    /// <summary>There is text to show beside the traces (a message that is only a trace has none).</summary>
+    public bool HasText => Text.Length > 0;
+
+    /// <summary>The trace trees in the message (from <c>set_option trace.… true</c>), to expand one level at a time.</summary>
+    public ObservableList<TraceNodeView> Traces { get; } = new();
+
+    /// <summary><see cref="Traces"/> has any.</summary>
+    [ObservableProperty]
+    private bool _hasTraces;
 
     /// <summary>The message's "Try this" code actions, each shown as a button that applies it.</summary>
     public ObservableList<CodeAction> Suggestions { get; } = new();
@@ -89,6 +104,82 @@ public sealed partial class MessageView : ObservableObject
     /// <summary><see cref="Suggestions"/> has any.</summary>
     [ObservableProperty]
     private bool _hasSuggestions;
+}
+
+/// <summary>
+/// A node of a trace tree in the Tactic State panel. Children Lean sends on request are fetched the first time the
+/// node is expanded; until then it shows one placeholder child, so the tree offers to expand it.
+/// </summary>
+public sealed partial class TraceNodeView : ObservableObject
+{
+    private readonly TraceNode _node;
+    private readonly Func<string, Task<IReadOnlyList<TraceNode>>>? _fetch;
+    private bool _loaded;
+
+    /// <summary>A view of a trace node.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="fetch">How to fetch children Lean sends on request.</param>
+    public TraceNodeView(TraceNode node, Func<string, Task<IReadOnlyList<TraceNode>>>? fetch)
+    {
+        _node = node;
+        _fetch = fetch;
+        if (node.Children.Count > 0)
+        {
+            Children.Reset(node.Children.Select(c => new TraceNodeView(c, fetch)));
+            _loaded = true;
+        }
+        else if (node.LazyChildren is not null)
+        {
+            Children.Add(Placeholder);
+        }
+        IsExpanded = !node.Collapsed && node.Children.Count > 0;
+    }
+
+    private TraceNodeView(string text)
+    {
+        _node = new TraceNode("", text, true, [], null);
+        _loaded = true;
+    }
+
+    private static readonly TraceNodeView Placeholder = new("…");
+
+    /// <summary>The trace class, as <c>[Meta.synthInstance]</c>; empty for the placeholder.</summary>
+    public string Class => _node.Class.Length == 0 ? "" : "[" + _node.Class + "]";
+
+    /// <summary>The node's message.</summary>
+    public string Text => _node.Text;
+
+    /// <summary>A success (✅) or failure (❌, 💥) mark leads the text, as Lean writes it.</summary>
+    public bool Failed => _node.Text.StartsWith('❌') || _node.Text.StartsWith("💥", StringComparison.Ordinal);
+
+    /// <summary>The node's children.</summary>
+    public ObservableList<TraceNodeView> Children { get; } = new();
+
+    /// <summary>Whether the tree shows the node open; opening it the first time fetches its children.</summary>
+    [ObservableProperty]
+    private bool _isExpanded;
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        if (value && !_loaded && _node.LazyChildren is string lazy && _fetch is not null)
+        {
+            _loaded = true;
+            _ = LoadAsync(lazy);
+        }
+    }
+
+    private async Task LoadAsync(string lazy)
+    {
+        try
+        {
+            IReadOnlyList<TraceNode> children = await _fetch!(lazy);
+            Children.Reset(children.Select(c => new TraceNodeView(c, _fetch)));
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException or InvalidOperationException)
+        {
+            Children.Reset([new TraceNodeView("Lean could not send these: " + e.Message)]);
+        }
+    }
 }
 
 /// <summary>A goal state kept on screen while you work elsewhere, to compare against.</summary>
@@ -368,6 +459,7 @@ public sealed partial class InfoViewModel : ObservableObject
         Messages.Reset(msgs);
         HasMessages = msgs.Count > 0;
         _ = LoadSuggestionsAsync(server, doc, msgs, cts.Token);
+        _ = LoadTracesAsync(server, doc, msgs, pos, cts.Token);
 
         TacticProof? proof = ProofSteps.Find(doc.Lines(), pos.Line);
         InProof = proof is not null;
@@ -440,6 +532,39 @@ public sealed partial class InfoViewModel : ObservableObject
     }
 
     /// <summary>For messages that offer "Try this", fetch the matching code actions so each can be applied with a click.</summary>
+    /// <summary>
+    /// For messages that carry traces (their plain text is just "(trace)"), ask Lean for the interactive form: the
+    /// text in full and each trace as a tree.
+    /// </summary>
+    private static async Task LoadTracesAsync(LeanServer server, DocumentViewModel doc, List<MessageView> msgs, Position pos, CancellationToken ct)
+    {
+        var traced = msgs.Where(m => m.Diagnostic.Message.Contains("(trace)", StringComparison.Ordinal)).ToList();
+        if (traced.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            int start = traced.Min(m => m.Diagnostic.Range.Start.Line), end = traced.Max(m => m.Diagnostic.Range.End.Line) + 1;
+            IReadOnlyList<InteractiveMessage> interactive = await server.InteractiveMessagesAsync(doc.Uri, start, end, ct);
+            Task<IReadOnlyList<TraceNode>> Fetch(string lazy) => server.TraceChildrenAsync(doc.Uri, pos, lazy, CancellationToken.None);
+            foreach (MessageView m in traced)
+            {
+                InteractiveMessage? match = interactive.FirstOrDefault(i => i.Range.Start == m.Diagnostic.Range.Start && i.Traces.Count > 0);
+                if (match is null)
+                {
+                    continue;
+                }
+                m.InteractiveText = match.Text;
+                m.Traces.Reset(match.Traces.Select(t => new TraceNodeView(t, Fetch)));
+                m.HasTraces = true;
+            }
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException or OperationCanceledException)
+        {
+        }
+    }
+
     private static async Task LoadSuggestionsAsync(LeanServer server, DocumentViewModel doc, List<MessageView> msgs, CancellationToken ct)
     {
         foreach (MessageView m in msgs.Where(m => m.Diagnostic.Message.Contains("Try this", StringComparison.Ordinal)))

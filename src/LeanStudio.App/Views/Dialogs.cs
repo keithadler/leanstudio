@@ -264,6 +264,8 @@ internal static class Dialogs
         var unicode = Check("Unicode input (\\alpha becomes α)", s.UnicodeInput);
         var autosave = Check("Auto save", s.AutoSave, "Save a moment after typing stops, and when the window loses focus");
         var inline = Check("Show #eval and #check results at the end of the line", s.InlineResults);
+        var semantic = Check("Colour variables and fields as Lean sees them (semantic highlighting)", s.SemanticHighlighting);
+        var hints = Check("Show inlay hints (what Lean fills in, such as implicit arguments)", s.InlayHints);
         var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
         var explain = Check("Explain Lean's messages in plain words", s.ExplainErrors);
         var autofix = Check("Apply a lone Try this suggestion automatically", s.AutoApplyFixes);
@@ -297,7 +299,7 @@ internal static class Dialogs
             Spacing = 2,
             Children =
             {
-                Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap,
+                Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
                 Head("Editing"), unicode, autosave, inline,
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
                 Head("Other"), blame, updates,
@@ -319,6 +321,8 @@ internal static class Dialogs
             s.UnicodeInput = unicode.IsChecked == true;
             s.AutoSave = autosave.IsChecked == true;
             s.InlineResults = inline.IsChecked == true;
+            s.SemanticHighlighting = semantic.IsChecked == true;
+            s.InlayHints = hints.IsChecked == true;
             s.ShowGoalsInEnglish = english.IsChecked == true;
             s.ExplainErrors = explain.IsChecked == true;
             s.AutoApplyFixes = autofix.IsChecked == true;

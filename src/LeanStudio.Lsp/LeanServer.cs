@@ -34,7 +34,7 @@ public enum LeanServerState
 /// completion, and the goal queries, including the interactive goals that carry Lean's own before/after diff of
 /// every tactic.
 /// </summary>
-public sealed class LeanServer : IAsyncDisposable
+public sealed partial class LeanServer : IAsyncDisposable
 {
     /// <summary>Lean's RPC error for a session the server has forgotten (it restarted the file worker).</summary>
     public const int RpcNeedsReconnect = -32900;

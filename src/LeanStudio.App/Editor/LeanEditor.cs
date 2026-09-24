@@ -40,6 +40,11 @@ public sealed class LeanEditor : UserControl
     private readonly BracketHighlighter _brackets = new();
     private readonly InlineResults _inline = new();
     private readonly TimingRenderer _timings = new(labels: false), _timingLabels = new(labels: true);
+    private readonly SemanticColorizer _semantic = new();
+    private readonly OccurrenceHighlighter _occurrences = new();
+    private readonly InlayHintGenerator _hints = new();
+    private CancellationTokenSource? _semanticCts, _occurrenceCts;
+    private int _edits;
     private AvaloniaEdit.Folding.FoldingManager? _folding;
     private CancellationTokenSource? _foldCts;
     private readonly TextMate.Installation _textMate;
@@ -75,10 +80,13 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_inline);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timings);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timingLabels);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_occurrences);
+        _editor.TextArea.TextView.ElementGenerators.Add(_hints);
         _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
         _textMate = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
         _textMate.SetGrammar(LeanRegistryOptions.LeanScope);
+        _editor.TextArea.TextView.LineTransformers.Add(_semantic);
 
         _editor.TextArea.Caret.PositionChanged += (_, _) => OnCaretMoved();
         _editor.TextArea.TextEntering += OnTextEntering;
@@ -132,6 +140,12 @@ public sealed class LeanEditor : UserControl
         _inline.Enabled = s.InlineResults;
         _editor.WordWrap = s.WordWrap;
         _editor.TextArea.TextView.InvalidateLayer(_inline.Layer);
+        _semantic.Enabled = s.SemanticHighlighting;
+        _hints.Enabled = s.InlayHints;
+        _hints.FontFamily = _editor.FontFamily;
+        _hints.FontSize = _editor.FontSize;
+        _semantic.SetDark(s.Theme != "Light");
+        _editor.TextArea.TextView.Redraw();
         bool dark = s.Theme != "Light";
         if (dark != _dark)
         {
@@ -191,6 +205,7 @@ public sealed class LeanEditor : UserControl
         {
             _scroll[_current] = new Vector(_editor.HorizontalOffset, _editor.VerticalOffset);
             _current.PropertyChanged -= OnDocumentPropertyChanged;
+            _current.Document.Changed -= OnTextChangedForLayers;
             _current.RevealRequested -= Reveal;
         }
         _current = doc;
@@ -240,6 +255,11 @@ public sealed class LeanEditor : UserControl
             Main?.Log($"No highlighting for {System.IO.Path.GetFileName(doc.Path)}: {e.Message}");
         }
         doc.PropertyChanged += OnDocumentPropertyChanged;
+        doc.Document.Changed += OnTextChangedForLayers;
+        _semantic.Clear();
+        _hints.Clear();
+        _occurrences.Clear();
+        ScheduleSemantic(doc, 0);
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
         _inline.Update(doc.Diagnostics);
@@ -287,6 +307,7 @@ public sealed class LeanEditor : UserControl
                 if (e.PropertyName == nameof(DocumentViewModel.Processing) && !_current.IsProcessing)
                 {
                     ScheduleFolds();
+                    ScheduleSemantic(_current, 300);
                 }
                 break;
         }
@@ -325,6 +346,7 @@ public sealed class LeanEditor : UserControl
         TextViewPosition p = _editor.TextArea.Caret.Position;
         Main.CaretMoved(_current, p.Line - 1, p.Column - 1);
         UpdateBracketMatch();
+        ScheduleOccurrences();
         if (_abbrevStart >= 0)
         {
             int caret = _editor.CaretOffset;
@@ -334,6 +356,101 @@ public sealed class LeanEditor : UserControl
             }
         }
     }
+
+    // ---- Lean's semantic tokens, inlay hints and occurrences ----
+
+    private void OnTextChangedForLayers(object? sender, DocumentChangeEventArgs e)
+    {
+        _edits++;
+        _semantic.Shift(e);
+        _hints.Shift(e);
+        if (_occurrences.HasAny)
+        {
+            _occurrences.Clear();
+            _editor.TextArea.TextView.InvalidateLayer(_occurrences.Layer);
+        }
+    }
+
+    /// <summary>Ask Lean for the file's semantic tokens and inlay hints, once it has checked the text.</summary>
+    private void ScheduleSemantic(DocumentViewModel doc, int delayMs)
+    {
+        _semanticCts?.Cancel();
+        if (!doc.IsLean)
+        {
+            return;
+        }
+        var cts = new CancellationTokenSource();
+        _semanticCts = cts;
+        _ = RefreshSemanticAsync(doc, delayMs, cts.Token);
+    }
+
+    private async Task RefreshSemanticAsync(DocumentViewModel doc, int delayMs, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delayMs, ct);
+            if (Main?.Server is not { State: LeanServerState.Running } server || doc.IsProcessing)
+            {
+                return;
+            }
+            int edits = _edits;
+            IReadOnlyList<SemanticToken> tokens = await server.SemanticTokensAsync(doc.Uri, ct);
+            IReadOnlyList<InlayHint> hints = await server.InlayHintsAsync(doc.Uri, new Lsp.Range(new Position(0, 0), new Position(doc.Document.LineCount, 0)), ct);
+            if (_current != doc || edits != _edits)
+            {
+                return; // the text moved on; the next check brings fresh ones
+            }
+            _semantic.Update(doc.Document, tokens);
+            _hints.Update(doc.Document, hints);
+            _editor.TextArea.TextView.Redraw();
+        }
+        catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException or InvalidOperationException)
+        {
+        }
+    }
+
+    private void ScheduleOccurrences()
+    {
+        _occurrenceCts?.Cancel();
+        if (_current is not { IsLean: true } doc || Main?.Server is not { State: LeanServerState.Running } server)
+        {
+            return;
+        }
+        var cts = new CancellationTokenSource();
+        _occurrenceCts = cts;
+        TextViewPosition p = _editor.TextArea.Caret.Position;
+        var pos = new Position(p.Line - 1, p.Column - 1);
+        int edits = _edits;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(250, cts.Token);
+                IReadOnlyList<Lsp.Range> ranges = await server.DocumentHighlightsAsync(doc.Uri, pos, cts.Token);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (cts.IsCancellationRequested || _current != doc || edits != _edits)
+                    {
+                        return;
+                    }
+                    _occurrences.Update(doc.Document, ranges);
+                    _editor.TextArea.TextView.InvalidateLayer(_occurrences.Layer);
+                });
+            }
+            catch (Exception e) when (e is OperationCanceledException or JsonRpcException or IOException or InvalidOperationException)
+            {
+            }
+        }, cts.Token);
+    }
+
+    /// <summary>Whether occurrences of the symbol at the cursor are highlighted.</summary>
+    public bool HasOccurrences => _occurrences.HasAny;
+
+    /// <summary>How many tokens Lean's semantic highlighting colours.</summary>
+    public int SemanticTokenCount => _semantic.Count;
+
+    /// <summary>The inlay hints shown.</summary>
+    public IReadOnlyList<string> InlayHintLabels => _hints.Labels;
 
     // ---- brackets and folding ----
 

@@ -161,6 +161,7 @@ public sealed partial class MainWindow : Window, IDialogs
             (Key.P, true, true) => () => _ = CommandPaletteAsync(),
             (Key.P, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ProveItCommand.Execute(null),
             (Key.R, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => OnShowRepl(null, new RoutedEventArgs()),
+            (Key.H, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ShowCallersCommand.Execute(null),
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
             (Key.T, true, false) => () => _ = GoToSymbolAsync(),
             (Key.F, true, true) => () => ShowFindInFiles(),
@@ -612,6 +613,8 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Go: Go to Line…", OperatingSystem.IsMacOS() ? "⌘L" : "Ctrl+G", Cmd(_vm.GoToLineCommand));
         yield return ("Go: Go to Definition", "F12", Cmd(_vm.GoToDefinitionCommand));
         yield return ("Go: Find References", "⇧F12", Cmd(_vm.FindReferencesCommand));
+        yield return ("Go: Who Uses This (callers)", m + "⌥H", Cmd(_vm.ShowCallersCommand));
+        yield return ("Go: What This Uses (callees)", "", Cmd(_vm.ShowCalleesCommand));
         yield return ("Go: Show Declaration in Library", m + "⇧D", Cmd(_vm.ShowDeclarationAtCaretCommand));
         yield return ("Edit: Find in Files…", m + "⇧F", Act(ShowFindInFiles));
         yield return ("Edit: Find…", m + "F", Act(() => EditorControl.TextEditor.SearchPanel.Open()));

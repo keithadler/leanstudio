@@ -99,6 +99,8 @@
         <Separator />
         <MenuItem Header="Go to Definition" Command="{Binding GoToDefinitionCommand}" InputGesture="F12" />
         <MenuItem Header="Find References" Command="{Binding FindReferencesCommand}" InputGesture="Shift+F12" />
+        <MenuItem Header="Who Uses This" Command="{Binding ShowCallersCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+H', macOS='Cmd+Alt+H'}" />
+        <MenuItem Header="What This Uses" Command="{Binding ShowCalleesCommand}" />
         <MenuItem Header="Show Declaration in Library" Command="{Binding ShowDeclarationAtCaretCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+D', macOS='Cmd+Shift+D'}" />
       </MenuItem>
       <MenuItem Header="_Lean">

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**The editor knows what Lean knows**:
+- Semantic highlighting of variables and fields, with deprecated names struck through.
+- Inlay hints.
+- Every occurrence of the name at the cursor is highlighted.
+- Who Uses This / What This Uses, from Lean's call hierarchy.
+- Trace messages are expandable trees, fetched level by level.
+
+These are Preferences options, both on by default.
+
 **C and Lean's FFI**:
 - Go to definition goes from an `@[extern]` to its C function and back.
 - `@[extern]` bindings are checked against the project's C files (missing functions, wrong argument counts) in Problems.

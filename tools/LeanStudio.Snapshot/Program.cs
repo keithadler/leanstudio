@@ -605,6 +605,48 @@ internal static class Scenario
         window.SetTheme("Dark");
         await Task.Delay(300);
 
+        Console.WriteLine("editor intelligence: semantic colours, inlay hints, occurrences, callers, traces");
+        string smartFile = Path.Combine(proofsDir, "Smart.lean");
+        try
+        {
+            await File.WriteAllTextAsync(smartFile,
+                "def lengthOf (xs : List α) : Nat := xs.length\n\n"
+                + "def square (n : Nat) : Nat := n * n\n\n"
+                + "def usesSquare := square 3 + square 4\n\n"
+                + "example : Inhabited (Nat × Bool) := by\n"
+                + "  set_option trace.Meta.synthInstance true in\n"
+                + "  exact inferInstance\n");
+            DocumentViewModel sm = (await vm.OpenFileAsync(smartFile))!;
+            var smartEditor = window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!;
+            Check(await WaitFor(() => !sm.IsProcessing && smartEditor.SemanticTokenCount > 0, 90), $"Lean's semantic tokens colour the variables ({smartEditor.SemanticTokenCount})");
+            Check(await WaitFor(() => smartEditor.InlayHintLabels.Any(l => l.Contains('α', StringComparison.Ordinal)), 30),
+                $"an inlay hint shows the implicit α Lean binds ({string.Join(", ", smartEditor.InlayHintLabels)})");
+            sm.Reveal(4, 20);
+            Check(await WaitFor(() => smartEditor.HasOccurrences, 15), "every use of the name at the cursor is highlighted");
+            sm.Reveal(2, 5);
+            await vm.ShowCallersCommand.ExecuteAsync(null);
+            Check(vm.References.Count == 2 && vm.References.All(r => r.Text.StartsWith("usesSquare", StringComparison.Ordinal)) && vm.ReferencesTitle == "Used by (1)",
+                $"Who Uses This lists where square is used ({vm.ReferencesTitle})");
+            sm.Reveal(8, 4);
+            Check(await WaitFor(() => vm.Info.Messages.Any(m => m.HasTraces), 30), "a trace shows as a tree in the Tactic State");
+            TraceNodeView? root = vm.Info.Messages.SelectMany(m => m.Traces).FirstOrDefault();
+            Check(root?.Class == "[Meta.synthInstance]" && root.Text.Contains("Inhabited (Nat × Bool)", StringComparison.Ordinal), $"its root is the instance search ({root?.Class} {root?.Text})");
+            if (root is not null)
+            {
+                root.IsExpanded = true;
+                Check(await WaitFor(() => root.Children.Count > 0 && root.Children[0].Class.Length > 0, 15), "expanding it fetches its steps from Lean");
+            }
+            vm.BottomTab = MainViewModel.ReferencesPanel;
+            await Task.Delay(300);
+            Snap(window, outDir, "28-editor-intelligence");
+            await vm.CloseDocumentCommand.ExecuteAsync(sm);
+        }
+        finally
+        {
+            File.Delete(smartFile);
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("C and the FFI");
         string nativeLean = Path.Combine(proofsDir, "Native.lean");
         string cDir = Path.Combine(repo, "samples", "Proofs", "c");

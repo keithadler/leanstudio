@@ -32,6 +32,12 @@ public sealed class Settings
     public bool ShowGoalsInEnglish { get; set; } = true;
     /// <summary>Show #eval and #check results at the end of their line.</summary>
     public bool InlineResults { get; set; } = true;
+
+    /// <summary>Colour bound variables and fields as Lean classifies them, over the grammar's highlighting.</summary>
+    public bool SemanticHighlighting { get; set; } = true;
+
+    /// <summary>Show Lean's inlay hints in the text, such as implicit arguments it binds automatically.</summary>
+    public bool InlayHints { get; set; } = true;
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
     /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>
