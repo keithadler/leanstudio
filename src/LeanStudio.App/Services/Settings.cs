@@ -44,6 +44,24 @@ public sealed class Settings
 
     /// <summary>Edit with Emacs's keys: C-f, M-f, C-k, C-y, the mark and region, C-x C-s. Vim mode wins if both are on.</summary>
     public bool EmacsMode { get; set; }
+    /// <summary>Mark the end of each proof: ✔ when it's finished, "⊢ goals left" when it isn't.</summary>
+    public bool ShowProofMarks { get; set; } = true;
+
+    /// <summary>The Tactic State leaves out hypotheses that are types (<c>α : Type</c>).</summary>
+    public bool HideTypeAssumptions { get; set; }
+
+    /// <summary>The Tactic State leaves out type class instances.</summary>
+    public bool HideInstanceAssumptions { get; set; }
+
+    /// <summary>The Tactic State leaves out inaccessible names (<c>n✝</c>).</summary>
+    public bool HideInaccessibleNames { get; set; }
+
+    /// <summary>The Tactic State shows let variables without their values.</summary>
+    public bool HideLetValues { get; set; }
+
+    /// <summary>The Tactic State shows each goal's target before its hypotheses.</summary>
+    public bool GoalBeforeAssumptions { get; set; }
+
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
     /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>

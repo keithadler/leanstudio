@@ -262,4 +262,83 @@ public sealed class ProTests
             Directory.Delete(project.Root, true);
         }
     }
+
+    [Fact]
+    public void FiltersTheLocalContextAsTheInfoviewDoes()
+    {
+        static Lsp.TaggedString T(string s) => new(s, []);
+        var goal = new Lsp.InteractiveGoal(null, "⊢ ", [
+            new(["α"], T("Type"), null, false, true, false, false),
+            new(["inst"], T("Group α"), null, true, false, false, false),
+            new(["a✝", "b"], T("α"), null, false, false, false, false),
+            new(["n✝"], T("ℕ"), null, false, false, false, false),
+            new(["k"], T("ℕ"), T("n✝ + 1"), false, false, false, false),
+        ], T("b = b"), "", false, false);
+        Assert.Same(goal, Lsp.GoalFilter.None.Apply(goal));
+        var all = new Lsp.GoalFilter(HideTypes: true, HideInstances: true, HideInaccessible: true, HideLetValues: true).Apply(goal);
+        Assert.Equal(["b", "k"], all.Hypotheses.Select(h => string.Join(' ', h.Names)));
+        Assert.Null(all.Hypotheses[1].Value);
+        Assert.Equal(5, new Lsp.GoalFilter(HideLetValues: true).Apply(goal).Hypotheses.Count);
+        Assert.Equal(["α", "a✝ b", "n✝", "k"], new Lsp.GoalFilter(HideInstances: true).Apply(goal).Hypotheses.Select(h => string.Join(' ', h.Names)));
+    }
+
+    [Fact]
+    public async Task MarksWhereProofsEndFinishedOrNot()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Lean.Sample("Demo");
+        await using var server = new Lsp.LeanServer(new Lsp.LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        await server.StartAsync(ct);
+        string uri = Lsp.LeanServer.UriOf(Path.Combine(dir, "Marks.lean"));
+        await server.OpenAsync(uri, "theorem done : True := by\n  trivial\n\ntheorem notyet (p q : Prop) (hp : p) : p ∧ q := by\n  constructor\n  exact hp\n\ntheorem term : True := trivial\n");
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+        IReadOnlyList<Lsp.Diagnostic> shown = server.DiagnosticsOf(uri), silent = server.SilentDiagnosticsOf(uri);
+        Assert.DoesNotContain(shown, d => d.IsSilent == true); // "Goals accomplished!" is not a message to show
+        Assert.Equal(2, silent.Count(d => d.IsGoalsAccomplished));
+        Assert.Single(shown, d => d.IsUnsolvedGoals);
+        Assert.Equal([new Lsp.ProofMark(1, true), new Lsp.ProofMark(5, false), new Lsp.ProofMark(7, true)], Lsp.ProofMark.From(shown, silent));
+    }
+
+    [Fact]
+    public async Task TenetKeepsAChallengeAndItsSolutionApart()
+    {
+        // As in a benchmark: two modules that don't import each other declare the same theorem, the challenge
+        // with sorry and the solution with a proof. Neither may hide the other, or lend it its axioms.
+        Lean.RequireLean();
+        string root = Directory.CreateTempSubdirectory("leanstudio-pro").FullName;
+        File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+        File.WriteAllText(Path.Combine(root, "lakefile.toml"),
+            "name = \"Bench\"\ndefaultTargets = [\"Proof\", \"Challenge\", \"Solution\"]\n\n[[lean_lib]]\nname = \"Proof\"\n\n[[lean_lib]]\nname = \"Challenge\"\n\n[[lean_lib]]\nname = \"Solution\"\n");
+        File.WriteAllText(Path.Combine(root, "Proof.lean"), "theorem Proof.main (n : Nat) : n + 0 = n := by simp\n");
+        File.WriteAllText(Path.Combine(root, "Challenge.lean"), "namespace Bench\ntheorem statement (n : Nat) : n + 0 = n := by\n  sorry\nend Bench\n");
+        File.WriteAllText(Path.Combine(root, "Solution.lean"), "import Proof\nnamespace Bench\ntheorem statement (n : Nat) : n + 0 = n := Proof.main n\nend Bench\n");
+        var project = new LeanProject(root);
+        try
+        {
+            var build = await Lake.BuildAsync(project, ct: TestContext.Current.CancellationToken);
+            Assert.True(build.Success, build.Output);
+            using var ws = Core.Verification.TenetWorkspace.Open(project);
+            Assert.Equal(["Challenge", "Solution"], ws.ModulesDeclaring("Bench.statement").Order());
+
+            var report = await ws.VerifyAsync(ct: TestContext.Current.CancellationToken);
+            var verdicts = report.Declarations.Where(d => d.Name == "Bench.statement").ToDictionary(d => d.Module);
+            Assert.Equal(Core.Verification.VerificationStatus.RestsOnAssumption, verdicts["Challenge"].Status);
+            Assert.Equal(["sorryAx"], verdicts["Challenge"].Assumptions);
+            Assert.Equal(Core.Verification.VerificationStatus.Verified, verdicts["Solution"].Status);
+
+            Assert.Contains("sorryAx", ws.AxiomsOf("Bench.statement", "Challenge"));
+            Assert.DoesNotContain("sorryAx", ws.AxiomsOf("Bench.statement", "Solution"));
+            Assert.Throws<InvalidOperationException>(() => ws.AxiomsOf("Bench.statement")); // which one?
+            Assert.Throws<KeyNotFoundException>(() => ws.AxiomsOf("Bench.nothing")); // not "no axioms"
+            Assert.Empty(ws.WhyNotProved("Bench.statement", TestContext.Current.CancellationToken, "Solution"));
+            Assert.Single(ws.WhyNotProved("Bench.statement", TestContext.Current.CancellationToken, "Challenge"));
+            Assert.Equal(ws.Details("Bench.statement", "Challenge")!.Type, ws.Details("Bench.statement", "Solution")!.Type);
+            Assert.Equal("Solution", ws.Details("Bench.statement", "Solution")!.Module);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

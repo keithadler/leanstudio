@@ -99,6 +99,19 @@ public static class LeanTools
         throw new ToolException($"'{name}' must be a number");
     }
 
+    /// <summary>A Tenet query whose name several modules declare becomes a tool error that says which to pick.</summary>
+    private static T Scoped<T>(Func<T> query)
+    {
+        try
+        {
+            return query();
+        }
+        catch (Exception e) when (e is InvalidOperationException or KeyNotFoundException)
+        {
+            throw new ToolException(e.Message + " (pass module)");
+        }
+    }
+
     private static bool? OptBool(JsonObject a, string name) => a[name] is JsonValue v && v.TryGetValue(out bool b) ? b : null;
 
     private static int? OptInt(JsonObject a, string name) => a.ContainsKey(name) ? Int(a, name) : null;
@@ -352,32 +365,36 @@ public static class LeanTools
         new("axioms",
             "Every axiom a declaration depends on, transitively, computed by Tenet from the compiled library (like #print axioms). sorryAx means it rests on sorry.",
             Schema(("name", "string", "Fully qualified declaration name, e.g. Nat.add_comm.", true),
-                   ("project", "string", "Any path in the project; defaults to the server's project.", false)),
+                   ("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("module", "string", "The module to read it in, when several of the project's modules declare the name (a challenge statement and its solution, say).", false)),
             (a, ct) =>
             {
                 TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
                 string name = Str(a, "name");
-                if (ws.Details(name) is null)
+                string? module = OptStr(a, "module");
+                if (Scoped(() => ws.Details(name, module)) is null)
                 {
                     throw new ToolException($"{name} is not in the compiled library (is the project built, and is the name fully qualified?)");
                 }
-                IReadOnlyList<string> axioms = ws.AxiomsOf(name);
+                IReadOnlyList<string> axioms = Scoped(() => ws.AxiomsOf(name, module));
                 return Task.FromResult(axioms.Count == 0 ? $"{name} depends on no axioms." : $"{name} depends on:\n" + string.Join('\n', axioms.Select(x => "  " + x)));
             }),
 
         new("why_not_proved",
             "Why a declaration is not fully proved: for each sorry or project axiom it rests on, the shortest chain of declarations leading to it, with file and line of each. The last declaration before the sorry is the one to fix. Run build first.",
             Schema(("name", "string", "Fully qualified declaration name.", true),
-                   ("project", "string", "Any path in the project; defaults to the server's project.", false)),
+                   ("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("module", "string", "The module to read it in, when several of the project's modules declare the name (a challenge statement and its solution, say).", false)),
             (a, ct) =>
             {
                 TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
                 string name = Str(a, "name");
-                if (ws.Details(name) is null)
+                string? module = OptStr(a, "module");
+                if (Scoped(() => ws.Details(name, module)) is null)
                 {
                     throw new ToolException($"{name} is not in the compiled library (is the project built, and is the name fully qualified?)");
                 }
-                IReadOnlyList<AssumptionTrail> trails = ws.WhyNotProved(name, ct);
+                IReadOnlyList<AssumptionTrail> trails = Scoped(() => ws.WhyNotProved(name, ct, module));
                 if (trails.Count == 0)
                 {
                     return Task.FromResult($"{name} is fully proved: it rests on no sorry and no axiom beyond propext, Classical.choice and Quot.sound.");
@@ -709,7 +726,7 @@ public static class LeanTools
             (a, ct) =>
             {
                 TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
-                DeclarationDetails d = ws.Details(Str(a, "name")) ?? throw new ToolException($"{Str(a, "name")} is not in the compiled library");
+                DeclarationDetails d = Scoped(() => ws.Details(Str(a, "name"), OptStr(a, "module"))) ?? throw new ToolException($"{Str(a, "name")} is not in the compiled library");
                 var sb = new StringBuilder();
                 sb.Append(CultureInfo.InvariantCulture, $"{d.Kind} {d.Name}\n  type: {d.Type}\n  module: {d.Module}\n");
                 if (d.SourceFile is not null)

@@ -64,6 +64,8 @@ public sealed partial class MainViewModel
         Info.Search.Cancel = () => _proveCts?.Cancel();
         Info.Search.Extract = r => _ = ExtractFromSearchAsync(r);
         Info.ShowWidgets = ShowInfoview;
+        Info.CopyGoalsRequested = () => _ = CopyGoalsAsync();
+        Info.GoalsToCommentRequested = GoalsToComment;
         Verification.Explain = WhyNotProvedAsync;
         Verification.OpenRequested += (file, line) => _ = OpenFileAsync(file, line - 1, 0);
     }
@@ -406,7 +408,11 @@ public sealed partial class MainViewModel
             Verification.TrailTitle = "Build the project first (Lean ▸ Build Project): Tenet reads what Lean built.";
             return;
         }
-        if (ws.Details(name) is null)
+        // A name two of the project's modules declare (a challenge and its solution): the one in the file at hand.
+        string? module = ws.ModulesDeclaring(name) is { Count: > 0 } declaredIn
+            ? (ActiveDocument is { } a && Project?.ModuleNameOf(a.Path) is string am && declaredIn.Contains(am) ? am : declaredIn[0])
+            : null;
+        if (ws.Details(name, module) is null)
         {
             Verification.TrailTitle = $"{name} is not in the last build. Build the project (Lean ▸ Build Project), then ask again.";
             return;
@@ -414,7 +420,7 @@ public sealed partial class MainViewModel
         Verification.TrailTitle = $"Tracing what {name} rests on…";
         try
         {
-            IReadOnlyList<AssumptionTrail> trails = await OnLargeStack(() => ws.WhyNotProved(name));
+            IReadOnlyList<AssumptionTrail> trails = await OnLargeStack(() => ws.WhyNotProved(name, default, module));
             Verification.ShowTrails(name, trails);
         }
         catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)

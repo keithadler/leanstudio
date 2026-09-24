@@ -47,6 +47,7 @@ public sealed partial class LeanServer : IAsyncDisposable
     private readonly ConcurrentDictionary<string, int> _versions = new();
     private readonly ConcurrentDictionary<string, Task<string>> _sessions = new();
     private readonly ConcurrentDictionary<string, (int Version, IReadOnlyList<Diagnostic> Diagnostics)> _diagnostics = new();
+    private readonly ConcurrentDictionary<string, List<Diagnostic>> _silent = new();
     private readonly ConcurrentDictionary<string, int> _elaborated = new();
     private readonly object _waitLock = new();
     private readonly List<(string Uri, int Version, TaskCompletionSource Done)> _waiters = [];
@@ -167,6 +168,8 @@ public sealed partial class LeanServer : IAsyncDisposable
                     ["documentSymbol"] = new JsonObject { ["hierarchicalDocumentSymbolSupport"] = true },
                 },
                 ["window"] = new JsonObject { ["workDoneProgress"] = false },
+                // Lean's own extensions: its silent "goals accomplished" messages, for the end-of-proof marks.
+                ["lean"] = new JsonObject { ["silentDiagnosticSupport"] = true },
             },
             ["initializationOptions"] = new JsonObject { ["hasWidgets"] = true },
         };
@@ -212,7 +215,10 @@ public sealed partial class LeanServer : IAsyncDisposable
             case "textDocument/publishDiagnostics":
             {
                 string uri = p.GetProperty("uri").GetString() ?? "";
-                var list = p.GetProperty("diagnostics").As<List<Diagnostic>>() ?? [];
+                var all = p.GetProperty("diagnostics").As<List<Diagnostic>>() ?? [];
+                // Silent ones (Goals accomplished!) aren't messages to show: they are kept apart, for the proof marks.
+                var list = all.Where(d => d.IsSilent != true).ToList();
+                _silent[uri] = all.Where(d => d.IsSilent == true).ToList();
                 int version = p.TryGetProperty("version", out JsonElement v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
                 _diagnostics[uri] = (version, list);
                 DiagnosticsPublished?.Invoke(uri, list);
@@ -323,6 +329,12 @@ public sealed partial class LeanServer : IAsyncDisposable
 
     /// <summary>The version of the text Lean was last sent for a file; 0 when it is not open.</summary>
     public int VersionOf(string uri) => _versions.GetValueOrDefault(uri);
+
+    /// <summary>
+    /// The silent diagnostics Lean last sent for a document, apart from <see cref="DiagnosticsOf"/>: its "Goals
+    /// accomplished!" for each finished proof.
+    /// </summary>
+    public IReadOnlyList<Diagnostic> SilentDiagnosticsOf(string uri) => _silent.TryGetValue(uri, out List<Diagnostic>? l) ? l : [];
 
     /// <summary>The newest diagnostics Lean published for a file; empty when there are none yet or it is not open.</summary>
     public IReadOnlyList<Diagnostic> DiagnosticsOf(string uri) =>

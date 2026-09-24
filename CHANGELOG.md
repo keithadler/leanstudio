@@ -17,7 +17,15 @@
 - Screen readers: the editor is announced as an edit field named after its file, with its text readable, and every button, box and list (dialogs included) has a spoken name. The headless test checks all of them through the same accessibility API VoiceOver and UI Automation use.
 - *View ▸ Emacs Keys*: C-f/b/n/p/a/e, M-f/b, C-k and C-y with a kill ring that adds up, the mark and region (C-SPC, C-w, M-w, C-x C-x), C-/ to undo, C-s to search, C-x C-s to save. Kills go to the clipboard.
 
-**Fixes**: Tenet no longer counts a module whose source file was deleted but whose build was left behind.
+**The Tactic State, as VS Code's infoview has it**:
+- Its ⋯ menu hides type assumptions (`α : Type`), instances, inaccessible names (`n✝`) and let values, and can put each goal's target before its hypotheses. The choices are remembered.
+- *Pause* keeps showing the state while the cursor moves elsewhere; a Paused chip resumes it.
+- *Copy Goals*, and *Goals as a Comment Above the Cursor* (VS Code's Copy Contents to Comment).
+- The end of each proof is marked in the editor: a quiet ✔ where Lean says the goals are accomplished, "⊢ goals left" where they aren't (Preferences can turn it off). Lean's silent "Goals accomplished!" messages are asked for and kept apart, so they never show as messages.
+
+**Fixes**:
+- Tenet no longer counts a module whose source file was deleted but whose build was left behind.
+- A name declared in two of the project's modules that don't import each other (a benchmark's challenge statement and its solution) was dropped from Tenet's report, and its axioms came back empty. Each module's declarations are now read from that module, such a name is resolved as the module reading it sees it, and asking about it without saying which module is refused rather than guessed. Found while validating the ζ(5) formalization (mo271/zeta5).
 
 ## 0.7.0
 

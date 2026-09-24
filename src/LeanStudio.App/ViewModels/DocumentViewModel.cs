@@ -72,6 +72,10 @@ public sealed partial class DocumentViewModel : ObservableObject
     [ObservableProperty]
     private IReadOnlyList<Diagnostic> _diagnostics = [];
 
+    /// <summary>Where each proof ends, finished or with goals left, for the marks at the end of those lines.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<ProofMark> _proofMarks = [];
+
     /// <summary>The ranges Lean is still elaborating; empty when the file is done.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProcessing))]

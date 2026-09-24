@@ -70,10 +70,46 @@ public enum DiagnosticSeverity
 /// <param name="Message">The message text, as Lean rendered it.</param>
 /// <param name="Source">Who produced it (for Lean, usually <c>Lean 4</c>), or null when not given.</param>
 /// <param name="FullRange">Lean's extension: the whole extent of the syntax the message is about, or null when not given.</param>
-public sealed record Diagnostic(Range Range, DiagnosticSeverity Severity, string Message, string? Source = null, Range? FullRange = null)
+/// <param name="IsSilent">Lean's extension: not a message to show (such as "Goals accomplished!").</param>
+/// <param name="LeanTags">Lean's extension: what kind of message it is (1 unsolved goals, 2 goals accomplished).</param>
+public sealed record Diagnostic(Range Range, DiagnosticSeverity Severity, string Message, string? Source = null, Range? FullRange = null,
+    bool? IsSilent = null, IReadOnlyList<int>? LeanTags = null)
 {
     /// <summary>Lean reports a narrow range for the squiggle and the whole extent in fullRange.</summary>
     public Range Extent => FullRange ?? Range;
+
+    /// <summary>Lean's "unsolved goals" error (its tag 1): the proof over <see cref="Extent"/> isn't finished.</summary>
+    public bool IsUnsolvedGoals => LeanTags?.Contains(1) == true;
+
+    /// <summary>Lean's silent "Goals accomplished!" (its tag 2): the proof over <see cref="Extent"/> is finished.</summary>
+    public bool IsGoalsAccomplished => LeanTags?.Contains(2) == true;
+}
+
+/// <summary>The end of a proof, as the editor marks it: finished, or with goals left.</summary>
+/// <param name="Line">The 0-based line the proof ends on.</param>
+/// <param name="Done">Whether Lean says the goals are accomplished (else some are left).</param>
+public sealed record ProofMark(int Line, bool Done)
+{
+    /// <summary>
+    /// The marks for a file, from its diagnostics and the silent ones Lean sends alongside: each finished proof,
+    /// and each "unsolved goals" error, at the line its extent ends on. Where both fall on one line, the goals
+    /// left win.
+    /// </summary>
+    public static IReadOnlyList<ProofMark> From(IReadOnlyList<Diagnostic> diagnostics, IReadOnlyList<Diagnostic> silent)
+    {
+        static int EndLine(Diagnostic d) =>
+            d.Extent.End.Character == 0 && d.Extent.End.Line > d.Extent.Start.Line ? d.Extent.End.Line - 1 : d.Extent.End.Line;
+        var marks = new Dictionary<int, bool>();
+        foreach (Diagnostic d in silent.Where(d => d.IsGoalsAccomplished))
+        {
+            marks.TryAdd(EndLine(d), true);
+        }
+        foreach (Diagnostic d in diagnostics.Where(d => d.IsUnsolvedGoals))
+        {
+            marks[EndLine(d)] = false;
+        }
+        return marks.OrderBy(m => m.Key).Select(m => new ProofMark(m.Key, m.Value)).ToList();
+    }
 }
 
 /// <summary>What Lean says about a range it has not finished with, in <c>$/lean/fileProgress</c>.</summary>

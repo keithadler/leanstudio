@@ -44,7 +44,9 @@ Dispatcher.UIThread.Post(async () =>
 {
     try
     {
-        failures = await Scenario.RunAsync(repo, outDir);
+        failures = args.Length > 2 && args[0] == "--validate"
+            ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
+            : await Scenario.RunAsync(repo, outDir);
     }
     catch (Exception e)
     {
@@ -1010,6 +1012,37 @@ internal static class Scenario
                 && (editorPeer.GetProvider<Avalonia.Automation.Provider.IValueProvider>()?.Value ?? "").Contains("theorem", StringComparison.Ordinal),
                 $"the editor is an edit field named after its file, whose text a screen reader can read ({editorPeer.GetName()})");
         }
+
+        Console.WriteLine("the Tactic State as VS Code's infoview has it, and proof marks");
+        vm.ActiveDocument = doc;
+        Check(await WaitFor(() => doc.ProofMarks.Any(m => m.Done), 30), "finished proofs are marked where they end");
+        doc.Reveal(16, 14); // in not_not_elim: p : Prop, h : ¬¬p, hp : p
+        Check(await WaitFor(() => vm.Info.Goals.Count > 0, 30), "goals at the cursor");
+        int hypsBefore = vm.Info.Goals[0].Hypotheses.Count;
+        vm.Info.HideTypes = true;
+        Check(vm.Info.Goals[0].Hypotheses.Count == hypsBefore - 1 && vm.Info.Goals[0].Hypotheses.All(h => h.Names != "p"), "Hide Type Assumptions leaves out p : Prop");
+        vm.Info.TargetFirst = true;
+        Check(vm.Info.Goals[0].TargetFirst && vm.Info.Goals[0].TargetRow == 0, "Goal Before Assumptions puts the target first");
+        Snap(window, outDir, "33-tactic-state-options");
+        vm.Info.HideTypes = false;
+        vm.Info.TargetFirst = false;
+        Check(vm.Settings.HideTypeAssumptions == false && vm.Info.Goals[0].Hypotheses.Count == hypsBefore, "and they come back, and are remembered in Settings");
+        string at = vm.Info.Position;
+        vm.Info.Paused = true;
+        doc.Reveal(5, 2);
+        await Task.Delay(1200);
+        Check(vm.Info.Position == at, "Pause keeps the state shown while the cursor moves");
+        vm.Info.Paused = false;
+        Check(await WaitFor(() => vm.Info.Position != at, 10), "and resuming follows the cursor again");
+        doc.Reveal(16, 14);
+        Check(await WaitFor(() => vm.Info.Goals.Count > 0 && vm.Info.PlainGoals.Contains("hp : p", StringComparison.Ordinal), 20), "back in the proof");
+        string beforeComment = doc.Document.Text;
+        vm.GoalsToComment();
+        Check(doc.Document.Text.Contains("\n  /- ", StringComparison.Ordinal) && doc.Document.Text.Contains("hp : p", StringComparison.Ordinal)
+            && doc.Document.Text.Contains(" -/\n  | inl hp", StringComparison.Ordinal),
+            "Goals as a Comment puts them above the cursor, indented like its line");
+        doc.Document.UndoStack.Undo();
+        Check(doc.Document.Text == beforeComment, "and undo takes it out");
 
         Console.WriteLine("dialogs");
         string? dialogName = null;

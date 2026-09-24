@@ -27,6 +27,24 @@
           </Button>
           <ToggleButton Classes="chip" Content="English" IsChecked="{Binding ShowEnglish}" ToolTip.Tip="Read each goal aloud in English under it" />
           <ToggleButton Classes="chip" Content="Plain" IsChecked="{Binding PlainText}" ToolTip.Tip="Show the goals as the plain text Lean prints" />
+          <Button Classes="chip accent" Content="Paused" IsVisible="{Binding Paused}" Command="{Binding ResumeCommand}"
+                  ToolTip.Tip="The Tactic State is paused on the state it showed. Click to follow the cursor again." />
+          <Button Classes="chip" Content="⋯" AutomationProperties.Name="Tactic State options" ToolTip.Tip="What the goals show; pause; copy">
+            <Button.Flyout>
+              <MenuFlyout>
+                <MenuItem Header="Hide Type Assumptions (α : Type)" ToggleType="CheckBox" IsChecked="{Binding HideTypes}" />
+                <MenuItem Header="Hide Instance Assumptions (inst : Group G)" ToggleType="CheckBox" IsChecked="{Binding HideInstances}" />
+                <MenuItem Header="Hide Inaccessible Names (n✝)" ToggleType="CheckBox" IsChecked="{Binding HideInaccessible}" />
+                <MenuItem Header="Hide Let Values" ToggleType="CheckBox" IsChecked="{Binding HideLetValues}" />
+                <MenuItem Header="Goal Before Assumptions" ToggleType="CheckBox" IsChecked="{Binding TargetFirst}" />
+                <Separator />
+                <MenuItem Header="Pause (keep showing this state)" ToggleType="CheckBox" IsChecked="{Binding Paused}" />
+                <Separator />
+                <MenuItem Header="Copy Goals" Command="{Binding CopyGoalsCommand}" />
+                <MenuItem Header="Goals as a Comment Above the Cursor" Command="{Binding GoalsToCommentCommand}" />
+              </MenuFlyout>
+            </Button.Flyout>
+          </Button>
         </StackPanel>
       </Grid>
     </Border>
@@ -123,7 +141,8 @@
                     <TextBlock Grid.Column="1" Text="closed by this tactic" FontSize="11" Foreground="#3FB950" IsVisible="{Binding IsRemoved}" />
                     <TextBlock Grid.Column="1" Text="new goal" FontSize="11" Foreground="{DynamicResource GoalAccent}" IsVisible="{Binding IsInserted}" />
                   </Grid>
-                  <ItemsControl ItemsSource="{Binding Hypotheses}">
+                  <Grid RowDefinitions="Auto,Auto">
+                  <ItemsControl Grid.Row="{Binding HypothesesRow}" ItemsSource="{Binding Hypotheses}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:HypothesisView">
                         <Border Padding="4,1" CornerRadius="3"
@@ -139,13 +158,14 @@
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <Border Padding="4,3,4,1" Margin="0,4,0,0" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+                  <Border Grid.Row="{Binding TargetRow}" Padding="4,3,4,1" Margin="0,4,0,0" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
                     <StackPanel Orientation="Horizontal">
                       <TextBlock Text="{Binding Prefix}" Classes="mono" FontWeight="SemiBold" />
                       <v:SubtermText Tagged="{Binding TargetTagged}" Classes="mono" FontWeight="SemiBold" TextWrapping="Wrap"
                                      ToolTip.ShowDelay="0" />
                     </StackPanel>
                   </Border>
+                  </Grid>
                   <TextBlock Text="{Binding English}" Classes="dim" FontSize="12" FontStyle="Italic" TextWrapping="Wrap" Margin="4,2,4,0"
                              IsVisible="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).ShowEnglish}" />
                 </StackPanel>

@@ -226,7 +226,7 @@ public sealed partial class NavigatorViewModel : ObservableObject
     {
         if (value is not null)
         {
-            _ = ShowAsync(value.Name);
+            _ = ShowAsync(value.Name, value.Module);
         }
     }
 
@@ -274,7 +274,8 @@ public sealed partial class NavigatorViewModel : ObservableObject
     /// A newer call cancels an older one. Does nothing without a build; a name the build does not have clears the details.
     /// </summary>
     /// <param name="name">The declaration's full name.</param>
-    public async Task ShowAsync(string name)
+    /// <param name="module">The module it is in, when several of the project's modules declare the name.</param>
+    public async Task ShowAsync(string name, string? module = null)
     {
         _detailCts?.Cancel();
         var cts = new CancellationTokenSource();
@@ -286,7 +287,8 @@ public sealed partial class NavigatorViewModel : ObservableObject
         }
         try
         {
-            DeclarationDetails? d = await Task.Run(() => ws.Details(name), cts.Token);
+            module ??= ws.ModulesDeclaring(name).FirstOrDefault(); // a name the project declares twice: the first, unless one is given
+            DeclarationDetails? d = await Task.Run(() => ws.Details(name, module), cts.Token);
             if (cts.IsCancellationRequested)
             {
                 return;
@@ -301,7 +303,7 @@ public sealed partial class NavigatorViewModel : ObservableObject
             {
                 return;
             }
-            IReadOnlyList<string> axioms = await Task.Run(() => ws.AxiomsOf(name), cts.Token);
+            IReadOnlyList<string> axioms = await Task.Run(() => ws.AxiomsOf(name, module), cts.Token);
             if (cts.IsCancellationRequested)
             {
                 return;

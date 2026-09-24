@@ -395,25 +395,30 @@ public sealed class TenetWorkspace : IDisposable
     /// Everything the navigator shows about the declaration with full name <paramref name="name"/>, or
     /// <see langword="null"/> when no open module defines it. Decodes the declaration and prints its type and value.
     /// </summary>
-    public DeclarationDetails? Details(string name)
+    /// <param name="name">The declaration.</param>
+    /// <param name="module">The module to read it in; needed only when several of the project's modules declare it.</param>
+    public DeclarationDetails? Details(string name, string? module = null)
     {
         TenetName n = TenetName.Parse(name);
         lock (_lock)
         {
-            ConstantInfo? c = _checker.Resolve(n);
+            TenetName? scope = ScopeFor(n, module);
+            ConstantInfo? c = ResolverIn(scope)(n);
             if (c is null)
             {
                 return null;
             }
-            OleanModule? owner = _checker.Modules.Values.FirstOrDefault(m => m.Contains(n));
-            string module = owner is null ? "" : _checker.Modules.First(kv => ReferenceEquals(kv.Value, owner)).Key.ToString();
+            OleanModule? owner = scope is TenetName sm && OwnDuplicates().TryGetValue(n, out var declaredIn)
+                ? _checker.Modules[declaredIn.Contains(sm) ? sm : declaredIn.First(d => ClosureOf(sm).Contains(d))]
+                : _checker.Modules.Values.FirstOrDefault(m => m.Contains(n));
+            string moduleName = owner is null ? "" : _checker.Modules.First(kv => ReferenceEquals(kv.Value, owner)).Key.ToString();
             SourceRange? range = owner?.SourceRangeOf(n);
             Deprecation? dep = owner?.DeprecationOf(n);
             string? value = c is TheoremInfo ? null : c.Value is Expr v ? Print(v) : null;
             return new DeclarationDetails(
                 name,
                 c.KindName,
-                module,
+                moduleName,
                 c.LevelParams.Select(l => l.ToString()).ToList(),
                 Print(c.Type),
                 value,
@@ -421,7 +426,7 @@ public sealed class TenetWorkspace : IDisposable
                 dep is null ? null : dep.NewName is TenetName nn ? $"deprecated: use {nn}" + (dep.Since is null ? "" : $" (since {dep.Since})") : "deprecated" + (dep.Text is null ? "" : ": " + dep.Text),
                 range?.Line,
                 range?.Column,
-                SourceFileOf(module),
+                SourceFileOf(moduleName),
                 Replay.UsedConstants(c).Select(u => u.ToString()).Where(IsUserFacing).OrderBy(s => s, StringComparer.Ordinal).ToList(),
                 c.IsUnsafe);
         }
@@ -433,15 +438,126 @@ public sealed class TenetWorkspace : IDisposable
         return s.Length > 4000 ? s[..4000] + " …" : s;
     }
 
+    // ---- names the project declares more than once ----
+    //
+    // Two of the project's modules can declare the same name when neither imports the other: a challenge statement
+    // and the file that proves it, say. Lean never sees both at once, but this workspace opens both. Such a name
+    // means the declaration of the module it is read from, or of one it imports, never "whichever": reading it any
+    // other way can report the proof as the statement, or lose both.
+
+    private Dictionary<TenetName, List<TenetName>>? _ownDuplicates;
+    private readonly Dictionary<TenetName, HashSet<TenetName>> _closures = new();
+
+    /// <summary>The names declared by more than one of the project's own modules, with the modules that declare each.</summary>
+    private Dictionary<TenetName, List<TenetName>> OwnDuplicates()
+    {
+        if (_ownDuplicates is null)
+        {
+            var declaredIn = new Dictionary<TenetName, List<TenetName>>();
+            foreach (TenetName m in OwnModules.Where(_checker.Modules.ContainsKey))
+            {
+                foreach (TenetName n in _checker.Modules[m].ConstantNames)
+                {
+                    if (!declaredIn.TryGetValue(n, out List<TenetName>? l))
+                    {
+                        declaredIn[n] = l = [];
+                    }
+                    l.Add(m);
+                }
+            }
+            _ownDuplicates = declaredIn.Where(kv => kv.Value.Count > 1).ToDictionary(kv => kv.Key, kv => kv.Value);
+        }
+        return _ownDuplicates;
+    }
+
+    /// <summary>A module and everything it imports, transitively.</summary>
+    private HashSet<TenetName> ClosureOf(TenetName module)
+    {
+        if (!_closures.TryGetValue(module, out HashSet<TenetName>? closure))
+        {
+            closure = [];
+            var stack = new Stack<TenetName>([module]);
+            while (stack.TryPop(out TenetName? m))
+            {
+                if (closure.Add(m) && _checker.Modules.TryGetValue(m, out var om))
+                {
+                    foreach (var imp in om.Imports)
+                    {
+                        stack.Push(imp.Module);
+                    }
+                }
+            }
+            _closures[module] = closure;
+        }
+        return closure;
+    }
+
+    /// <summary>Resolve names as <paramref name="scope"/> sees them: a name several project modules declare means the one it declares or imports.</summary>
+    private Func<TenetName, ConstantInfo?> ResolverIn(TenetName? scope)
+    {
+        Dictionary<TenetName, List<TenetName>> duplicates = OwnDuplicates();
+        if (duplicates.Count == 0)
+        {
+            return _checker.Resolve;
+        }
+        return n =>
+        {
+            if (!duplicates.TryGetValue(n, out List<TenetName>? declaredIn))
+            {
+                return _checker.Resolve(n);
+            }
+            if (scope is not TenetName s)
+            {
+                return null; // ambiguous, and no module to read it from
+            }
+            TenetName? pick = declaredIn.Contains(s) ? s : declaredIn.FirstOrDefault(m => ClosureOf(s).Contains(m));
+            return pick is TenetName m ? _checker.Modules[m].FindConstant(n) : null;
+        };
+    }
+
+    /// <summary>The project's modules that declare <paramref name="name"/>, when more than one does; empty otherwise.</summary>
+    public IReadOnlyList<string> ModulesDeclaring(string name)
+    {
+        lock (_lock)
+        {
+            return OwnDuplicates().TryGetValue(TenetName.Parse(name), out List<TenetName>? l) ? l.Select(m => m.ToString()).ToList() : [];
+        }
+    }
+
+    /// <summary>The module to read <paramref name="name"/> in: the one given, or, when the name is declared once, none is needed.</summary>
+    /// <exception cref="InvalidOperationException">Several of the project's modules declare the name and none was given.</exception>
+    private TenetName? ScopeFor(TenetName name, string? module)
+    {
+        if (module is not null)
+        {
+            return TenetName.Parse(module);
+        }
+        if (OwnDuplicates().TryGetValue(name, out List<TenetName>? declaredIn))
+        {
+            throw new InvalidOperationException($"{name} is declared in several modules ({string.Join(", ", declaredIn)}); say which one");
+        }
+        return null;
+    }
+
     /// <summary>
     /// Every axiom a declaration depends on, transitively (Lean's <c>#print axioms</c>, computed by Tenet), sorted.
     /// Includes <c>sorryAx</c> when it uses sorry.
     /// </summary>
-    public IReadOnlyList<string> AxiomsOf(string name)
+    /// <param name="name">The declaration.</param>
+    /// <param name="module">The module to read it in; needed only when several of the project's modules declare it.</param>
+    /// <exception cref="KeyNotFoundException">No open module declares it (so "no axioms" can't be mistaken for an answer).</exception>
+    /// <exception cref="InvalidOperationException">Several of the project's modules declare it and <paramref name="module"/> is null.</exception>
+    public IReadOnlyList<string> AxiomsOf(string name, string? module = null)
     {
+        TenetName n = TenetName.Parse(name);
         lock (_lock)
         {
-            (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(_checker.Resolve, TenetName.Parse(name));
+            Func<TenetName, ConstantInfo?> find = ResolverIn(ScopeFor(n, module));
+            if (find(n) is null)
+            {
+                throw new KeyNotFoundException($"no open module declares {name}" + (module is null ? "" : " in the scope of " + module));
+            }
+            (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(find, n);
             return axioms.Select(a => a.ToString()).ToList();
         }
     }
@@ -452,16 +568,20 @@ public sealed class TenetWorkspace : IDisposable
     /// (<c>foo._proof_1</c>, <c>foo.match_1</c>, private names) are shown as the declaration they belong to.
     /// Sorry comes first, then shorter trails. Empty when the declaration is unknown or fully proved.
     /// </summary>
-    public IReadOnlyList<AssumptionTrail> WhyNotProved(string name, CancellationToken ct = default)
+    /// <param name="name">The declaration.</param>
+    /// <param name="ct">Cancels the search.</param>
+    /// <param name="module">The module to read it in; needed only when several of the project's modules declare it.</param>
+    public IReadOnlyList<AssumptionTrail> WhyNotProved(string name, CancellationToken ct = default, string? module = null)
     {
         TenetName start = TenetName.Parse(name);
         lock (_lock)
         {
-            if (_checker.Resolve(start) is null)
+            Func<TenetName, ConstantInfo?> find = ResolverIn(ScopeFor(start, module));
+            if (find(start) is null)
             {
                 return [];
             }
-            (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(_checker.Resolve, start);
+            (SortedSet<TenetName> axioms, _) = Replay.AxiomsOf(find, start);
             var wanted = new HashSet<TenetName>(axioms.Where(a => !StandardAxioms.Contains(a)));
             if (wanted.Count == 0)
             {
@@ -475,7 +595,7 @@ public sealed class TenetWorkspace : IDisposable
             {
                 ct.ThrowIfCancellationRequested();
                 TenetName n = queue.Dequeue();
-                if (_checker.Resolve(n) is not ConstantInfo c)
+                if (find(n) is not ConstantInfo c)
                 {
                     continue;
                 }
@@ -857,13 +977,16 @@ public sealed class TenetWorkspace : IDisposable
                 OleanModule om = _checker.Modules[m];
                 foreach (TenetName cn in om.ConstantNames)
                 {
-                    if (_checker.Resolve(cn) is ConstantInfo ci)
+                    // The module's own declaration, not whichever module's the name resolves to.
+                    if (om.FindConstant(cn) is ConstantInfo ci)
                     {
                         own.Add((m, ci, om));
                     }
                 }
             }
-            List<ConstantInfo> scope = own.Select(o => o.Info).ToList();
+            // Names several modules declare are worked out per module below; the rest are shared.
+            Dictionary<TenetName, List<TenetName>> duplicates = OwnDuplicates();
+            List<ConstantInfo> scope = own.Where(o => !duplicates.ContainsKey(o.Info.Name)).Select(o => o.Info).ToList();
 
             // Axioms beyond the standard three that anything in scope uses directly, then who rests on each.
             var assumptions = new HashSet<TenetName>();
@@ -918,6 +1041,12 @@ public sealed class TenetWorkspace : IDisposable
                 if (failures.TryGetValue(ci.Name, out OleanCheckFailure? f))
                 {
                     verdicts.Add(new DeclarationVerdict(name, module.ToString(), VerificationStatus.Rejected, [], f.Message, line));
+                }
+                else if (duplicates.ContainsKey(ci.Name))
+                {
+                    // Declared in several modules: its axioms as this module sees them.
+                    var axs = Replay.AxiomsOf(ResolverIn(module), ci.Name).Axioms.Where(a => !StandardAxioms.Contains(a)).Select(a => a.ToString()).ToList();
+                    verdicts.Add(new DeclarationVerdict(name, module.ToString(), axs.Count > 0 ? VerificationStatus.RestsOnAssumption : VerificationStatus.Verified, axs, null, line));
                 }
                 else if (restsOn.TryGetValue(ci.Name, out List<string>? axs))
                 {

@@ -194,3 +194,28 @@ public sealed record InteractiveGoals(IReadOnlyList<InteractiveGoal> Goals)
 /// <param name="Type">Its type, or null.</param>
 /// <param name="Doc">The docstring of its head constant as Markdown, or null when it has none.</param>
 public sealed record SubtermInfo(string? Explicit, string? Type, string? Doc);
+
+/// <summary>
+/// What the Tactic State leaves out of each goal's local context, as VS Code's infoview can: hypotheses that are
+/// types (<c>α : Type</c>), instances (<c>inst : Group G</c>), inaccessible names (<c>n✝</c>), and let values.
+/// </summary>
+/// <param name="HideTypes">Leave out hypotheses that are themselves types.</param>
+/// <param name="HideInstances">Leave out type class instances.</param>
+/// <param name="HideInaccessible">Leave out inaccessible names (those with a <c>✝</c>), and hypotheses left with none.</param>
+/// <param name="HideLetValues">Show a let variable's type but not its value.</param>
+public sealed record GoalFilter(bool HideTypes = false, bool HideInstances = false, bool HideInaccessible = false, bool HideLetValues = false)
+{
+    /// <summary>Leave everything in.</summary>
+    public static readonly GoalFilter None = new();
+
+    /// <summary>The goal with what this filter leaves out removed.</summary>
+    public InteractiveGoal Apply(InteractiveGoal goal) => this == None ? goal : goal with
+    {
+        Hypotheses = goal.Hypotheses
+            .Where(h => !(HideTypes && h.IsType) && !(HideInstances && h.IsInstance))
+            .Select(h => HideInaccessible ? h with { Names = h.Names.Where(n => !n.Contains('✝', StringComparison.Ordinal)).ToList() } : h)
+            .Where(h => h.Names.Count > 0)
+            .Select(h => HideLetValues ? h with { Value = null } : h)
+            .ToList(),
+    };
+}

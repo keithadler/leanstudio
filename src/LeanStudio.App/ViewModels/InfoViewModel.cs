@@ -37,6 +37,15 @@ public sealed record GoalView(string? CaseName, IReadOnlyList<HypothesisView> Hy
     /// <summary>The target with Lean's subterm structure, for hovering into it.</summary>
     public TaggedString? TargetTagged { get; init; }
 
+    /// <summary>Show the target before the hypotheses (Preferences, or the Tactic State's ⋯ menu).</summary>
+    public bool TargetFirst { get; init; }
+
+    /// <summary>The row the hypotheses go in: after the target when it comes first.</summary>
+    public int HypothesesRow => TargetFirst ? 1 : 0;
+
+    /// <summary>The row the target goes in.</summary>
+    public int TargetRow => TargetFirst ? 0 : 1;
+
     /// <summary>The goal has a case tag.</summary>
     public bool HasCase => CaseName is not null;
     /// <summary>The case tag, as <c>case name</c>.</summary>
@@ -438,6 +447,77 @@ public sealed partial class InfoViewModel : ObservableObject
         }
     }
 
+    // ---- what the goals show, as VS Code's infoview lets you choose ----
+
+    private InteractiveGoals? _shown;
+
+    /// <summary>Leave hypotheses that are types (<c>α : Type</c>) out of the goals.</summary>
+    [ObservableProperty]
+    private bool _hideTypes;
+
+    /// <summary>Leave type class instances out of the goals.</summary>
+    [ObservableProperty]
+    private bool _hideInstances;
+
+    /// <summary>Leave inaccessible names (<c>n✝</c>) out of the goals.</summary>
+    [ObservableProperty]
+    private bool _hideInaccessible;
+
+    /// <summary>Show let variables without their values.</summary>
+    [ObservableProperty]
+    private bool _hideLetValues;
+
+    /// <summary>Show each goal's target before its hypotheses.</summary>
+    [ObservableProperty]
+    private bool _targetFirst;
+
+    /// <summary>
+    /// Keep showing the state where it was when paused, whatever the cursor does, to compare it with the code
+    /// elsewhere.
+    /// </summary>
+    [ObservableProperty]
+    private bool _paused;
+
+    /// <summary>What <see cref="CopyGoalsCommand"/> does: set by the main window's view model.</summary>
+    public Action? CopyGoalsRequested { get; set; }
+
+    /// <summary>What <see cref="GoalsToCommentCommand"/> does: set by the main window's view model.</summary>
+    public Action? GoalsToCommentRequested { get; set; }
+
+    /// <summary>Copy the goals shown, as Lean prints them.</summary>
+    [RelayCommand]
+    private void CopyGoals() => CopyGoalsRequested?.Invoke();
+
+    /// <summary>Put the goals shown into the file, as a comment above the cursor (VS Code's Copy Contents to Comment).</summary>
+    [RelayCommand]
+    private void GoalsToComment() => GoalsToCommentRequested?.Invoke();
+
+    /// <summary>Stop pausing: the Tactic State follows the cursor again.</summary>
+    [RelayCommand]
+    private void Resume() => Paused = false;
+
+    /// <summary>What the filters leave out.</summary>
+    public GoalFilter Filter => new(HideTypes, HideInstances, HideInaccessible, HideLetValues);
+
+    partial void OnHideTypesChanged(bool value) => ShowGoals();
+    partial void OnHideInstancesChanged(bool value) => ShowGoals();
+    partial void OnHideInaccessibleChanged(bool value) => ShowGoals();
+    partial void OnHideLetValuesChanged(bool value) => ShowGoals();
+    partial void OnTargetFirstChanged(bool value) => ShowGoals();
+
+    /// <summary>Show the goals last fetched, with the filters and the order chosen now.</summary>
+    private void ShowGoals()
+    {
+        if (_shown is not InteractiveGoals goals)
+        {
+            return;
+        }
+        GoalFilter filter = Filter;
+        var shown = goals.Goals.Select(filter.Apply).ToList();
+        Goals.Reset(shown.Select(g => GoalView.From(g) with { TargetFirst = TargetFirst }));
+        PlainGoals = string.Join("\n\n", shown.Select(g => g.Render()));
+    }
+
     /// <summary>Empty the panel and cancel any request still waiting, showing why there is nothing.</summary>
     /// <param name="status">What to show instead, such as <c>No file open</c>.</param>
     public void Clear(string status)
@@ -445,6 +525,7 @@ public sealed partial class InfoViewModel : ObservableObject
         _goalsCts?.Cancel();
         _stepsCts?.Cancel();
         _stepsKey = null;
+        _shown = null;
         Goals.Reset([]);
         Messages.Reset([]);
         Steps.Reset([]);
@@ -467,6 +548,10 @@ public sealed partial class InfoViewModel : ObservableObject
     /// <param name="pos">The cursor, 0-based.</param>
     public async Task RefreshAsync(LeanServer server, DocumentViewModel doc, Position pos)
     {
+        if (Paused)
+        {
+            return; // keep showing the state where it was paused
+        }
         _goalsCts?.Cancel();
         var cts = new CancellationTokenSource();
         _goalsCts = cts;
@@ -501,9 +586,9 @@ public sealed partial class InfoViewModel : ObservableObject
             }
             ReleaseHeld();
             _held = (server, doc.Uri, pos, goals.References().ToList());
-            Goals.Reset(goals.Goals.Select(GoalView.From));
+            _shown = goals;
+            ShowGoals();
             HasGoals = goals.Goals.Count > 0;
-            PlainGoals = string.Join("\n\n", goals.Goals.Select(g => g.Render()));
             Status = HasGoals ? $"{goals.Goals.Count} goal{(goals.Goals.Count == 1 ? "" : "s")}"
                    : InProof ? "No goals" : doc.IsProcessing ? "Lean is elaborating…" : "";
             try

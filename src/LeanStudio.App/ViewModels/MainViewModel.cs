@@ -91,6 +91,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _caretCts;
     private CancellationTokenSource? _buildCts;
     private TenetWorkspace? _tenet;
+
+    /// <summary>The project's build opened with Tenet, once it has been (for scripts and checks).</summary>
+    public TenetWorkspace? TenetBuild => _tenet;
     private LeanServer? _server;
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _diskCts;
@@ -104,7 +107,33 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         _dialogs = dialogs;
         Settings = settings;
-        Info = new InfoViewModel();
+        Info = new InfoViewModel
+        {
+            HideTypes = settings.HideTypeAssumptions,
+            HideInstances = settings.HideInstanceAssumptions,
+            HideInaccessible = settings.HideInaccessibleNames,
+            HideLetValues = settings.HideLetValues,
+            TargetFirst = settings.GoalBeforeAssumptions,
+        };
+        Info.PropertyChanged += (_, e) =>
+        {
+            // The Tactic State's view choices are kept for next time.
+            switch (e.PropertyName)
+            {
+                case nameof(InfoViewModel.HideTypes) or nameof(InfoViewModel.HideInstances) or nameof(InfoViewModel.HideInaccessible)
+                    or nameof(InfoViewModel.HideLetValues) or nameof(InfoViewModel.TargetFirst):
+                    Settings.HideTypeAssumptions = Info.HideTypes;
+                    Settings.HideInstanceAssumptions = Info.HideInstances;
+                    Settings.HideInaccessibleNames = Info.HideInaccessible;
+                    Settings.HideLetValues = Info.HideLetValues;
+                    Settings.GoalBeforeAssumptions = Info.TargetFirst;
+                    Settings.Save();
+                    break;
+                case nameof(InfoViewModel.Paused) when !Info.Paused && ActiveDocument is DocumentViewModel d:
+                    CaretMoved(d, d.CaretLine, d.CaretColumn); // catch up with the cursor
+                    break;
+            }
+        };
         Info.NavigateRequested += (line, col) => ActiveDocument?.Reveal(line, col);
         Navigator = new NavigatorViewModel(() => _tenet);
         Navigator.OpenSourceRequested += (file, line, col) => _ = OpenFileAsync(file, line - 1, col);
@@ -627,6 +656,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
         d.Diagnostics = diags;
+        d.ProofMarks = ProofMark.From(diags, _server?.SilentDiagnosticsOf(uri) ?? []);
         UpdateProblems();
         if (d == ActiveDocument)
         {

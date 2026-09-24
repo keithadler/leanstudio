@@ -26,6 +26,9 @@ namespace LeanStudio.App.Editor;
 /// </summary>
 public sealed class LeanEditor : UserControl
 {
+    /// <summary>The proof-end marks drawn (for checks).</summary>
+    public ProofMarksRenderer ProofMarks => _proofMarks;
+
     /// <summary>The cursors beyond the editor's own (⌘D, ⌥-click…).</summary>
     public MultiCursorLayer MultiCursor => _multi;
 
@@ -42,6 +45,7 @@ public sealed class LeanEditor : UserControl
     private readonly StatusMargin _margin = new();
     private readonly BracketHighlighter _brackets = new();
     private readonly InlineResults _inline = new();
+    private readonly ProofMarksRenderer _proofMarks = new();
     private readonly TimingRenderer _timings = new(labels: false), _timingLabels = new(labels: true);
     private readonly SemanticColorizer _semantic = new();
     private readonly OccurrenceHighlighter _occurrences = new();
@@ -88,6 +92,7 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnostics);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_brackets);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_inline);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_proofMarks);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timings);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timingLabels);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_occurrences);
@@ -161,6 +166,7 @@ public sealed class LeanEditor : UserControl
         _editor.FontFamily = new FontFamily(s.EditorFontFamily);
         _editor.ShowLineNumbers = s.ShowLineNumbers;
         _inline.Enabled = s.InlineResults;
+        _proofMarks.Enabled = s.ShowProofMarks;
         _editor.WordWrap = s.WordWrap;
         _editor.TextArea.TextView.InvalidateLayer(_inline.Layer);
         OnVimChanged();
@@ -247,6 +253,7 @@ public sealed class LeanEditor : UserControl
             _editor.IsEnabled = false;
             _diagnostics.Update([]);
             _inline.Update([]);
+            _proofMarks.Update([]);
             _timings.Update([]);
             _timingLabels.Update([]);
             _margin.Update([], new Dictionary<int, DeclarationVerdict>(), []);
@@ -287,6 +294,7 @@ public sealed class LeanEditor : UserControl
         doc.RevealRequested += Reveal;
         _diagnostics.Update(doc.Diagnostics);
         _inline.Update(doc.Diagnostics);
+        _proofMarks.Update(doc.ProofMarks);
         _timings.Update(doc.Timings);
         _timingLabels.Update(doc.Timings);
         _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
@@ -317,6 +325,10 @@ public sealed class LeanEditor : UserControl
                 _inline.Update(_current.Diagnostics);
                 UpdateBulbs();
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
+                break;
+            case nameof(DocumentViewModel.ProofMarks):
+                _proofMarks.Update(_current.ProofMarks);
+                _editor.TextArea.TextView.InvalidateLayer(_proofMarks.Layer);
                 break;
             case nameof(DocumentViewModel.Timings):
                 _timings.Update(_current.Timings);

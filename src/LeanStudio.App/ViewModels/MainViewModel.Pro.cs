@@ -43,6 +43,30 @@ public sealed partial class MainViewModel
 
     private LeanProject ProjectFor(DocumentViewModel d) => Project ?? new LeanProject(Path.GetDirectoryName(d.Path)!);
 
+    // ---- the goals, into the file or onto the clipboard ----
+
+    /// <summary>
+    /// Put the goals the Tactic State shows into the active file, as a comment above the cursor's line, indented
+    /// like it (VS Code's Copy Contents to Comment): to keep a state in view while changing the proof above it.
+    /// </summary>
+    [RelayCommand]
+    public void GoalsToComment()
+    {
+        if (ActiveDocument is not { IsLean: true } d || Info.PlainGoals.Length == 0)
+        {
+            return;
+        }
+        AvaloniaEdit.Document.DocumentLine line = d.Document.GetLineByNumber(Math.Clamp(d.CaretLine + 1, 1, d.Document.LineCount));
+        string lineText = d.Document.GetText(line);
+        string indent = lineText[..(lineText.Length - lineText.TrimStart().Length)];
+        string body = Info.PlainGoals.Replace("-/", "- /", StringComparison.Ordinal).Replace("\n", "\n" + indent + "   ", StringComparison.Ordinal);
+        d.Document.Insert(line.Offset, indent + "/- " + body + " -/\n");
+    }
+
+    /// <summary>Copy the goals the Tactic State shows, as Lean prints them.</summary>
+    [RelayCommand]
+    public Task CopyGoalsAsync() => Info.PlainGoals.Length == 0 ? Task.CompletedTask : _dialogs.CopyTextAsync(Info.PlainGoals);
+
     // ---- imports ----
 
     /// <summary>
