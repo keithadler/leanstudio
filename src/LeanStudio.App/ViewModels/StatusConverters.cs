@@ -23,6 +23,9 @@ public static class StatusConverters
     /// <summary>True for an empty list's count: shows a panel's "nothing here" message.</summary>
     public static readonly IValueConverter IsZero = new FuncValueConverter<int, bool>(n => n == 0);
 
+    /// <summary>True for a count above zero: shows a section only when it has something in it.</summary>
+    public static readonly IValueConverter IsNonZero = new FuncValueConverter<int, bool>(n => n > 0);
+
     /// <summary>The last part of a path: a recent project's name.</summary>
     public static readonly IValueConverter LastPart = new FuncValueConverter<string, string>(p => Path.GetFileName((p ?? "").TrimEnd('/', '\\')));
 

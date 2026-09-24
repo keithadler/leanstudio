@@ -13,16 +13,20 @@ public sealed partial class FileNode : ObservableObject
 {
     private static readonly HashSet<string> Hidden = new(StringComparer.Ordinal) { ".git", ".lake", "build", "node_modules", ".DS_Store", "bin", "obj" };
     private bool _loaded;
+    private readonly Func<string, string>? _markOf;
 
     /// <summary>
     /// A node for a path. A folder gets a placeholder child until it is loaded, so the tree shows it can be expanded.
     /// </summary>
     /// <param name="path">The file or folder's full path.</param>
     /// <param name="isDirectory">It is a folder.</param>
-    public FileNode(string path, bool isDirectory)
+    /// <param name="markOf">The build's mark for a path (see <see cref="BuildMark"/>), passed on to children.</param>
+    public FileNode(string path, bool isDirectory, Func<string, string>? markOf = null)
     {
         Path = path;
         IsDirectory = isDirectory;
+        _markOf = markOf;
+        _buildMark = path.Length > 0 ? markOf?.Invoke(path) ?? "" : "";
         if (isDirectory)
         {
             // A placeholder so the expander shows before the children are read.
@@ -44,6 +48,50 @@ public sealed partial class FileNode : ObservableObject
     public bool IsPlain => !IsDirectory && !IsLean;
     /// <summary>A folder's folders then files, each sorted by name; empty for a file.</summary>
     public ObservableList<FileNode> Children { get; } = new();
+
+    /// <summary>
+    /// What the last build says about it: ✓ built, ⋯ being compiled, ◐ uses sorry, ✗ has errors; empty when it
+    /// says nothing. A folder shows the worst of ⋯, ◐ and ✗ inside it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BuildMarkTip), nameof(IsMarkOk), nameof(IsMarkWarn), nameof(IsMarkBad))]
+    private string _buildMark;
+
+    /// <summary>What <see cref="BuildMark"/> means, for its tooltip.</summary>
+    public string BuildMarkTip => BuildMark switch
+    {
+        "✓" => "Built by the last build",
+        "⋯" => "Being compiled now",
+        "◐" => "Built, but something in it uses sorry",
+        "✗" => "The build found errors " + (IsDirectory ? "in here" : "in this file"),
+        _ => "",
+    };
+
+    /// <summary>The mark is ✓.</summary>
+    public bool IsMarkOk => BuildMark == "✓";
+
+    /// <summary>The mark is ⋯ or ◐.</summary>
+    public bool IsMarkWarn => BuildMark is "⋯" or "◐";
+
+    /// <summary>The mark is ✗.</summary>
+    public bool IsMarkBad => BuildMark == "✗";
+
+    /// <summary>Read the build's marks again, for this node and the loaded ones under it.</summary>
+    public void RefreshMarks()
+    {
+        if (Path.Length == 0 || _markOf is null)
+        {
+            return;
+        }
+        BuildMark = _markOf(Path);
+        if (_loaded)
+        {
+            foreach (FileNode c in Children)
+            {
+                c.RefreshMarks();
+            }
+        }
+    }
 
     /// <summary>The folder is open in the tree. Opening it the first time reads its children from disk.</summary>
     [ObservableProperty]
@@ -74,11 +122,11 @@ public sealed partial class FileNode : ObservableObject
             items.AddRange(Directory.EnumerateDirectories(Path)
                 .Where(d => !Hidden.Contains(System.IO.Path.GetFileName(d)) && !System.IO.Path.GetFileName(d).StartsWith('.'))
                 .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
-                .Select(d => new FileNode(d, true)));
+                .Select(d => new FileNode(d, true, _markOf)));
             items.AddRange(Directory.EnumerateFiles(Path)
                 .Where(f => !Hidden.Contains(System.IO.Path.GetFileName(f)))
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-                .Select(f => new FileNode(f, false)));
+                .Select(f => new FileNode(f, false, _markOf)));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

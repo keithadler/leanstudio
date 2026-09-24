@@ -36,6 +36,16 @@ public sealed class TaskProgress
     /// <summary>The slowest things so far (modules and how long each took), slowest first, at most five.</summary>
     public IReadOnlyList<(string Name, TimeSpan Took)> Slowest { get; internal set; } = [];
 
+    /// <summary>Every module the build compiled, with how long it took, in the order they finished.</summary>
+    public IReadOnlyList<(string Name, TimeSpan Took)> Timings => TimingList;
+
+    internal readonly List<(string Name, TimeSpan Took)> TimingList = [];
+
+    /// <summary>The modules (or other targets) the build finished, compiled or replayed.</summary>
+    public IReadOnlyCollection<string> Finished => FinishedSet;
+
+    internal readonly HashSet<string> FinishedSet = new(StringComparer.Ordinal);
+
     /// <summary>Warnings and errors seen so far.</summary>
     public int Warnings { get; internal set; }
 
@@ -119,6 +129,7 @@ public sealed class ProgressReader
             string verb = m.Groups["verb"].Value;
             p.Last = m.Groups["what"].Value;
             p.LastTook = m.Groups["time"].Success ? Took(m.Groups["time"].Value, m.Groups["unit"].Value) : null;
+            p.FinishedSet.Add(p.Last);
             if (verb == "Replayed" || verb == "Fetched" || verb == "Unpacked")
             {
                 p.Replayed++;
@@ -130,6 +141,7 @@ public sealed class ProgressReader
                 if (p.LastTook is TimeSpan t)
                 {
                     _took.Add((p.Last, t));
+                    p.TimingList.Add((p.Last, t));
                     p.Slowest = _took.OrderByDescending(x => x.Item2).Take(5).ToList();
                 }
             }

@@ -16,7 +16,7 @@ person sees while a big project loads, fetches and builds should be better in th
 
 ## What to build
 
-Done in the next commit: 1 (real bar), 2 (time left), 5 (toolchain and cache progress in the status bar), 6 (build warnings in Problems live), 9 (a done note; the dock and taskbar badge are still to do), 11 (Tenet in the status bar, overall, with time left), plus the Proof Steps `sorry` wording. Still to do: 3 (modules in progress, which Lake doesn't print), 4 (a full dashboard view), 7 (module timings in the Timing panel), 8 (the file tree marking), 10 (the server and the build).
+Done: 1 (real bar), 2 (time left), 5 (toolchain and cache progress in the status bar), 6 (build warnings in Problems live), 9 (a done note), 11 (Tenet in the status bar, overall, with time left), plus the Proof Steps `sorry` wording. Then 3 ("Compiling now" in the banner, read from the running `lean` processes, since Lake names a module only when it finishes; not for remote projects, whose processes are on the other machine), 7 (the slowest modules of the last build in the Timing panel), 8 (✓ ⋯ ◐ ✗ in the file tree, folders showing the worst inside them), and 10 (files opened during a build, or left with stale imports, are checked again when it ends). Still to do: 4 (a full dashboard view), the dock and taskbar progress of 9, and grouping repeated warnings in Problems.
 
 
 1. **A real build progress bar.** Lake prints `[done/total]` on every line. Parse it and show `8864 / 8951 (99%)`

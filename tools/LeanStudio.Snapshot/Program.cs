@@ -181,6 +181,11 @@ internal static class Scenario
         doc.Reveal(16, 14);
 
         Console.WriteLine("build and verify with Tenet");
+        // Make the build compile Proofs.Basic, not replay it, so it has a time to report.
+        foreach (string built in Directory.EnumerateFiles(Path.Combine(repo, "samples", "Proofs", ".lake", "build", "lib", "lean", "Proofs"), "Basic.*"))
+        {
+            File.Delete(built);
+        }
         await vm.BuildCommand.ExecuteAsync(null);
         Check(await WaitFor(() => vm.Verification.Report is not null && !vm.Verification.IsRunning, 120), "Tenet produces a report");
         Check(vm.Verification.Report?.Verified >= 3, "at least three declarations verified");
@@ -188,6 +193,9 @@ internal static class Scenario
         Check(doc.Verdicts.ContainsKey(2) && doc.Verdicts.ContainsKey(13), "badges sit on the declaration line, not its doc comment");
         Check(doc.Verdicts.Count >= 5, "the gutter has a verdict for each declaration");
         Snap(window, outDir, "03-tenet");
+        Check(vm.BuildMarkOf(doc.Path) == "◐" && vm.Files.First(n => n.IsDirectory && n.Name == "Proofs").BuildMark == "◐",
+            "the file tree marks the file whose proof uses sorry, and its folder");
+        Check(vm.ModuleTimings.Any(m => m.Name == "Proofs.Basic"), "the Timing panel lists the modules the build compiled, with their times");
 
         Console.WriteLine("declaration navigator");
         vm.SidebarTab = MainViewModel.LibraryTab;

@@ -363,7 +363,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Settings.RememberProject(project.Root);
         Settings.Save();
         OnPropertyChanged(nameof(RecentProjects));
-        var root = new FileNode(project.Root, true);
+        _buildMarks.Clear();
+        ModuleTimings.Clear();
+        var root = new FileNode(project.Root, true, BuildMarkOf);
         root.Load();
         Files.Reset(root.Children);
         Log($"Opened {project.Root}" + (project.IsLakeProject ? " (Lake project)" : "") + (project.Toolchain is string tc ? $", toolchain {tc}" : ""));
@@ -1092,7 +1094,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
         Collect(Files);
-        var root = new FileNode(Project.Root, true);
+        var root = new FileNode(Project.Root, true, BuildMarkOf);
         root.Load();
         void Restore(IEnumerable<FileNode> nodes)
         {
@@ -1197,36 +1199,65 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         await SaveAllAsync();
         bool ok = false;
-        await RunBusyAsync("Building…", async ct =>
+        // Files opened during the build are checked against a half-built project; they are checked again after it.
+        var openedDuringBuild = new HashSet<DocumentViewModel>();
+        void Opened(string path)
         {
-            BottomTab = 1;
-            // Warnings and errors reach Problems as the build prints them, not only at the end.
-            var printed = new System.Text.StringBuilder();
-            DateTimeOffset parsed = default;
-            void OnLine(string line)
+            if (Documents.FirstOrDefault(d => d.Path == path) is { IsLean: true } d)
             {
-                Log(line);
-                lock (printed)
+                openedDuringBuild.Add(d);
+                Log($"{Path.GetFileName(path)} is checked against what's built so far; it will be checked again when the build ends.");
+            }
+        }
+        FileOpened += Opened;
+        try
+        {
+            await RunBusyAsync("Building…", async ct =>
+            {
+                BottomTab = 1;
+                // Warnings and errors reach Problems as the build prints them, not only at the end.
+                var printed = new System.Text.StringBuilder();
+                DateTimeOffset parsed = default;
+                void OnLine(string line)
                 {
-                    printed.AppendLine(line);
-                }
-                if ((line.StartsWith("warning:", StringComparison.Ordinal) || line.StartsWith("error:", StringComparison.Ordinal))
-                    && DateTimeOffset.Now - parsed > TimeSpan.FromSeconds(1))
-                {
-                    parsed = DateTimeOffset.Now;
-                    string sofar;
+                    Log(line);
                     lock (printed)
                     {
-                        sofar = printed.ToString();
+                        printed.AppendLine(line);
                     }
-                    Dispatcher.UIThread.Post(() => TakeBuildOutput(sofar));
+                    if ((line.StartsWith("warning:", StringComparison.Ordinal) || line.StartsWith("error:", StringComparison.Ordinal))
+                        && DateTimeOffset.Now - parsed > TimeSpan.FromSeconds(1))
+                    {
+                        parsed = DateTimeOffset.Now;
+                        string sofar;
+                        lock (printed)
+                        {
+                            sofar = printed.ToString();
+                        }
+                        Dispatcher.UIThread.Post(() => TakeBuildOutput(sofar));
+                    }
                 }
-            }
-            var r = await Lake.BuildAsync(Project!, onLine: OnLine, ct: ct);
-            ok = r.Success;
-            TakeBuildOutput(r.Output);
-            Log(r.Success ? "Build succeeded." : $"Build failed (exit {r.ExitCode}).");
-        });
+                BeginBuildView();
+                Core.Processes.ProcessResult r;
+                try
+                {
+                    r = await Lake.BuildAsync(Project!, onLine: OnLine, ct: ct);
+                }
+                finally
+                {
+                    StopWatchingCompiles();
+                }
+                ok = r.Success;
+                TakeBuildOutput(r.Output);
+                EndBuildView();
+                Log(r.Success ? "Build succeeded." : $"Build failed (exit {r.ExitCode}).");
+            });
+        }
+        finally
+        {
+            FileOpened -= Opened;
+        }
+        await RecheckAfterBuildAsync(openedDuringBuild);
         await ReopenTenetAsync();
         if (ok && Settings.VerifyAfterBuild)
         {

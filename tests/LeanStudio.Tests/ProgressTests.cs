@@ -37,6 +37,26 @@ public sealed class ProgressTests
         Assert.False(r.Feed("Build completed successfully (8951 jobs).", Start.AddSeconds(201)));
         Assert.True(r.Feed("✔ [5/6] Built Demo (214ms)", Start));
         Assert.Equal(TimeSpan.FromMilliseconds(214), p.LastTook);
+
+        // Every compiled module's time is kept, for the Timing panel; every finished target, for the file tree.
+        Assert.Equal(6, p.Timings.Count);
+        Assert.Equal(("Demo", TimeSpan.FromMilliseconds(214)), p.Timings[^1]);
+        Assert.Equal(["Apery.Table.V00", "Apery.Table.V01", "Apery.Table.V02", "Apery.Table.V03", "Challenge", "Demo"], p.Finished.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void FindsTheModulesABuildIsCompiling()
+    {
+        const string ps = """
+            29719 412345 01:02:03 /Users/me/.elan/toolchains/lean4/bin/lean --worker file:///Users/me/p/P/Basic.lean
+            30001 900000    02:10 /Users/me/.elan/toolchains/lean4/bin/lean /Users/me/p/P/Slow.lean -R /Users/me/p -o /Users/me/p/.lake/build/lib/lean/P/Slow.olean -i /Users/me/p/.lake/build/lib/lean/P/Slow.ilean -c /Users/me/p/.lake/build/ir/P/Slow.c --json
+            30002 100000    00:05 /Users/me/.elan/toolchains/lean4/bin/lean /Users/me/p/P/Quick.lean -R /Users/me/p -o /Users/me/p/.lake/build/lib/lean/P/Quick.olean
+            30003 100000    00:05 /usr/bin/python3 /Users/me/p/P/Quick.lean -o x
+            """;
+        var compiling = Core.Toolchains.LeanProcesses.ParsePs(ps, Core.Toolchains.LeanProcesses.CompiledFile);
+        Assert.Equal(["/Users/me/p/P/Slow.lean", "/Users/me/p/P/Quick.lean"], compiling.Select(c => c.File));
+        Assert.Equal(TimeSpan.FromSeconds(130), compiling[0].Running);
+        Assert.Null(Core.Toolchains.LeanProcesses.CompiledFile("/bin/lean --worker file:///x.lean"));
     }
 
     [Fact]

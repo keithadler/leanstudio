@@ -319,6 +319,9 @@
                     <PathIcon Data="{Binding IconKey, Converter={x:Static vm:StatusConverters.Icon}}" Width="13" Height="13"
                               Classes.folder="{Binding IsDirectory}" Classes.lean="{Binding IsLean}" Classes.plain="{Binding IsPlain}" />
                     <TextBlock Text="{Binding Name}" FontSize="13" />
+                    <TextBlock Text="{Binding BuildMark}" FontSize="12" VerticalAlignment="Center" ToolTip.Tip="{Binding BuildMarkTip}"
+                               Classes.ok="{Binding IsMarkOk}" Classes.warn="{Binding IsMarkWarn}" Classes.bad="{Binding IsMarkBad}"
+                               IsVisible="{Binding BuildMark, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   </StackPanel>
                 </TreeDataTemplate>
               </TreeView.ItemTemplate>
@@ -383,6 +386,8 @@
               <ProgressBar Grid.Row="1" Value="{Binding BusyFraction}" Maximum="1" Height="6" MinHeight="6" Margin="0,6,0,4" />
               <StackPanel Grid.Row="2" Spacing="2">
                 <TextBlock Text="{Binding BusyDetail}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding BusyNow}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding BusyNow, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 <TextBlock Text="{Binding BusySlowest}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis"
                            IsVisible="{Binding BusySlowest, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
@@ -529,6 +534,21 @@
                 <TextBlock Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
                 <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" Classes="chip" Margin="8,0,0,0" />
               </Grid>
+              <StackPanel DockPanel.Dock="Bottom" Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ModuleTimings.Count, Converter={x:Static vm:StatusConverters.IsNonZero}}">
+                <TextBlock Text="{Binding ModuleTimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+                <ListBox ItemsSource="{Binding ModuleTimings}" Background="Transparent" MaxHeight="150" x:Name="ModuleTimingList" Tapped="OnModuleTimingTapped">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ModuleTiming">
+                      <Grid ColumnDefinitions="126,70,*">
+                        <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
+                                Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </StackPanel>
               <Panel>
               <ListBox ItemsSource="{Binding TimingItems}" Background="Transparent" Margin="0,4,0,0" x:Name="TimingList" Tapped="OnTimingTapped">
                 <ListBox.ItemTemplate>

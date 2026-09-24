@@ -554,6 +554,14 @@ public sealed partial class MainWindow : Window, IDialogs
         }
     }
 
+    private void OnModuleTimingTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: ModuleTiming t })
+        {
+            _vm.OpenModuleTimingCommand.Execute(t);
+        }
+    }
+
     private void OnMarkerTapped(object? sender, TappedEventArgs e)
     {
         if (sender is ListBox { SelectedItem: MarkerItem m })

@@ -42,15 +42,58 @@ public static class LeanProcesses
                   .OrderByDescending(w => w.MemoryBytes).ToList();
     }
 
+    /// <summary>
+    /// The modules a build is compiling right now: the <c>lean</c> processes Lake started for files under
+    /// <paramref name="root"/> (<c>lean Foo/Bar.lean -o … -i …</c>), longest-running first. Lake prints a module only
+    /// when it finishes, so this is the only way to see what a long build is doing.
+    /// </summary>
+    public static async Task<IReadOnlyList<LeanWorker>> CompilingAsync(string root, CancellationToken ct = default)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var r = await Processes.ProcessRunner.RunAsync("powershell",
+                ["-NoProfile", "-Command", "Get-CimInstance Win32_Process -Filter \"name='lean.exe'\" | Select-Object ProcessId,WorkingSetSize,CreationDate,CommandLine | ConvertTo-Json -Compress"],
+                ct: ct).ConfigureAwait(false);
+            return Under(ParseWindows(r.Output, DateTime.Now, CompiledFile), root);
+        }
+        var ps = await Processes.ProcessRunner.RunAsync("ps", ["-axo", "pid=,rss=,etime=,args="], ct: ct).ConfigureAwait(false);
+        return Under(ParsePs(ps.Output, CompiledFile), root);
+    }
+
+    private static IReadOnlyList<LeanWorker> Under(IReadOnlyList<LeanWorker> all, string root)
+    {
+        string prefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return all.Where(w => w.File.StartsWith(prefix, StringComparison.Ordinal)).OrderByDescending(w => w.Running).ToList();
+    }
+
+    /// <summary>
+    /// The file a build's <c>lean</c> command line compiles (<c>lean /p/Foo.lean -R /p -o …olean</c>), or null for
+    /// any other process.
+    /// </summary>
+    public static string? CompiledFile(string args)
+    {
+        string[] words = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length < 3 || !Path.GetFileNameWithoutExtension(words[0].Trim('"')).Equals("lean", StringComparison.OrdinalIgnoreCase)
+            || !words.Contains("-o"))
+        {
+            return null;
+        }
+        string? file = words.Skip(1).Select(w => w.Trim('"')).FirstOrDefault(w => w.EndsWith(".lean", StringComparison.Ordinal));
+        return file is null ? null : Path.GetFullPath(file);
+    }
+
     /// <summary>Read <c>ps -axo pid=,rss=,etime=,args=</c>: the Lean workers in it (rss is in KiB).</summary>
-    public static IReadOnlyList<LeanWorker> ParsePs(string output)
+    public static IReadOnlyList<LeanWorker> ParsePs(string output) => ParsePs(output, WorkerFile);
+
+    /// <summary>Read <c>ps</c>'s output, keeping the processes <paramref name="fileOf"/> finds a file for.</summary>
+    public static IReadOnlyList<LeanWorker> ParsePs(string output, Func<string, string?> fileOf)
     {
         var list = new List<LeanWorker>();
         foreach (string raw in output.Split('\n'))
         {
             string[] f = raw.Trim().Split(' ', 4, StringSplitOptions.RemoveEmptyEntries);
             if (f.Length < 4 || !int.TryParse(f[0], CultureInfo.InvariantCulture, out int pid) || !long.TryParse(f[1], CultureInfo.InvariantCulture, out long kb)
-                || WorkerFile(f[3]) is not string file)
+                || fileOf(f[3]) is not string file)
             {
                 continue;
             }
@@ -60,7 +103,10 @@ public static class LeanProcesses
     }
 
     /// <summary>Read PowerShell's JSON for Win32_Process (one object, or a list).</summary>
-    public static IReadOnlyList<LeanWorker> ParseWindows(string json, DateTime now)
+    public static IReadOnlyList<LeanWorker> ParseWindows(string json, DateTime now) => ParseWindows(json, now, WorkerFile);
+
+    /// <summary>Read PowerShell's JSON for Win32_Process, keeping the processes <paramref name="fileOf"/> finds a file for.</summary>
+    public static IReadOnlyList<LeanWorker> ParseWindows(string json, DateTime now, Func<string, string?> fileOf)
     {
         var list = new List<LeanWorker>();
         if (string.IsNullOrWhiteSpace(json))
@@ -71,7 +117,7 @@ public static class LeanProcesses
         IEnumerable<JsonElement> items = doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray() : [doc.RootElement];
         foreach (JsonElement p in items)
         {
-            if (p.TryGetProperty("CommandLine", out JsonElement cl) && cl.GetString() is string cmd && WorkerFile(cmd) is string file)
+            if (p.TryGetProperty("CommandLine", out JsonElement cl) && cl.GetString() is string cmd && fileOf(cmd) is string file)
             {
                 DateTime started = p.TryGetProperty("CreationDate", out JsonElement cd) && cd.ValueKind == JsonValueKind.String
                     && DateTime.TryParse(cd.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime d) ? d : now;
