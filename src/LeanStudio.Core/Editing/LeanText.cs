@@ -156,4 +156,76 @@ public static class LeanText
                      || code.EndsWith('(') || code.EndsWith('⟨') || code.EndsWith('[') || code.EndsWith('{');
         return opens ? indent + "  " : indent;
     }
+
+    /// <summary>
+    /// The block comments (<c>/- … -/</c>, doc and module comments too) that span more than one line, as 0-based
+    /// first and last lines, for folding: Lean's server folds declarations and namespaces but not comments. Nested
+    /// comments count as one; <c>/-</c> inside a string or after <c>--</c> is not a comment.
+    /// </summary>
+    public static IReadOnlyList<(int StartLine, int EndLine)> CommentFolds(string text)
+    {
+        var folds = new List<(int, int)>();
+        int line = 0, depth = 0, start = 0;
+        bool inString = false, lineComment = false;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            char next = i + 1 < text.Length ? text[i + 1] : '\0';
+            if (c == '\n')
+            {
+                line++;
+                lineComment = false;
+                continue;
+            }
+            if (depth == 0)
+            {
+                if (lineComment)
+                {
+                    continue;
+                }
+                if (inString)
+                {
+                    if (c == '\\')
+                    {
+                        i++;
+                    }
+                    else if (c == '"')
+                    {
+                        inString = false;
+                    }
+                    continue;
+                }
+                if (c == '"')
+                {
+                    inString = true;
+                }
+                else if (c == '-' && next == '-')
+                {
+                    lineComment = true;
+                }
+                else if (c == '/' && next == '-')
+                {
+                    depth = 1;
+                    start = line;
+                    i++;
+                }
+                continue;
+            }
+            if (c == '/' && next == '-')
+            {
+                depth++;
+                i++;
+            }
+            else if (c == '-' && next == '/')
+            {
+                depth--;
+                i++;
+                if (depth == 0 && line > start)
+                {
+                    folds.Add((start, line));
+                }
+            }
+        }
+        return folds;
+    }
 }

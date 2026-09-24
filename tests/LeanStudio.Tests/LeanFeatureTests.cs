@@ -65,4 +65,40 @@ public sealed class LeanFeatureTests
         Assert.NotEmpty(await server.FoldingRangesAsync(uri, ct));
         Assert.Contains(await server.DocumentSymbolsAsync(uri, ct), s => s.Name == "t2");
     }
+
+    [Fact]
+    public async Task FoldsDeclarationsNamespacesAndCommentsAndFindsSymbolsInDependencies()
+    {
+        Lean.RequireLean();
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        var ct = TestContext.Current.CancellationToken;
+        await server.StartAsync(ct);
+        string uri = LeanServer.UriOf(Path.Combine(dir, "Folds.lean"));
+        string[] lines =
+        [
+            "/-",                                   // 0: a block comment
+            "  A long comment,",
+            "  over several lines.",
+            "-/",
+            "namespace Folds",                      // 4: a namespace
+            "",
+            "theorem t (n : Nat) : n + 0 = n := by", // 6: a declaration
+            "  simp",
+            "  done",
+            "",
+            "end Folds",                            // 10
+        ];
+        await server.OpenAsync(uri, string.Join('\n', lines));
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+        IReadOnlyList<FoldingRange> folds = await server.FoldingRangesAsync(uri, ct);
+        // Lean folds the namespace and the declaration; the editor adds the comment, which Lean doesn't fold.
+        Assert.Contains(folds, f => f.StartLine == 4 && f.EndLine >= 9);
+        Assert.Contains(folds, f => f.StartLine == 6 && f.EndLine >= 7);
+        Assert.Equal([(0, 3)], Core.Editing.LeanText.CommentFolds(string.Join('\n', lines)));
+
+        // Go to Symbol searches what the file can see, dependencies and core Lean included.
+        IReadOnlyList<SymbolLocation> symbols = await server.WorkspaceSymbolsAsync("Nat.add_comm", ct);
+        Assert.Contains(symbols, s => s.Name == "Nat.add_comm" && s.Location.Uri.Contains("/Init/", StringComparison.Ordinal));
+    }
 }

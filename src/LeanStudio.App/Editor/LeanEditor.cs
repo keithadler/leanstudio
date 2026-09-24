@@ -680,6 +680,10 @@ public sealed class LeanEditor : UserControl
     /// <summary>How many tokens Lean's semantic highlighting colours.</summary>
     public int SemanticTokenCount => _semantic.Count;
 
+    /// <summary>The 0-based lines where a fold starts (for checks).</summary>
+    public IReadOnlyList<int> FoldStartLines =>
+        _folding is null || _current is null ? [] : _folding.AllFoldings.Select(f => _current.Document.GetLineByOffset(f.StartOffset).LineNumber - 1).ToList();
+
     /// <summary>Whether the ✔ and "⊢ goals left" marks at the end of proofs are drawn (for checks).</summary>
     public bool ProofMarksShown => _proofMarks.Enabled;
 
@@ -730,7 +734,11 @@ public sealed class LeanEditor : UserControl
                 return;
             }
             TextDocument d = doc.Document;
-            var folds = ranges
+            // Lean folds declarations and namespaces; comments are found in the text.
+            var lines = ranges.Select(r => (r.StartLine, r.EndLine))
+                .Concat(Core.Editing.LeanText.CommentFolds(d.Text))
+                .Distinct();
+            var folds = lines
                 .Where(r => r.EndLine > r.StartLine && r.EndLine < d.LineCount)
                 .Select(r => new AvaloniaEdit.Folding.NewFolding(d.GetLineByNumber(r.StartLine + 1).EndOffset, d.GetLineByNumber(r.EndLine + 1).EndOffset) { Name = " … " })
                 .OrderBy(f => f.StartOffset)

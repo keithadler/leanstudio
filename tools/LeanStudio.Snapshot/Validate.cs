@@ -246,11 +246,13 @@ internal static class Validate
             window.CaptureRenderedFrame()?.Save(Path.Combine(outDir, $"{++shot:00}-{name}.png"));
 #pragma warning restore CS0618
         }
+        int missed = 0;
         async Task<double> Time(string what, Func<Task<bool>> run, double limitSeconds)
         {
             var sw = Stopwatch.StartNew();
             bool ok = await run();
             double took = sw.Elapsed.TotalSeconds;
+            missed += ok && took <= limitSeconds ? 0 : 1; // a failure, or slower than its aim
             Note($"{(ok ? (took <= limitSeconds ? "ok  " : "SLOW") : "FAIL")} {took,7:F1} s  {what} (aim: under {limitSeconds:F0} s)");
             return took;
         }
@@ -303,6 +305,7 @@ internal static class Validate
         Note($"memory at the end: {Memory():N0} MB; total {opened.Elapsed.TotalSeconds:F0} s");
         Snap("end");
         await vm.DisposeAsync();
-        return 0;
+        Note(missed == 0 ? "every action was within its aim" : $"{missed} action(s) failed or missed their aim");
+        return missed;
     }
 }

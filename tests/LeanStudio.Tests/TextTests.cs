@@ -41,4 +41,11 @@ public sealed class TextTests
             Abbreviations.SetCustom(new Dictionary<string, string>());
         }
     }
+
+    [Fact]
+    public void FindsTheCommentsToFold()
+    {
+        const string text = "/-! Module\n  doc -/\ndef a := \"/- not a comment\"\n-- /- nor this\n/-- Doc\n  /- nested\n  -/\n-/\ndef b := 1\n/- one line -/\n";
+        Assert.Equal([(0, 1), (4, 7)], Core.Editing.LeanText.CommentFolds(text));
+    }
 }

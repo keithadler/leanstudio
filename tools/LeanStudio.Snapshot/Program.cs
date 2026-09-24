@@ -752,6 +752,27 @@ internal static class Scenario
             vimEditor.Vim.Key("<Esc>");
             Check(vd.Document.Text.Contains("  exact -- done", StringComparison.Ordinal) && vm.VimStatus == "-- NORMAL --", $"operators with text objects work in the editor (ciw) [{vd.Document.Text.Replace("\n", "⏎")}] [{vm.VimStatus}]");
             Snap(window, outDir, "29-vim");
+            // Unicode input in insert mode, and ⌘ shortcuts still the app's in normal mode.
+            area.PerformTextInput("o");
+            foreach (char c in "-- \\alpha ")
+            {
+                area.PerformTextInput(c.ToString());
+            }
+            vimEditor.Vim.Key("<Esc>");
+            bool unicode = vd.Document.Text.Contains("-- α", StringComparison.Ordinal);
+            string? vimOpened = null;
+            void VimGrab(Window w)
+            {
+                vimOpened = w.Title;
+                Dispatcher.UIThread.Post(w.Close);
+            }
+            DialogHooks.Opened += VimGrab;
+            area.Focus();
+            window.KeyPress(Avalonia.Input.Key.P, (OperatingSystem.IsMacOS() ? Avalonia.Input.RawInputModifiers.Meta : Avalonia.Input.RawInputModifiers.Control) | Avalonia.Input.RawInputModifiers.Shift, Avalonia.Input.PhysicalKey.None, null);
+            await WaitFor(() => vimOpened is not null, 5);
+            DialogHooks.Opened -= VimGrab;
+            Check(unicode && vimOpened == "Type a command" && vm.VimStatus == "-- NORMAL --",
+                $"in Vim mode \\alpha still types α in insert mode, and ⌘⇧P is still the app's ({vimOpened})");
             vm.Settings.VimMode = false;
             vimEditor.ApplySettings(vm.Settings);
             Check(vm.VimStatus == "", "and turning it off leaves ordinary editing");
@@ -1446,6 +1467,28 @@ internal static class Scenario
                 File.Delete(stepsFile);
             }
             vm.ActiveDocument = doc;
+
+            // Folding: Lean's declarations and namespaces, and the comments Lean doesn't fold.
+            string foldFile = Path.Combine(sourceDir, "Folds.lean");
+            await File.WriteAllTextAsync(foldFile, "/-\n  A comment\n  over lines.\n-/\nnamespace Folds\n\ntheorem t (n : Nat) : n + 0 = n := by\n  simp\n\nend Folds\n");
+            try
+            {
+                DocumentViewModel? folds = await vm.OpenFileAsync(foldFile);
+                Check(await WaitFor(() => window.MainEditorControl.FoldStartLines is var l && l.Contains(0) && l.Contains(4) && l.Contains(6), 30),
+                    $"the editor folds the comment, the namespace and the declaration (at lines {string.Join(", ", window.MainEditorControl.FoldStartLines.Select(x => x + 1))})");
+                await vm.CloseDocumentCommand.ExecuteAsync(folds);
+            }
+            finally
+            {
+                File.Delete(foldFile);
+            }
+            vm.ActiveDocument = doc;
+
+            // While elan downloads the project's Lean, the status bar says so (from what Lean's server start prints).
+            typeof(MainViewModel).GetMethod("ServerLogLine", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .Invoke(vm, ["info: downloading https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-darwin_aarch64.tar.zst"]);
+            Check(await WaitFor(() => vm.ServerStatus.StartsWith("Lean: downloading Lean 4.35.0", StringComparison.Ordinal), 5), $"the status bar says when Lean is being downloaded ({vm.ServerStatus})");
+            vm.ServerStatus = "Lean: ready";
 
             // The REPL remembers what was typed: ↑ and ↓ go through it.
             doc.Reveal(1, 0);

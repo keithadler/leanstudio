@@ -365,6 +365,9 @@ public sealed class AssistTests
         Assert.Contains("live.lean-lang.org/#code=", html, StringComparison.Ordinal);
         Assert.Contains("@keithadler", html, StringComparison.Ordinal);
         Assert.DoesNotContain("<script src", html, StringComparison.Ordinal);
+        // Step through with ← and → (or j and k): the page's own script, no library.
+        Assert.Contains("e.key === 'ArrowRight' || e.key === 'j') { go(at + 1)", html, StringComparison.Ordinal);
+        Assert.Contains("e.key === 'ArrowLeft' || e.key === 'k') { go(at - 1)", html, StringComparison.Ordinal);
     }
 
     [Fact]

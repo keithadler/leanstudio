@@ -283,4 +283,60 @@ public sealed class VimTests
         Press(b, v, "<Esc>i");
         Assert.Equal("-- INSERT --", v.Status);
     }
+
+    [Fact]
+    public void KnowsTheRestOfTheMotionsAndCommandsTheReadmeLists()
+    {
+        // WORD motions, backward finds, paragraphs and counts.
+        var (b, v) = Vim("foo.bar baz(qux) end\nsecond line\n\npara two\nline two\n");
+        Press(b, v, "W");
+        Assert.Equal(8, b.Caret); // baz(qux) is one WORD
+        Press(b, v, "W");
+        Assert.Equal(17, b.Caret); // end
+        Press(b, v, "B");
+        Assert.Equal(8, b.Caret);
+        Press(b, v, "E");
+        Assert.Equal(15, b.Caret); // the ) that ends the WORD
+        Press(b, v, "Fb");
+        Assert.Equal(8, b.Caret);
+        Press(b, v, "$T(");
+        Assert.Equal(12, b.Caret); // after the (, going back
+        Press(b, v, "0}");
+        Assert.Equal(b.Text.IndexOf("\n\n", StringComparison.Ordinal) + 1, b.Caret); // the blank line
+        Press(b, v, "{");
+        Assert.Equal(0, b.Caret);
+        Press(b, v, "2w");
+        Assert.Equal(4, b.Caret); // foo . bar
+
+        // X D C Y s S P O I a.
+        (b, v) = Vim("abcdef\n  indented line\n");
+        Press(b, v, "3lX");
+        Assert.Equal("abdef\n  indented line\n", b.Text);
+        Press(b, v, "D");
+        Assert.Equal("ab\n  indented line\n", b.Text);
+        Press(b, v, "0lCxy<Esc>");
+        Assert.Equal("axy\n  indented line\n", b.Text);
+        Press(b, v, "0sZ<Esc>");
+        Assert.Equal("Zxy\n  indented line\n", b.Text);
+        Press(b, v, "YjP");
+        Assert.Equal("Zxy\nZxy\n  indented line\n", b.Text); // P puts the yanked line above
+        Press(b, v, "jSnew<Esc>");
+        Assert.Equal("Zxy\nZxy\n  new\n", b.Text); // S keeps the indent
+        Press(b, v, "Oabove<Esc>");
+        Assert.Equal("Zxy\nZxy\n  above\n  new\n", b.Text);
+        Press(b, v, "I> <Esc>");
+        Assert.Equal("Zxy\nZxy\n  > above\n  new\n", b.Text); // I inserts at the first non-blank
+        Press(b, v, "ggaQ<Esc>");
+        Assert.Equal("ZQxy\nZxy\n  > above\n  new\n", b.Text); // a appends after the cursor
+
+        // ip: a paragraph.
+        (b, v) = Vim("one\ntwo\n\nthree\n");
+        Press(b, v, "dip");
+        Assert.Equal("\nthree\n", b.Text);
+
+        // :q :wq :x go to the editor.
+        (b, v) = Vim("x");
+        Press(b, v, ":q<CR>:wq<CR>:x<CR>");
+        Assert.Equal(["q", "wq", "x"], b.Ex);
+    }
 }
