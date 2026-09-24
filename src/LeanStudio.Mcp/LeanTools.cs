@@ -666,6 +666,42 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("heartbeats",
+            "Heartbeats per top-level declaration of a Lean file (what maxHeartbeats limits; the default limit is 200000), heaviest first. Use it to see which proofs are close to the limit. The file's imports must be built.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("content", "string", "Optional full text instead of what is on disk.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = OptStr(a, "content") ?? await File.ReadAllTextAsync(path, ct);
+                var (counts, error) = await Heartbeats.RunAsync(bench.ProjectFor(path), path, text, ct);
+                if (error is not null)
+                {
+                    throw new ToolException(error);
+                }
+                return counts.Count == 0 ? "no top-level declarations were counted"
+                    : string.Join('\n', counts.Select(c => string.Create(CultureInfo.InvariantCulture, $"line {c.Line + 1}: {c.Heartbeats} ({c.OfLimit:P0} of the default limit)  {c.Declaration.Trim()}")));
+            }),
+
+        new("instances",
+            "Every instance of a type class visible from a Lean file's imports, with its type, asked of Lean itself. The file's imports must be built.",
+            Schema(("path", "string", "A .lean file whose imports decide what is visible.", true),
+                   ("class", "string", "The class, e.g. Group or Inhabited.", true)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                try
+                {
+                    var (cls, found) = await Instances.OfAsync(bench.ProjectFor(path), path, await File.ReadAllTextAsync(path, ct), Str(a, "class"), ct);
+                    return found.Count == 0 ? $"{cls} has no instances visible here"
+                        : $"{found.Count} instances of {cls}:\n" + string.Join('\n', found.Select(i => $"  {i.Name} : {i.Type}"));
+                }
+                catch (InvalidOperationException e)
+                {
+                    throw new ToolException(e.Message);
+                }
+            }),
+
         new("export_walkthrough",
             "Write a proof walkthrough of a Lean file as one self-contained web page: every tactic proof, step by step, with the goals before and after each tactic and what the tactic does in plain words. Also returns a link that opens the file in the Lean 4 web editor.",
             Schema(("path", "string", "The .lean file.", true),

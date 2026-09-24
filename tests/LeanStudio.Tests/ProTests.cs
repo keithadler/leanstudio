@@ -1,3 +1,4 @@
+using LeanStudio.Core.Processes;
 using LeanStudio.Core.Projects;
 using LeanStudio.Core.Workflow;
 
@@ -448,6 +449,158 @@ public sealed class ProTests
         finally
         {
             Directory.Delete(project.Root, true);
+        }
+    }
+
+    [Fact]
+    public async Task CountsHeartbeatsPerDeclaration()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        const string text = """
+            /-- Cheap. -/
+            theorem easy : 1 + 1 = 2 := rfl
+
+            @[simp]
+            theorem heavier (n : Nat) (h : n < 60) : n * n < 3600 := by
+              omega
+
+            mutual
+            def isEven : Nat → Bool
+              | 0 => true
+              | n + 1 => isOdd n
+            def isOdd : Nat → Bool
+              | 0 => false
+              | n + 1 => isEven n
+            end
+
+            example : (List.range 200).sum = 19900 := by decide
+            """;
+        (string instrumented, _, _) = Core.Proofs.Heartbeats.Instrument(text);
+        Assert.StartsWith("import Lean\n", instrumented, StringComparison.Ordinal);
+        Assert.Contains("#leanstudio_heartbeats /-- Cheap. -/", instrumented, StringComparison.Ordinal);
+        Assert.Contains("#leanstudio_heartbeats @[simp]", instrumented, StringComparison.Ordinal);
+        Assert.DoesNotContain("#leanstudio_heartbeats def isEven", instrumented, StringComparison.Ordinal); // inside mutual
+
+        string root = Directory.CreateTempSubdirectory("leanstudio-hb").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+            var (counts, error) = await Core.Proofs.Heartbeats.RunAsync(new LeanProject(root), Path.Combine(root, "Hb.lean"), text, ct);
+            Assert.Null(error);
+            Assert.Equal([0, 3, 16], counts.Select(c => c.Line).Order());
+            Assert.All(counts, c => Assert.True(c.Heartbeats >= 0));
+            Assert.Equal("example : (List.range 200).sum = 19900 := by decide", counts.Single(c => c.Line == 16).Declaration);
+            Assert.True(counts.Single(c => c.Line == 16).Heartbeats > counts.Single(c => c.Line == 0).Heartbeats);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void RenamesDeprecatedNamesAsWritten()
+    {
+        const string text = "theorem t := by\n  simp [Nat.foo, foo, Nat.foo_bar]\n  exact foo\n";
+        DeprecatedUse[] uses =
+        [
+            new("F.lean", 1, 8, "Nat.foo", "Nat.bar"),   // written in full
+            new("F.lean", 1, 17, "Nat.foo", "Nat.bar"),  // written short, in its namespace
+            new("F.lean", 2, 8, "Nat.foo", "Int.baz"),   // short, but the new name is elsewhere: in full
+            new("F.lean", 1, 22, "Nat.gone", "Nat.x"),   // the position doesn't hold that name: left alone
+        ];
+        Assert.Equal("theorem t := by\n  simp [Nat.bar, bar, Nat.foo_bar]\n  exact Int.baz\n", DependencyBump.Rename(text, uses));
+
+        BuildMessage[] messages =
+        [
+            new("F.lean", 3, 8, false, "`Nat.foo` has been deprecated: Use `Nat.bar` instead"),
+            new("F.lean", 4, 2, false, "`List.get?` has been deprecated, use `List.get?Internal` instead"),
+            new("F.lean", 5, 0, true, "unknown identifier 'x'"),
+        ];
+        Assert.Equal([("Nat.foo", "Nat.bar"), ("List.get?", "List.get?Internal")], DependencyBump.DeprecatedUses(messages).Select(d => (d.Old, d.New)));
+    }
+
+    [Fact]
+    public async Task FixesTheDeprecationsAnUpdateBrings()
+    {
+        // The library renamed foo to bar and kept foo as a deprecated alias; the project still uses foo.
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        LeanProject project = await BuiltProjectAsync("Bump", ("Bump.lean", "import Bump.Lib\nimport Bump.Use\n"),
+            ("Bump/Lib.lean", "namespace Lib\ntheorem bar (n : Nat) : n + 0 = n := rfl\n@[deprecated bar (since := \"2026-09-24\")] theorem foo (n : Nat) : n + 0 = n := rfl\nend Lib\n"),
+            ("Bump/Use.lean", "import Bump.Lib\nexample : 3 + 0 = 3 := Lib.foo 3\nopen Lib in\nexample : 4 + 0 = 4 := foo 4\n"));
+        try
+        {
+            ProcessResult build = await Lake.BuildAsync(project, ct: ct);
+            IReadOnlyList<DeprecatedUse> uses = DependencyBump.DeprecatedUses(LakeOutput.Parse(build.Output, project.Root));
+            Assert.Equal(2, uses.Count);
+            Assert.All(uses, u => Assert.Equal(("Lib.foo", "Lib.bar"), (u.Old, u.New)));
+            string use = Path.Combine(project.Root, "Bump", "Use.lean");
+            File.WriteAllText(use, DependencyBump.Rename(File.ReadAllText(use), uses.Where(u => u.File == use)));
+            Assert.Equal("import Bump.Lib\nexample : 3 + 0 = 3 := Lib.bar 3\nopen Lib in\nexample : 4 + 0 = 4 := bar 4\n", File.ReadAllText(use));
+            ProcessResult again = await Lake.BuildAsync(project, ct: ct);
+            Assert.True(again.Success, again.Output);
+            Assert.Empty(DependencyBump.DeprecatedUses(LakeOutput.Parse(again.Output, project.Root)));
+        }
+        finally
+        {
+            Directory.Delete(project.Root, true);
+        }
+    }
+
+    [Fact]
+    public async Task UpdatesADependencyAndFindsWhatItDeprecated()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string lib = Directory.CreateTempSubdirectory("leanstudio-lib").FullName;
+        string root = Directory.CreateTempSubdirectory("leanstudio-app").FullName;
+        async Task Git(string dir, params string[] args)
+        {
+            ProcessResult r = await ProcessRunner.RunAsync("git", ["-c", "user.email=t@t", "-c", "user.name=t", .. args], dir, ct: ct);
+            Assert.True(r.Success, r.Output);
+        }
+        try
+        {
+            // Version 1 of a library, in its own git repository.
+            File.WriteAllText(Path.Combine(lib, "lean-toolchain"), Lean.Toolchain + "\n");
+            File.WriteAllText(Path.Combine(lib, "lakefile.toml"), "name = \"Lib\"\n[[lean_lib]]\nname = \"Lib\"\n");
+            File.WriteAllText(Path.Combine(lib, "Lib.lean"), "theorem Lib.foo (n : Nat) : n + 0 = n := rfl\n");
+            await Git(lib, "init", "-q", "-b", "main");
+            await Git(lib, "add", ".");
+            await Git(lib, "commit", "-q", "-m", "v1");
+
+            // A project that uses it.
+            File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+            File.WriteAllText(Path.Combine(root, "lakefile.toml"),
+                $"name = \"App\"\ndefaultTargets = [\"App\"]\n\n[[require]]\nname = \"Lib\"\ngit = \"{new Uri(lib).AbsoluteUri}\"\nrev = \"main\"\n\n[[lean_lib]]\nname = \"App\"\n");
+            File.WriteAllText(Path.Combine(root, "App.lean"), "import Lib\nexample : 2 + 0 = 2 := Lib.foo 2\n");
+            var project = new LeanProject(root);
+            ProcessResult first = await Lake.BuildAsync(project, ct: ct);
+            Assert.True(first.Success, first.Output);
+            string? before = DependencyBump.ManifestRev(project, "Lib");
+            Assert.NotNull(before);
+
+            // Version 2 renames foo to bar and keeps foo, deprecated.
+            File.WriteAllText(Path.Combine(lib, "Lib.lean"),
+                "theorem Lib.bar (n : Nat) : n + 0 = n := rfl\n@[deprecated Lib.bar (since := \"2026-09-24\")] theorem Lib.foo (n : Nat) : n + 0 = n := rfl\n");
+            await Git(lib, "commit", "-q", "-am", "v2");
+
+            ProcessResult update = await Lake.UpdateAsync(project, ct: ct, package: "Lib");
+            Assert.True(update.Success, update.Output);
+            string? after = DependencyBump.ManifestRev(project, "Lib");
+            Assert.NotEqual(before, after);
+
+            ProcessResult build = await Lake.BuildAsync(project, ct: ct);
+            DeprecatedUse use = Assert.Single(DependencyBump.DeprecatedUses(LakeOutput.Parse(build.Output, root)));
+            Assert.Equal(("Lib.foo", "Lib.bar"), (use.Old, use.New));
+            Assert.Equal(Lint.RealPath(Path.Combine(root, "App.lean")), Lint.RealPath(use.File));
+        }
+        finally
+        {
+            Directory.Delete(lib, true);
+            Directory.Delete(root, true);
         }
     }
 }

@@ -1079,6 +1079,12 @@ internal static class Scenario
             Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
         }
 
+        Console.WriteLine("heartbeats");
+        vm.ActiveDocument = doc;
+        IReadOnlyList<LeanStudio.Core.Proofs.DeclarationHeartbeats> beats = await vm.CountHeartbeatsAsync();
+        Check(beats.Count >= 5 && vm.ReferencesTitle == "Heartbeats in Basic.lean" && vm.References.Count == beats.Count,
+            $"Count Heartbeats lists each declaration's heartbeats ({string.Join(", ", beats.Take(3).Select(b => $"line {b.Line + 1}: {b.Heartbeats}"))})");
+
         Console.WriteLine("imports graph, and Lean's processes");
         vm.ActiveDocument = doc;
         await vm.ShowImportGraphAsync();

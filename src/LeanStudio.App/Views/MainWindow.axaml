@@ -129,6 +129,7 @@
         <MenuItem Header="Prove Every Sorry in File" Command="{Binding ProveAllSorriesCommand}" />
         <MenuItem Header="Extract Goal as Lemma…" Command="{Binding ExtractLemmaCommand}" />
         <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
+        <MenuItem Header="Count Heartbeats (what maxHeartbeats limits)" Command="{Binding CountHeartbeatsCommand}" />
         <MenuItem Header="REPL (evaluate Lean at the cursor)" Click="OnShowRepl" InputGesture="{OnPlatform Default='Ctrl+Alt+R', macOS='Cmd+Alt+R'}" />
         <MenuItem Header="C and FFI">
           <MenuItem Header="New C Binding…" Command="{Binding NewFfiBindingCommand}" />
@@ -147,6 +148,8 @@
         <MenuItem Header="Get Mathlib Cache" Command="{Binding GetMathlibCacheCommand}" />
         <MenuItem Header="Get Mathlib Cache for Open Files" Command="{Binding GetCacheForOpenFilesCommand}" />
         <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
+        <MenuItem Header="Update Mathlib (and see what broke)…" Click="OnUpdateMathlib" />
+        <MenuItem Header="Undo Last Dependency Update" Command="{Binding UndoDependencyUpdateCommand}" />
         <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
         <MenuItem Header="Cancel Running Task" Command="{Binding CancelTaskCommand}" />
       </MenuItem>

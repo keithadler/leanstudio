@@ -67,6 +67,163 @@ public sealed partial class MainViewModel
     [RelayCommand]
     public Task CopyGoalsAsync() => Info.PlainGoals.Length == 0 ? Task.CompletedTask : _dialogs.CopyTextAsync(Info.PlainGoals);
 
+    // ---- updating a dependency, and what it broke ----
+
+    /// <summary>The report of the last dependency update, for its deprecation renames.</summary>
+    public BumpReport? LastBump { get; private set; }
+
+    private string BackupFolder => Path.Combine(Project!.Root, ".lake", "leanstudio-update-backup");
+
+    /// <summary>
+    /// Update a dependency (Mathlib unless another is named) and find out what that did: its commits before and
+    /// after, the toolchain it moved to (the project follows Mathlib's), the build's errors by file, and every use
+    /// of a name it deprecated, which can then be renamed in one go. lake-manifest.json and lean-toolchain are
+    /// backed up first; <see cref="UndoDependencyUpdateAsync"/> puts them back.
+    /// </summary>
+    public async Task<BumpReport?> UpdateDependencyAsync(string package = "mathlib")
+    {
+        if (Project is not LeanProject p || !p.IsLakeProject)
+        {
+            return null;
+        }
+        BumpReport? report = null;
+        await RunBusyAsync($"Updating {package}…", async ct =>
+        {
+            BottomTab = OutputPanel;
+            Directory.CreateDirectory(BackupFolder);
+            foreach (string f in new[] { p.ManifestPath, p.ToolchainPath }.Where(File.Exists))
+            {
+                File.Copy(f, Path.Combine(BackupFolder, Path.GetFileName(f)), overwrite: true);
+            }
+            string? oldRev = DependencyBump.ManifestRev(p, package), oldToolchain = p.Toolchain;
+            await Lake.UpdateAsync(p, Log, ct, package);
+            // Mathlib builds with one toolchain; the project has to use the same one.
+            string depToolchain = Path.Combine(p.PackagesDirectory, package, LeanProject.ToolchainFile);
+            if (File.Exists(depToolchain) && (await File.ReadAllTextAsync(depToolchain, ct)).Trim() is { Length: > 0 } tc && tc != oldToolchain)
+            {
+                p.SetToolchain(tc);
+                Log($"The project now uses {tc}, as {package} does.");
+            }
+            if (p.DependsOnMathlib)
+            {
+                await Lake.GetCacheAsync(p, Log, ct);
+            }
+            var build = await Lake.BuildAsync(p, onLine: Log, ct: ct);
+            TakeBuildOutput(build.Output);
+            IReadOnlyList<BuildMessage> messages = LakeOutput.Parse(build.Output, p.Root);
+            report = new BumpReport(package, oldRev, DependencyBump.ManifestRev(p, package), oldToolchain, p.Toolchain,
+                messages.Where(m => m.IsError).GroupBy(m => m.Path).ToDictionary(g => g.Key, g => (IReadOnlyList<BuildMessage>)g.ToList()),
+                DependencyBump.DeprecatedUses(messages));
+            Log(report.Summary);
+            foreach ((string file, IReadOnlyList<BuildMessage> errs) in report.Errors.OrderByDescending(e => e.Value.Count).Take(10))
+            {
+                Log($"  {Path.GetRelativePath(p.Root, file)}: {errs.Count} error{(errs.Count == 1 ? "" : "s")}, first: {errs[0].Message.Split('\n')[0]}");
+            }
+        });
+        await RestartServerAsync();
+        LastBump = report;
+        if (report is { Deprecated.Count: > 0 }
+            && await _dialogs.ConfirmAsync("Rename the deprecated names?",
+                $"{report.Deprecated.Count} place{(report.Deprecated.Count == 1 ? "" : "s")} use names the update deprecated, and Lean says what to use instead:\n\n"
+                + string.Join("\n", report.Deprecated.Select(d => $"{d.Old} → {d.New}").Distinct().Take(12))
+                + "\n\nRename them all? Open files are edited in the editor (undo works); others are written to disk."))
+        {
+            await ApplyDeprecationRenamesAsync(report.Deprecated);
+        }
+        return report;
+    }
+
+    /// <summary>Rename every use of a deprecated name to what Lean says to use instead, file by file.</summary>
+    public async Task ApplyDeprecationRenamesAsync(IReadOnlyList<DeprecatedUse> uses)
+    {
+        int files = 0;
+        foreach (IGrouping<string, DeprecatedUse> inFile in uses.GroupBy(u => u.File))
+        {
+            // Lake names files by their real path (/private/var on a Mac for /var): find the open one by that too.
+            string real = Lint.RealPath(inFile.Key);
+            string path = Documents.FirstOrDefault(x => x.Path == inFile.Key || Lint.RealPath(x.Path) == real)?.Path ?? inFile.Key;
+            string text = Documents.FirstOrDefault(x => x.Path == path)?.Document.Text ?? await File.ReadAllTextAsync(path);
+            string renamed = DependencyBump.Rename(text, inFile);
+            if (renamed != text)
+            {
+                await SetFileTextAsync(path, renamed);
+                files++;
+            }
+        }
+        Log($"Renamed deprecated names in {files} file{(files == 1 ? "" : "s")}. Build to check (open files are left unsaved).");
+    }
+
+    /// <summary>Put back lake-manifest.json and lean-toolchain as they were before the last update, and fetch and build again.</summary>
+    [RelayCommand]
+    public async Task UndoDependencyUpdateAsync()
+    {
+        if (Project is not LeanProject p || !Directory.Exists(BackupFolder))
+        {
+            Log("There is no dependency update to undo.");
+            return;
+        }
+        foreach (string f in Directory.GetFiles(BackupFolder))
+        {
+            File.Copy(f, Path.Combine(p.Root, Path.GetFileName(f)), overwrite: true);
+        }
+        Directory.Delete(BackupFolder, true);
+        Log("Put back lake-manifest.json and lean-toolchain from before the update.");
+        await RunBusyAsync("Going back to the previous versions…", async ct =>
+        {
+            if (p.DependsOnMathlib)
+            {
+                await Lake.GetCacheAsync(p, Log, ct);
+            }
+            var build = await Lake.BuildAsync(p, onLine: Log, ct: ct);
+            TakeBuildOutput(build.Output);
+        });
+        await RestartServerAsync();
+    }
+
+    // ---- heartbeats ----
+
+    /// <summary>
+    /// Count the heartbeats of each top-level declaration of the active file (what <c>maxHeartbeats</c> limits) and
+    /// list them in the References panel, heaviest first, with their share of Lean's default limit. Returns them.
+    /// </summary>
+    [RelayCommand]
+    public async Task<IReadOnlyList<Core.Proofs.DeclarationHeartbeats>> CountHeartbeatsAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return [];
+        }
+        ProStatus = $"Counting heartbeats in {Path.GetFileName(d.Path)}…";
+        Log(ProStatus);
+        try
+        {
+            var (counts, error) = await Core.Proofs.Heartbeats.RunAsync(ProjectFor(d), d.Path, d.Document.Text);
+            if (error is not null)
+            {
+                Log("Heartbeats: " + error);
+                return [];
+            }
+            References.Reset(counts.Select(c => new LocationItem(d.Path, c.Line, 0,
+                $"{c.Heartbeats:N0} heartbeats ({c.OfLimit:P0} of the default limit) · {c.Declaration.Trim()}")));
+            ReferencesTitle = $"Heartbeats in {Path.GetFileName(d.Path)}";
+            BottomTab = ReferencesPanel;
+            if (counts.FirstOrDefault(c => c.OfLimit >= 0.5) is { } heavy)
+            {
+                Log($"Heartbeats: line {heavy.Line + 1} uses {heavy.OfLimit:P0} of the default maxHeartbeats ({Core.Proofs.DeclarationHeartbeats.DefaultLimit:N0}): a small change could push it over.");
+            }
+            return counts;
+        }
+        catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception)
+        {
+            Log("Heartbeats: " + e.Message);
+            return [];
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- the import graph ----
 
     /// <summary>

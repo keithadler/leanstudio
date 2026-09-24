@@ -386,6 +386,14 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private void OnLeanProcesses(object? sender, RoutedEventArgs e) => _ = LeanProcessesAsync();
 
+    private async void OnUpdateMathlib(object? sender, RoutedEventArgs e)
+    {
+        if (await ConfirmAsync("Update Mathlib?", "Lake moves Mathlib to the newest version your lakefile allows, and the project to its toolchain. Then Lean Studio fetches the cache, builds, and shows what broke and which deprecated names it can rename for you.\n\nlake-manifest.json and lean-toolchain are backed up first: Lean ▸ Undo Last Dependency Update puts them back."))
+        {
+            await _vm.UpdateDependencyAsync();
+        }
+    }
+
     /// <summary>
     /// The instances of the type class at the cursor (or one asked for), asked of Lean itself for this file's
     /// imports. Picking one shows it in the Library, with its source.
@@ -902,6 +910,9 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Quick Fix / Try This…", m + ".", QuickFixAsync);
         yield return ("Lean: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
         yield return ("Lean: Imports and Imported By", "", Cmd(_vm.ShowImportGraphCommand));
+        yield return ("Lean: Count Heartbeats in File", "", Cmd(_vm.CountHeartbeatsCommand));
+        yield return ("Lean: Update Mathlib (and see what broke)…", "", () => { OnUpdateMathlib(null, new RoutedEventArgs()); return Task.CompletedTask; });
+        yield return ("Lean: Undo Last Dependency Update", "", Cmd(_vm.UndoDependencyUpdateCommand));
         yield return ("Lean: Instances of Class at Cursor…", "", InstancesOfClassAsync);
         yield return ("Lean: Lean's Processes (memory, stop a runaway file)…", "", LeanProcessesAsync);
         yield return ("Lean: Remove Unused Imports", "", Cmd(_vm.RemoveUnusedImportsCommand));

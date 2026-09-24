@@ -46,8 +46,12 @@ public static class Lake
     /// Run <c>lake update</c>, which moves dependencies to the newest versions the lakefile allows and rewrites
     /// <c>lake-manifest.json</c>.
     /// </summary>
-    public static Task<ProcessResult> UpdateAsync(LeanProject project, Action<string>? onLine = null, CancellationToken ct = default) =>
-        ProcessRunner.RunAsync(Exe, ["update"], project.Root, onLine, ct: ct);
+    /// <param name="project">The project.</param>
+    /// <param name="onLine">Where Lake's output goes, line by line.</param>
+    /// <param name="ct">Cancels it.</param>
+    /// <param name="package">Update only this dependency (<c>lake update mathlib</c>); null for all of them.</param>
+    public static Task<ProcessResult> UpdateAsync(LeanProject project, Action<string>? onLine = null, CancellationToken ct = default, string? package = null) =>
+        ProcessRunner.RunAsync(Exe, package is null ? ["update"] : ["update", package], project.Root, onLine, ct: ct);
 
     /// <summary>Run <c>lake clean</c>, deleting the project's build output (not its dependencies).</summary>
     public static Task<ProcessResult> CleanAsync(LeanProject project, Action<string>? onLine = null, CancellationToken ct = default) =>
