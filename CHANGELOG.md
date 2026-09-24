@@ -23,6 +23,14 @@
 - *Copy Goals*, and *Goals as a Comment Above the Cursor* (VS Code's Copy Contents to Comment).
 - The end of each proof is marked in the editor: a quiet ✔ where Lean says the goals are accomplished, "⊢ goals left" where they aren't (Preferences can turn it off). Lean's silent "Goals accomplished!" messages are asked for and kept apart, so they never show as messages.
 
+**Tools for large projects and for troubleshooting**:
+- Math in docstrings reads as text in hovers and the Library: `$\\sum_{i < n} x_i^2 \\le C$` shows as `∑_(i < n) xᵢ² ≤ C`, with ℝ, ℕ, fractions, roots and Greek.
+- Unicode abbreviations of your own: *View ▸ Unicode Abbreviations File* opens abbreviations.json (`{ "zeta5": "ζ(5)" }`, VS Code's `customTranslations` format). Yours win over built-in ones, and apply when saved.
+- *Lean ▸ Imports and Imported By* lists what a module imports and which of the project's modules import it, and says how many modules rebuild when it changes.
+- *Lean ▸ Instances of Class at Cursor* asks Lean for every instance of a type class the file can see, with its type. Pick one to see it in the Library.
+- *Lean ▸ Lean's Processes* lists Lean's file workers, biggest first, with their memory and time running. Pick one to stop it (the file restarts if it's open).
+- Preferences: arguments for Lean's server (such as `-DmaxHeartbeats=400000`), and a log of every message with it, for troubleshooting.
+
 **Progress you can read**:
 - A build, the Mathlib cache and Tenet's verification show a real progress bar: Lake's own `[done/total]`, what came from the cache and what was compiled, the time left (from the rate of real work, not replayed jobs), the module just finished, and the slowest ones so far. It sits in the status bar and in a banner over the editor, with Cancel. The percentage rounds down, so 8,705 of 8,712 reads 99%.
 - Warnings and errors reach Problems while the build is still running.

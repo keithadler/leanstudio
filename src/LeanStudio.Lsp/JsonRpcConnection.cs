@@ -56,6 +56,12 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     public event Action<Exception?>? Closed;
 
     /// <summary>
+    /// Every message on the connection as it is sent (<c>true</c>) or received (<c>false</c>), as JSON text: for a
+    /// log of the conversation with the server, when troubleshooting it. Called on the sending or reading thread.
+    /// </summary>
+    public Action<bool, string>? Traffic { get; set; }
+
+    /// <summary>
     /// Answers requests from the other side. Return null for a null result; an exception becomes an error response
     /// (code -32603). Called on a thread-pool thread, possibly for several requests at once.
     /// </summary>
@@ -132,7 +138,9 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     private async Task WriteAsync(JsonObject msg)
     {
-        byte[] body = Encoding.UTF8.GetBytes(msg.ToJsonString());
+        string json = msg.ToJsonString();
+        Traffic?.Invoke(true, json);
+        byte[] body = Encoding.UTF8.GetBytes(json);
         byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
         await _writeLock.WaitAsync(_cts.Token).ConfigureAwait(false);
         try
@@ -178,6 +186,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     private void Dispatch(byte[] body)
     {
+        Traffic?.Invoke(false, Encoding.UTF8.GetString(body));
         JsonElement root;
         try
         {

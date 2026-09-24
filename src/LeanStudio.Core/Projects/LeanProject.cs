@@ -118,8 +118,11 @@ public sealed class LeanProject
     /// project's dependencies and rebuilds imports on demand; anything else gets a plain <c>lean --server</c>,
     /// with the toolchain passed explicitly when the folder does not pin one and elan has no default.
     /// </summary>
-    public LeanServerCommand ServerCommand(string? fallbackToolchain = null)
+    /// <param name="fallbackToolchain">The toolchain for a folder that has no lean-toolchain file.</param>
+    /// <param name="leanArguments">More arguments for Lean itself (such as <c>-DmaxHeartbeats=400000</c>).</param>
+    public LeanServerCommand ServerCommand(string? fallbackToolchain = null, IReadOnlyList<string>? leanArguments = null)
     {
+        leanArguments ??= [];
         string lake = Elan.FindExecutable("lake") ?? "lake";
         string lean = Elan.FindExecutable("lean") ?? "lean";
         var prefix = new List<string>();
@@ -128,8 +131,8 @@ public sealed class LeanProject
             prefix.Add("+" + fallbackToolchain);
         }
         return IsLakeProject
-            ? new LeanServerCommand(lake, [.. prefix, "serve", "--"], Root)
-            : new LeanServerCommand(lean, [.. prefix, "--server"], Root);
+            ? new LeanServerCommand(lake, [.. prefix, "serve", "--", .. leanArguments], Root)
+            : new LeanServerCommand(lean, [.. prefix, "--server", .. leanArguments], Root);
     }
 
     /// <summary>

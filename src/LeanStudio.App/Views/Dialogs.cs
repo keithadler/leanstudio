@@ -275,6 +275,9 @@ internal static class Dialogs
         var verify = Check("Verify with Tenet after every build", s.VerifyAfterBuild);
         var blame = Check("Show who last changed the current line", s.ShowBlame);
         var updates = Check("Check for updates once a day", s.CheckForUpdates);
+        var serverArgs = new TextBox { Text = s.LeanServerArguments, PlaceholderText = "-DmaxHeartbeats=400000", MinWidth = 280 };
+        ToolTip.SetTip(serverArgs, "More arguments for Lean itself, passed to every file's Lean process. Takes effect when Lean restarts.");
+        var logServer = Check("Log every message with Lean's server to a file (for troubleshooting)", s.LogServerMessages);
         var installed = (await Core.Toolchains.Elan.ListAsync()).Select(t => t.Name).ToList();
         var toolchains = new List<string> { "(the newest installed)" };
         toolchains.AddRange(installed);
@@ -309,7 +312,7 @@ internal static class Dialogs
             {
                 Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
                 Head("Editing"), unicode, autosave, inline, marks, vim, emacs,
-                Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
+                Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback), Row("Lean arguments", serverArgs), logServer,
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
             },
@@ -334,6 +337,8 @@ internal static class Dialogs
             s.VimMode = vim.IsChecked == true;
             s.EmacsMode = emacs.IsChecked == true;
             s.ShowProofMarks = marks.IsChecked == true;
+            s.LeanServerArguments = serverArgs.Text?.Trim() ?? "";
+            s.LogServerMessages = logServer.IsChecked == true;
             s.ShowGoalsInEnglish = english.IsChecked == true;
             s.ExplainErrors = explain.IsChecked == true;
             s.AutoApplyFixes = autofix.IsChecked == true;

@@ -1308,7 +1308,8 @@ public sealed class LeanEditor : UserControl
             string t = prose.ToString().Trim();
             if (t.Length > 0 && t != "***" && t != "---")
             {
-                controls.Add(new TextBlock { Text = t.Replace("`", "", StringComparison.Ordinal), TextWrapping = TextWrapping.Wrap });
+                // Docstring math ($\sum_i x_i$) as text a hover can show (∑ᵢ xᵢ), before the backticks go.
+                controls.Add(new TextBlock { Text = LatexText.ToUnicode(t).Replace("`", "", StringComparison.Ordinal), TextWrapping = TextWrapping.Wrap });
             }
             prose.Clear();
         }

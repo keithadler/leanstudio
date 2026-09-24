@@ -73,6 +73,12 @@ public sealed partial class LeanServer : IAsyncDisposable
     /// </summary>
     public event Action<LeanServerState>? StateChanged;
     /// <summary>
+    /// A file to append every message exchanged with the server to (JSON, with the time and direction), or null for
+    /// none. Takes effect when the server starts.
+    /// </summary>
+    public string? MessageLogPath { get; set; }
+
+    /// <summary>
     /// Lean published the diagnostics for a file (URI, and the full current list, which replaces any before). It publishes
     /// several times while elaborating. Raised on the connection's read thread.
     /// </summary>
@@ -145,6 +151,27 @@ public sealed partial class LeanServer : IAsyncDisposable
         };
 
         _rpc = new JsonRpcConnection(p.StandardOutput.BaseStream, p.StandardInput.BaseStream);
+        if (MessageLogPath is string logPath)
+        {
+            // Every message, with the time and its direction: for troubleshooting the server.
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            var log = new StreamWriter(logPath, append: true) { AutoFlush = true };
+            var gate = new object();
+            _rpc.Traffic = (sent, json) =>
+            {
+                lock (gate)
+                {
+                    log.WriteLine($"{DateTime.Now:HH:mm:ss.fff} {(sent ? "→" : "←")} {json}");
+                }
+            };
+            _rpc.Closed += _ =>
+            {
+                lock (gate)
+                {
+                    log.Dispose();
+                }
+            };
+        }
         _rpc.NotificationReceived += OnNotification;
         _rpc.RequestHandler = OnServerRequest;
         _rpc.Start();

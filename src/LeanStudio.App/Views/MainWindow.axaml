@@ -83,6 +83,7 @@
         <MenuItem Header="Vim Mode" ToggleType="CheckBox" IsChecked="{Binding Settings.VimMode}" Click="OnApplySettings" />
         <MenuItem Header="Emacs Keys" ToggleType="CheckBox" IsChecked="{Binding Settings.EmacsMode}" Click="OnApplySettings" />
         <MenuItem Header="Keyboard Shortcuts File (keybindings.json)" Click="OnEditKeybindings" />
+        <MenuItem Header="Unicode Abbreviations File (abbreviations.json)" Click="OnEditAbbreviations" />
         <MenuItem Header="Show Who Changed the Current Line" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowBlame}" Click="OnApplySettings" />
         <Separator />
         <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
@@ -118,6 +119,8 @@
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
         <Separator />
+        <MenuItem Header="Imports and Imported By" Command="{Binding ShowImportGraphCommand}" />
+        <MenuItem Header="Instances of Class at Cursor…" Click="OnInstancesOfClass" />
         <MenuItem Header="Remove Unused Imports" Command="{Binding RemoveUnusedImportsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
@@ -136,6 +139,7 @@
         <MenuItem Header="Restart File (rebuild its imports)" Command="{Binding RestartFileCommand}" />
         <MenuItem Header="Restart Server" Command="{Binding RestartServerCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+R', macOS='Cmd+Shift+R'}" />
         <MenuItem Header="Refresh File Dependencies" Command="{Binding RefreshFileDependenciesCommand}" />
+        <MenuItem Header="Lean's Processes (memory, stop a runaway file)…" Click="OnLeanProcesses" />
         <Separator />
         <MenuItem Header="Build Project" Command="{Binding BuildCommand}" InputGesture="{OnPlatform Default='Ctrl+B', macOS='Cmd+B'}" />
         <MenuItem Header="Run Task…" Click="OnRunTask" InputGesture="{OnPlatform Default='Ctrl+Shift+B', macOS='Cmd+Shift+B'}" />

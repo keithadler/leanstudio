@@ -67,6 +67,33 @@ public sealed partial class MainViewModel
     [RelayCommand]
     public Task CopyGoalsAsync() => Info.PlainGoals.Length == 0 ? Task.CompletedTask : _dialogs.CopyTextAsync(Info.PlainGoals);
 
+    // ---- the import graph ----
+
+    /// <summary>
+    /// List, in the References panel, what the active module imports and which of the project's modules import it,
+    /// and say how many modules Lake rebuilds when it changes. Click one to go to its import.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowImportGraphAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d || Project is not LeanProject p || p.ModuleNameOf(d.Path) is not string module)
+        {
+            Log("Imports: open a file of the project.");
+            return;
+        }
+        ImportGraph g = await Task.Run(() => ImportGraph.Build(p));
+        IReadOnlyList<ImportEdge> imports = g.ImportsOf(module), importedBy = g.ImportedBy(module);
+        IReadOnlyList<string> dependents = g.Dependents(module);
+        var items = imports.Select(e => new LocationItem(e.File, e.Line, 0, "imports " + e.Imported + (g.Files.ContainsKey(e.Imported) ? "" : "  (outside the project)")))
+            .Concat(importedBy.Select(e => new LocationItem(e.File, e.Line, 0, $"{e.Module} imports {module}")))
+            .ToList();
+        References.Reset(items);
+        ReferencesTitle = $"{module}: imports {imports.Count} · imported by {importedBy.Count}";
+        BottomTab = ReferencesPanel;
+        Log($"{module} imports {imports.Count} module{(imports.Count == 1 ? "" : "s")} and is imported by {importedBy.Count}; "
+            + $"changing it rebuilds {dependents.Count} module{(dependents.Count == 1 ? "" : "s")} of the project.");
+    }
+
     // ---- imports ----
 
     /// <summary>

@@ -46,7 +46,11 @@ public sealed partial class NavigatorViewModel : ObservableObject
     private DeclarationSummary? _selected;
 
     /// <summary>The declaration shown, or null.</summary>
+    /// <summary>The selected declaration's docstring, with its math ($…$) shown as text.</summary>
+    public string DocStringText => Details?.DocString is string d ? Core.Editing.LatexText.ToUnicode(d) : "";
+
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DocStringText))]
     private DeclarationDetails? _details;
 
     /// <summary>

@@ -44,6 +44,15 @@ public sealed class Settings
 
     /// <summary>Edit with Emacs's keys: C-f, M-f, C-k, C-y, the mark and region, C-x C-s. Vim mode wins if both are on.</summary>
     public bool EmacsMode { get; set; }
+    /// <summary>
+    /// More arguments for Lean's server, as typed (such as <c>-DmaxHeartbeats=400000</c>); split on spaces. Lake
+    /// passes them to each file's Lean process.
+    /// </summary>
+    public string LeanServerArguments { get; set; } = "";
+
+    /// <summary>Write every message exchanged with Lean's server to a log file in the settings folder, for troubleshooting.</summary>
+    public bool LogServerMessages { get; set; }
+
     /// <summary>Mark the end of each proof: ✔ when it's finished, "⊢ goals left" when it isn't.</summary>
     public bool ShowProofMarks { get; set; } = true;
 

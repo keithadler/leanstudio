@@ -341,4 +341,113 @@ public sealed class ProTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public void KnowsWhatImportsWhat()
+    {
+        string root = Directory.CreateTempSubdirectory("leanstudio-graph").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "lakefile.toml"), "name = \"G\"\n[[lean_lib]]\nname = \"G\"\n");
+            Directory.CreateDirectory(Path.Combine(root, "G"));
+            File.WriteAllText(Path.Combine(root, "G.lean"), "import G.C\n");
+            File.WriteAllText(Path.Combine(root, "G", "A.lean"), "import Mathlib.Tactic\n");
+            File.WriteAllText(Path.Combine(root, "G", "B.lean"), "import G.A\n");
+            File.WriteAllText(Path.Combine(root, "G", "C.lean"), "-- C\nimport G.B\nimport G.A\n");
+            var g = ImportGraph.Build(new LeanProject(root));
+            Assert.Equal(["G.B", "G.A"], g.ImportsOf("G.C").Select(e => e.Imported));
+            Assert.Equal(2, g.ImportsOf("G.C")[1].Line);
+            Assert.Equal(["G.B", "G.C"], g.ImportedBy("G.A").Select(e => e.Module));
+            Assert.Equal(["G", "G.B", "G.C"], g.Dependents("G.A")); // what rebuilds when A changes
+            Assert.Equal(["G", "G.A", "G.B", "G.C"], g.Dependents("Mathlib.Tactic"));
+            Assert.Empty(g.Dependents("G"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task PassesArgumentsToLeanAndLogsItsMessages()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string root = Directory.CreateTempSubdirectory("leanstudio-args").FullName;
+        string log = Path.Combine(root, "logs", "server.log");
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+            var project = new LeanProject(root); // no lakefile: lean --server
+            Lsp.LeanServerCommand cmd = project.ServerCommand(null, ["-DautoImplicit=false"]);
+            Assert.Contains("-DautoImplicit=false", cmd.Arguments);
+            await using var server = new Lsp.LeanServer(cmd) { MessageLogPath = log };
+            await server.StartAsync(ct);
+            string uri = Lsp.LeanServer.UriOf(Path.Combine(root, "Args.lean"));
+            await server.OpenAsync(uri, "def f (x : α) : α := x\n");
+            await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+            // With autoImplicit off, α is not bound for us: Lean says so.
+            Assert.Contains(server.DiagnosticsOf(uri), d => d.Severity == Lsp.DiagnosticSeverity.Error && d.Message.Contains("α", StringComparison.Ordinal));
+            await server.DisposeAsync();
+            string logged = File.ReadAllText(log);
+            Assert.Contains("→ {", logged, StringComparison.Ordinal);
+            Assert.Contains("\"method\":\"initialize\"", logged, StringComparison.Ordinal);
+            Assert.Contains("← {", logged, StringComparison.Ordinal);
+            Assert.Contains("textDocument/publishDiagnostics", logged, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void FindsLeansFileWorkers()
+    {
+        const string ps = """
+            29717 343296       00:08 /Users/me/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean --server
+            29719 413504    01:02:03 /Users/me/.elan/toolchains/leanprover--lean4---v4.34.0/bin/lean --worker file:///Users/me/p/P/Basic.lean
+            29720 2202009 2-03:04:05 /Users/me/.elan/toolchains/x/bin/lean --worker file:///Users/me/p/P/Big%20File.lean
+              812   1024       00:01 /usr/bin/vim --worker notes.txt
+            """;
+        IReadOnlyList<Core.Toolchains.LeanWorker> w = Core.Toolchains.LeanProcesses.ParsePs(ps);
+        Assert.Equal([29719, 29720], w.Select(x => x.Pid));
+        Assert.Equal("/Users/me/p/P/Basic.lean", w[0].File);
+        Assert.Equal("/Users/me/p/P/Big File.lean", w[1].File);
+        Assert.Equal(new TimeSpan(1, 2, 3), w[0].Running);
+        Assert.Equal(new TimeSpan(2, 3, 4, 5), w[1].Running);
+        Assert.Equal("403 MB", w[0].Memory);
+        Assert.Equal("2.1 GB", w[1].Memory);
+
+        var win = Core.Toolchains.LeanProcesses.ParseWindows(
+            """{"ProcessId":7,"WorkingSetSize":104857600,"CreationDate":"2026-09-24T01:00:00","CommandLine":"C:\\lean\\bin\\lean.exe --worker file:///C:/p/A.lean"}""",
+            new DateTime(2026, 9, 24, 1, 5, 0));
+        Assert.Equal((7, "100 MB", TimeSpan.FromMinutes(5)), (win[0].Pid, win[0].Memory, win[0].Running));
+    }
+
+    [Fact]
+    public async Task ListsTheInstancesOfAClass()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        LeanProject project = await BuiltProjectAsync("Inst", ("Inst.lean", "import Inst.Shape\n"),
+            ("Inst/Shape.lean", "class Shape (α : Type) where\n  sides : Nat\n\ninstance : Shape Unit := ⟨3⟩\ninstance squares : Shape Bool := ⟨4⟩\n"));
+        try
+        {
+            string file = Path.Combine(project.Root, "Inst", "Use.lean");
+            var (cls, found) = await Instances.OfAsync(project, file, "import Inst.Shape\n\n#check Shape\n", "Shape", ct);
+            Assert.Equal("Shape", cls);
+            Assert.Equal(["instShapeUnit", "squares"], found.Select(x => x.Name));
+            Assert.Equal("Shape Bool", found[1].Type);
+
+            var (inh, all) = await Instances.OfAsync(project, file, "", "Inhabited", ct); // core's, from Lean itself
+            Assert.Equal("Inhabited", inh);
+            Assert.Contains(all, x => x.Name == "Array.instInhabited");
+            await Assert.ThrowsAsync<InvalidOperationException>(() => Instances.OfAsync(project, file, "", "NoSuchClass", ct));
+        }
+        finally
+        {
+            Directory.Delete(project.Root, true);
+        }
+    }
 }

@@ -10,16 +10,77 @@ public static class Abbreviations
     /// <summary>The character that starts an abbreviation: a backslash.</summary>
     public const char Leader = '\\';
 
-    /// <summary>Every abbreviation (without the leading backslash) and the symbol it stands for. Case-sensitive.</summary>
-    public static IReadOnlyDictionary<string, string> Table { get; } = Build();
+    private static readonly Dictionary<string, string> BuiltIn = Build();
+    private static Dictionary<string, string> _table = BuiltIn;
+    private static HashSet<string> Prefixes = PrefixesOf(_table);
+    private static Dictionary<string, List<string>> BySymbol = BySymbolOf(_table);
 
-    private static readonly HashSet<string> Prefixes = Table.Keys
-        .SelectMany(k => Enumerable.Range(1, k.Length).Select(n => k[..n]))
-        .ToHashSet(StringComparer.Ordinal);
+    /// <summary>
+    /// Every abbreviation (without the leading backslash) and the symbol it stands for, the person's own
+    /// (<see cref="SetCustom"/>) included. Case-sensitive.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Table => _table;
 
-    private static readonly Dictionary<string, List<string>> BySymbol = Table
-        .GroupBy(kv => kv.Value, StringComparer.Ordinal)
-        .ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).OrderBy(k => k.Length).ThenBy(k => k, StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
+    /// <summary>The abbreviations Lean Studio comes with.</summary>
+    public static IReadOnlyDictionary<string, string> BuiltInTable => BuiltIn;
+
+    /// <summary>
+    /// Add the person's own abbreviations (abbreviations.json), which win over built-in ones with the same name.
+    /// Pass an empty dictionary to go back to the built-in table.
+    /// </summary>
+    public static void SetCustom(IReadOnlyDictionary<string, string> custom)
+    {
+        var t = new Dictionary<string, string>(BuiltIn, StringComparer.Ordinal);
+        foreach ((string k, string v) in custom)
+        {
+            t[k] = v;
+        }
+        (_table, Prefixes, BySymbol) = (t, PrefixesOf(t), BySymbolOf(t));
+    }
+
+    /// <summary>
+    /// Read abbreviations.json: an object of abbreviation to symbol, <c>{ "foo": "☺" }</c>, as VS Code's
+    /// <c>lean4.input.customTranslations</c> has them. A leading backslash on a name is dropped. Returns the
+    /// abbreviations, and a line for anything that couldn't be read.
+    /// </summary>
+    public static (IReadOnlyDictionary<string, string> Custom, IReadOnlyList<string> Problems) ParseCustom(string json)
+    {
+        var custom = new Dictionary<string, string>(StringComparer.Ordinal);
+        var problems = new List<string>();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json, new System.Text.Json.JsonDocumentOptions
+            {
+                CommentHandling = System.Text.Json.JsonCommentHandling.Skip, AllowTrailingCommas = true,
+            });
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return (custom, ["abbreviations.json should be an object: { \"foo\": \"☺\" }"]);
+            }
+            foreach (var p in doc.RootElement.EnumerateObject())
+            {
+                string name = p.Name.TrimStart(Leader);
+                if (name.Length == 0 || name.Any(char.IsWhiteSpace) || p.Value.ValueKind != System.Text.Json.JsonValueKind.String || p.Value.GetString() is not { Length: > 0 } symbol)
+                {
+                    problems.Add($"\"{p.Name}\" needs a name without spaces and a symbol");
+                    continue;
+                }
+                custom[name] = symbol;
+            }
+        }
+        catch (System.Text.Json.JsonException e)
+        {
+            problems.Add("abbreviations.json isn't valid JSON: " + e.Message);
+        }
+        return (custom, problems);
+    }
+
+    private static HashSet<string> PrefixesOf(Dictionary<string, string> t) =>
+        t.Keys.SelectMany(k => Enumerable.Range(1, k.Length).Select(n => k[..n])).ToHashSet(StringComparer.Ordinal);
+
+    private static Dictionary<string, List<string>> BySymbolOf(Dictionary<string, string> t) =>
+        t.GroupBy(kv => kv.Value, StringComparer.Ordinal)
+         .ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).OrderBy(k => k.Length).ThenBy(k => k, StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
 
     /// <summary>How to type a symbol: its abbreviations, shortest first (⊢ → ["|-", "vdash", "entails"]).</summary>
     public static IReadOnlyList<string> NamesFor(string symbol) => BySymbol.TryGetValue(symbol, out List<string>? names) ? names : [];

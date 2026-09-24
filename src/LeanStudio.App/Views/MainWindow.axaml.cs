@@ -256,10 +256,67 @@ public sealed partial class MainWindow : Window, IDialogs
     private void WatchUserKeys()
     {
         Directory.CreateDirectory(Settings.Directory);
-        _keysWatcher = new FileSystemWatcher(Settings.Directory, KeyBindingsFile.FileName) { EnableRaisingEvents = true };
-        _keysWatcher.Changed += (_, _) => Dispatcher.UIThread.Post(() => LoadUserKeys());
-        _keysWatcher.Created += (_, _) => Dispatcher.UIThread.Post(() => LoadUserKeys());
+        _keysWatcher = new FileSystemWatcher(Settings.Directory, "*.json") { EnableRaisingEvents = true };
+        void Changed(FileSystemEventArgs e) => Dispatcher.UIThread.Post(() =>
+        {
+            if (e.Name == KeyBindingsFile.FileName)
+            {
+                LoadUserKeys();
+            }
+            else if (e.Name == AbbreviationsFileName)
+            {
+                LoadAbbreviations();
+            }
+        });
+        _keysWatcher.Changed += (_, e) => Changed(e);
+        _keysWatcher.Created += (_, e) => Changed(e);
         LoadUserKeys();
+        LoadAbbreviations();
+    }
+
+    // ---- the person's own Unicode abbreviations (abbreviations.json) ----
+
+    private const string AbbreviationsFileName = "abbreviations.json";
+
+    /// <summary>Where the person's own Unicode abbreviations are kept.</summary>
+    public static string AbbreviationsPath => Path.Combine(Settings.Directory, AbbreviationsFileName);
+
+    /// <summary>Read abbreviations.json (again) into Lean's Unicode input. Returns how many there are.</summary>
+    public int LoadAbbreviations()
+    {
+        if (!File.Exists(AbbreviationsPath))
+        {
+            Abbreviations.SetCustom(new Dictionary<string, string>());
+            return 0;
+        }
+        try
+        {
+            var (custom, problems) = Abbreviations.ParseCustom(File.ReadAllText(AbbreviationsPath));
+            Abbreviations.SetCustom(custom);
+            foreach (string p in problems)
+            {
+                _vm.Log("abbreviations.json: " + p);
+            }
+            return custom.Count;
+        }
+        catch (IOException)
+        {
+            return 0; // being written; the watcher calls again
+        }
+    }
+
+    /// <summary>Open abbreviations.json, starting it with an example if it doesn't exist.</summary>
+    public async Task EditAbbreviationsAsync()
+    {
+        if (!File.Exists(AbbreviationsPath))
+        {
+            Directory.CreateDirectory(Settings.Directory);
+            await File.WriteAllTextAsync(AbbreviationsPath,
+                "// Your own Unicode input: type \\name and get the symbol, as with \\alpha. Yours win over built-in ones.\n"
+                + "// The same format as VS Code's lean4.input.customTranslations. Save to apply.\n"
+                + "{\n  // \"zeta5\": \"ζ(5)\",\n}\n");
+        }
+        await _vm.OpenFileAsync(AbbreviationsPath);
     }
 
     /// <summary>Run the command bound to this key in keybindings.json, if there is one.</summary>
@@ -296,7 +353,81 @@ public sealed partial class MainWindow : Window, IDialogs
         await _vm.OpenFileAsync(path);
     }
 
+    /// <summary>
+    /// Lean's file workers, biggest first, with the file, memory and time running of each. Picking one stops it; if
+    /// its file is open, Lean restarts it fresh. For a file that has Lean stuck or eating memory.
+    /// </summary>
+    public async Task LeanProcessesAsync()
+    {
+        IReadOnlyList<Core.Toolchains.LeanWorker> workers = await Core.Toolchains.LeanProcesses.ListAsync(_vm.Project?.Root);
+        if (workers.Count == 0)
+        {
+            _vm.Log("Lean has no file open for this project.");
+            return;
+        }
+        long total = workers.Sum(w => w.MemoryBytes);
+        _vm.Log($"Lean has {workers.Count} file{(workers.Count == 1 ? "" : "s")} open, using {new Core.Toolchains.LeanWorker(0, "", total, default).Memory} in all.");
+        var items = workers.Select(w => new PickerItem(
+            $"{Path.GetFileName(w.File)}    {w.Memory}",
+            $"running {Core.Workflow.TaskProgress.Format(w.Running)} · {w.File} · pick to stop it (and restart the file if it's open)",
+            async () =>
+            {
+                bool stopped = Core.Toolchains.LeanProcesses.Kill(w.Pid);
+                _vm.Log(stopped ? $"Stopped Lean's worker for {Path.GetFileName(w.File)} ({w.Memory})." : $"Couldn't stop Lean's worker for {Path.GetFileName(w.File)}.");
+                if (stopped && _vm.Documents.FirstOrDefault(d => d.Path == w.File) is DocumentViewModel open)
+                {
+                    _vm.ActiveDocument = open;
+                    await _vm.RestartFileCommand.ExecuteAsync(null);
+                }
+            })).ToList();
+        await Picker.ShowAsync(this, "Lean's file workers, biggest first: pick one to stop it",
+            (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(Core.Editing.Fuzzy.Filter(items, q, i => i.Title).ToList()));
+    }
+
+    private void OnLeanProcesses(object? sender, RoutedEventArgs e) => _ = LeanProcessesAsync();
+
+    /// <summary>
+    /// The instances of the type class at the cursor (or one asked for), asked of Lean itself for this file's
+    /// imports. Picking one shows it in the Library, with its source.
+    /// </summary>
+    public async Task InstancesOfClassAsync()
+    {
+        if (_vm.ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string? word = Core.Editing.MultiCursor.WordAt(d.Document.Text, EditorControl.TextEditor.CaretOffset) is { } w
+            ? d.Document.Text[w.Start..w.End] : null;
+        string? cls = await PromptAsync("Instances of a class", "The type class to list the instances of:", word ?? "");
+        if (string.IsNullOrWhiteSpace(cls))
+        {
+            return;
+        }
+        _vm.Log($"Asking Lean for the instances of {cls.Trim()}…");
+        try
+        {
+            var (name, instances) = await Core.Workflow.Instances.OfAsync(
+                _vm.Project ?? new Core.Projects.LeanProject(Path.GetDirectoryName(d.Path)!), d.Path, d.Document.Text, cls.Trim());
+            _vm.Log($"{name}: {instances.Count} instance{(instances.Count == 1 ? "" : "s")} visible from this file's imports.");
+            var items = instances.Select(i => new PickerItem(i.Name, i.Type, async () =>
+            {
+                _vm.SidebarTab = MainViewModel.LibraryTab;
+                await _vm.Navigator.ShowAsync(i.Name);
+            })).ToList();
+            await Picker.ShowAsync(this, $"{instances.Count} instances of {name}",
+                (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(Core.Editing.Fuzzy.Filter(items, q, i => i.Title + " " + i.Detail).ToList()));
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        {
+            _vm.Log("Instances: " + e.Message.Split('\n')[0]);
+        }
+    }
+
+    private void OnInstancesOfClass(object? sender, RoutedEventArgs e) => _ = InstancesOfClassAsync();
+
     private void OnEditKeybindings(object? sender, RoutedEventArgs e) => _ = EditKeybindingsAsync();
+
+    private void OnEditAbbreviations(object? sender, RoutedEventArgs e) => _ = EditAbbreviationsAsync();
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
@@ -770,6 +901,9 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Edit: Find…", m + "F", Act(() => EditorControl.TextEditor.SearchPanel.Open()));
         yield return ("Lean: Quick Fix / Try This…", m + ".", QuickFixAsync);
         yield return ("Lean: Rename Symbol…", "F2", Cmd(_vm.RenameSymbolCommand));
+        yield return ("Lean: Imports and Imported By", "", Cmd(_vm.ShowImportGraphCommand));
+        yield return ("Lean: Instances of Class at Cursor…", "", InstancesOfClassAsync);
+        yield return ("Lean: Lean's Processes (memory, stop a runaway file)…", "", LeanProcessesAsync);
         yield return ("Lean: Remove Unused Imports", "", Cmd(_vm.RemoveUnusedImportsCommand));
         yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));
         yield return ("Lean: Import Every Module in the Library Root", "", Cmd(_vm.ImportAllModulesCommand));
@@ -846,6 +980,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
         yield return ("Preferences: Keyboard Shortcuts File (keybindings.json)", "", EditKeybindingsAsync);
+        yield return ("Preferences: Unicode Abbreviations File (abbreviations.json)", "", EditAbbreviationsAsync);
         yield return ("View: Toggle Emacs Keys", "", Act(() => { _vm.Settings.EmacsMode = !_vm.Settings.EmacsMode; ApplySettings(); _vm.Log("Emacs keys: " + (_vm.Settings.EmacsMode ? "on" : "off")); }));
         yield return ("View: Split Editor", m + "\\", Cmd(_vm.SplitEditorCommand));
         yield return ("View: Close Split", "", Cmd(_vm.CloseSplitCommand));

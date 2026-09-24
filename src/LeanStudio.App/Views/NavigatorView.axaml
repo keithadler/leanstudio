@@ -81,7 +81,7 @@
 
         <StackPanel IsVisible="{Binding Details.DocString, Converter={x:Static ObjectConverters.IsNotNull}, FallbackValue=False}">
           <TextBlock Text="DOCUMENTATION" Classes="panelTitle" />
-          <SelectableTextBlock Text="{Binding Details.DocString, FallbackValue=''}" TextWrapping="Wrap" FontSize="12" />
+          <SelectableTextBlock Text="{Binding DocStringText}" TextWrapping="Wrap" FontSize="12" />
         </StackPanel>
 
         <TextBlock Text="AXIOMS (computed by Tenet)" Classes="panelTitle" />

@@ -573,9 +573,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             fallback = (await Elan.ListAsync()).Select(t => t.Name).OrderDescending(StringComparer.Ordinal).FirstOrDefault(n => !n.Contains("rc", StringComparison.Ordinal));
         }
-        LeanServerCommand cmd = Project.ServerCommand(fallback);
+        string[] leanArguments = Settings.LeanServerArguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        LeanServerCommand cmd = Project.ServerCommand(fallback, leanArguments);
         ToolchainLabel = Project.Toolchain ?? (fallback is null ? "elan default" : fallback + " (not pinned)");
         var server = new LeanServer(cmd);
+        if (Settings.LogServerMessages)
+        {
+            server.MessageLogPath = Path.Combine(Services.Settings.Directory, "logs", $"lean-server-{DateTime.Now:yyyy-MM-dd-HHmmss}.log");
+            Log("Logging every message with Lean's server to " + server.MessageLogPath);
+        }
         _server = server;
         server.StateChanged += s =>
         {

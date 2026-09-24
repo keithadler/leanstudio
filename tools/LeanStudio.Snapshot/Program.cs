@@ -981,14 +981,28 @@ internal static class Scenario
             Emacs(Avalonia.Input.Key.S, C);
             Check(!ed.IsDirty && vm.VimStatus == "", "and C-x C-s saves");
             Snap(window, outDir, "32-emacs");
+
+            vm.Settings.EmacsMode = false;
+            await File.WriteAllTextAsync(MainWindow.AbbreviationsPath, "{ \"zeta5\": \"ζ(5)\" }");
+            Check(window.LoadAbbreviations() == 1, "an abbreviation of one's own is read from abbreviations.json");
+            emacsArea.ClearSelection();
+            emacsArea.Caret.Offset = ed.Document.TextLength;
+            foreach (char ch in "\\zeta5 ")
+            {
+                emacsArea.PerformTextInput(ch.ToString());
+            }
+            Check(ed.Document.Text.EndsWith("ζ(5) ", StringComparison.Ordinal), "and typing \\zeta5 gives ζ(5)");
         }
         finally
         {
+            File.Delete(MainWindow.AbbreviationsPath);
+            window.LoadAbbreviations();
             vm.Settings.EmacsMode = false;
             File.Delete(keysFile);
             window.LoadUserKeys();
             if (vm.Documents.FirstOrDefault(d => d.Path == emacsFile) is DocumentViewModel open)
             {
+                await open.SaveAsync(); // closing an unsaved file asks, and nobody answers here
                 await vm.CloseDocumentCommand.ExecuteAsync(open);
             }
             File.Delete(emacsFile);
@@ -1063,6 +1077,18 @@ internal static class Scenario
             Snap(window, outDir, "34-build-progress");
             await running;
             Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
+        }
+
+        Console.WriteLine("imports graph, and Lean's processes");
+        vm.ActiveDocument = doc;
+        await vm.ShowImportGraphAsync();
+        Check(vm.References.Any(r => r.Text == "Proofs imports Proofs.Basic") && vm.ReferencesTitle.StartsWith("Proofs.Basic: imports", StringComparison.Ordinal),
+            $"Imports and Imported By lists who imports the file ({vm.ReferencesTitle})");
+        if (!OperatingSystem.IsWindows())
+        {
+            IReadOnlyList<LeanStudio.Core.Toolchains.LeanWorker> workers = await LeanStudio.Core.Toolchains.LeanProcesses.ListAsync(Path.Combine(repo, "samples", "Proofs"));
+            Check(workers.Any(w => w.File == doc.Path && w.MemoryBytes > 0),
+                $"Lean's processes shows the worker for each open file, with its memory ({string.Join(", ", workers.Select(w => Path.GetFileName(w.File) + " " + w.Memory))})");
         }
 
         Console.WriteLine("dialogs");
