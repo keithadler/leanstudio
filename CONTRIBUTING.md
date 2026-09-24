@@ -3,6 +3,8 @@
 Thanks for your interest in Lean Studio. This page covers setting up a build, running the tests, and what a good
 change looks like. For how the code is organized, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first.
 
+Everyone taking part is expected to follow the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Set up
 
 You need:
