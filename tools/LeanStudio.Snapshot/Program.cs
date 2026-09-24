@@ -1043,6 +1043,27 @@ internal static class Scenario
             "Goals as a Comment puts them above the cursor, indented like its line");
         doc.Document.UndoStack.Undo();
         Check(doc.Document.Text == beforeComment, "and undo takes it out");
+        doc.Reveal(20, 3); // the sorry in `unfinished`
+        Check(await WaitFor(() => vm.Info.HasSteps && vm.Info.Steps.Any(s => s.ClosedBySorry), 30)
+            && vm.Info.Steps.All(s => !s.ClosesAll) && vm.Info.Steps.First(s => s.ClosedBySorry).Summary == "put off with sorry",
+            "a step that closes the goal with sorry says so, and isn't counted as done");
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("progress of a long task");
+            // What a big build prints, a line a second: the status bar and the banner read it as it comes.
+            var fake = new LeanStudio.Core.Workflow.ProjectTask("Build (fake)", "", "/bin/sh",
+                ["-c", "echo '✔ [8700/8712] Replayed Mathlib'; for i in 1 2 3 4 5 6; do sleep 1; echo \"✔ [$((8700+i))/8712] Built Apery.M$i ($((i*20))s)\"; done; echo 'warning: Challenge.lean:33:8: declaration uses sorry'; sleep 4"]);
+            Task running = vm.RunTaskAsync(fake);
+            Check(await WaitFor(() => vm.HasBusyFraction && vm.BusyDetail.Contains("8,705 / 8,712", StringComparison.Ordinal), 20),
+                $"the status bar shows how far a build has got, from Lake's own counts ({vm.BusyDetail})");
+            Check(vm.BusyDetail.Contains("5 built, 1 from cache", StringComparison.Ordinal) && vm.BusySlowest.StartsWith("Slowest: Apery.M5 (2 min), Apery.M4 (80 s)", StringComparison.Ordinal),
+                "and what came from the cache, and the slowest modules");
+            Check(vm.BusyPercent == "99%" && vm.BusyShort == "8,705 / 8,712", $"the percentage rounds down, so a build isn't called done early ({vm.BusyPercent}, {vm.BusyShort})");
+            Snap(window, outDir, "34-build-progress");
+            await running;
+            Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
+        }
 
         Console.WriteLine("dialogs");
         string? dialogName = null;

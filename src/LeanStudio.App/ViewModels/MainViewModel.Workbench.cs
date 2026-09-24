@@ -256,6 +256,8 @@ public sealed partial class MainViewModel
         BottomTab = OutputPanel;
         IsBusy = true;
         BusyText = task.Title;
+        BeginProgress();
+        bool stopped = false;
         Log($"▶ {task.Title}");
         try
         {
@@ -269,10 +271,12 @@ public sealed partial class MainViewModel
         }
         catch (OperationCanceledException)
         {
+            stopped = true;
             Log("■ Stopped.");
         }
         finally
         {
+            EndProgress(task.Title, stopped);
             IsBusy = false;
             BusyText = "";
             RefreshFiles();

@@ -248,8 +248,10 @@
                   <TextBlock Text="{Binding Number}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="{Binding Text}" Classes="mono" TextTrimming="CharacterEllipsis" />
                   <TextBlock Grid.Column="2" Text="{Binding GoalsLabel}" Classes="dim" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"
-                             IsVisible="{Binding !ClosesAll}" />
+                             IsVisible="{Binding ShowsGoalCount}" />
                   <TextBlock Grid.Column="2" Text="✓ done" Foreground="#3FB950" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" IsVisible="{Binding ClosesAll}" />
+                  <TextBlock Grid.Column="2" Text="◐ sorry" Foreground="#E5B93A" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center" IsVisible="{Binding ClosedBySorry}"
+                             ToolTip.Tip="sorry closes the goal without proving it: the theorem rests on it until it's replaced by a proof" />
                   <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding Summary}" FontSize="11" Classes="dim mono"
                              Classes.error="{Binding HasError}" TextTrimming="CharacterEllipsis" />
                 </Grid>

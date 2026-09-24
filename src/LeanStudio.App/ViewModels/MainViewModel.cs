@@ -261,6 +261,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         void Append()
         {
+            FeedProgress(line);
             Output.Insert(Output.TextLength, line + "\n");
             if (Output.TextLength > 2_000_000)
             {
@@ -594,7 +595,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             LeanServerState.Crashed => "Lean: stopped (restart from the Lean menu)",
             _ => "Lean: stopped",
         });
-        server.Log += line => Log("[lean] " + line);
+        server.Log += line =>
+        {
+            Log("[lean] " + line);
+            ServerLogLine(line);
+        };
         server.DiagnosticsPublished += (uri, diags) => Dispatcher.UIThread.Post(() => OnDiagnostics(uri, diags));
         server.FileProgress += (uri, ranges) => Dispatcher.UIThread.Post(() => OnProgress(uri, ranges));
         Log($"Starting {cmd} in {cmd.WorkingDirectory}");
@@ -1168,7 +1173,29 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await RunBusyAsync("Building…", async ct =>
         {
             BottomTab = 1;
-            var r = await Lake.BuildAsync(Project!, onLine: Log, ct: ct);
+            // Warnings and errors reach Problems as the build prints them, not only at the end.
+            var printed = new System.Text.StringBuilder();
+            DateTimeOffset parsed = default;
+            void OnLine(string line)
+            {
+                Log(line);
+                lock (printed)
+                {
+                    printed.AppendLine(line);
+                }
+                if ((line.StartsWith("warning:", StringComparison.Ordinal) || line.StartsWith("error:", StringComparison.Ordinal))
+                    && DateTimeOffset.Now - parsed > TimeSpan.FromSeconds(1))
+                {
+                    parsed = DateTimeOffset.Now;
+                    string sofar;
+                    lock (printed)
+                    {
+                        sofar = printed.ToString();
+                    }
+                    Dispatcher.UIThread.Post(() => TakeBuildOutput(sofar));
+                }
+            }
+            var r = await Lake.BuildAsync(Project!, onLine: OnLine, ct: ct);
             ok = r.Success;
             TakeBuildOutput(r.Output);
             Log(r.Success ? "Build succeeded." : $"Build failed (exit {r.ExitCode}).");
@@ -1224,17 +1251,21 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _buildCts = cts;
         IsBusy = true;
         BusyText = what;
+        BeginProgress();
         Log(what);
+        bool cancelled = false;
         try
         {
             await action(cts.Token);
         }
         catch (OperationCanceledException)
         {
+            cancelled = true;
             Log("Cancelled.");
         }
         finally
         {
+            EndProgress(what, cancelled);
             IsBusy = false;
             BusyText = "";
             RefreshFiles();
@@ -1286,10 +1317,25 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         BottomTab = 2;
         Verification.IsRunning = true;
         Verification.Summary = "Tenet is re-checking the project with an independent kernel…";
+        // The same progress in the status bar, whatever panel is open: overall, not just the current module.
+        IsBusy = true;
+        BusyText = "Verifying with Tenet…";
+        BeginProgress();
+        _progressReader = null; // Tenet reports its progress directly
+        var started = DateTimeOffset.Now;
         var progress = new Progress<VerificationProgress>(p =>
         {
-            Verification.Progress = p.Total == 0 ? 0 : 100.0 * p.Done / p.Total;
-            Verification.ProgressText = $"{p.Module}  ({p.ModuleIndex + 1}/{p.ModuleCount})  {p.Done}/{p.Total}";
+            double overall = p.ModuleCount == 0 ? 0 : (p.ModuleIndex + (p.Total == 0 ? 0 : p.Done / (double)p.Total)) / p.ModuleCount;
+            Verification.Progress = 100.0 * overall;
+            TimeSpan elapsed = DateTimeOffset.Now - started;
+            string left = overall > 0.05 && elapsed > TimeSpan.FromSeconds(20)
+                ? " · about " + Core.Workflow.TaskProgress.Format(TimeSpan.FromSeconds(elapsed.TotalSeconds * (1 - overall) / overall)) + " left" : "";
+            Verification.ProgressText = $"{p.Module}  (module {p.ModuleIndex + 1} of {p.ModuleCount}, {p.Done}/{p.Total} here){left}";
+            HasBusyFraction = true;
+            BusyFraction = overall;
+            BusyPercent = $"{Math.Floor(overall * 100):0}%";
+            BusyShort = $"module {p.ModuleIndex + 1} of {p.ModuleCount}{left}";
+            BusyDetail = $"module {p.ModuleIndex + 1} of {p.ModuleCount} · {p.Module}{left}";
         });
         try
         {
@@ -1310,6 +1356,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             Verification.IsRunning = false;
             Verification.ProgressText = "";
+            EndProgress("Tenet's verification", cancelled: false);
+            IsBusy = false;
+            BusyText = "";
         }
     }
 

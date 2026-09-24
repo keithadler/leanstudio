@@ -16,6 +16,9 @@ person sees while a big project loads, fetches and builds should be better in th
 
 ## What to build
 
+Done in the next commit: 1 (real bar), 2 (time left), 5 (toolchain and cache progress in the status bar), 6 (build warnings in Problems live), 9 (a done note; the dock and taskbar badge are still to do), 11 (Tenet in the status bar, overall, with time left), plus the Proof Steps `sorry` wording. Still to do: 3 (modules in progress, which Lake doesn't print), 4 (a full dashboard view), 7 (module timings in the Timing panel), 8 (the file tree marking), 10 (the server and the build).
+
+
 1. **A real build progress bar.** Lake prints `[done/total]` on every line. Parse it and show `8864 / 8951 (99%)`
    in the status bar, with a determinate bar. Say that most jobs were replayed from the cache, since a 97% bar
    after two minutes misleads when the rest takes 40.

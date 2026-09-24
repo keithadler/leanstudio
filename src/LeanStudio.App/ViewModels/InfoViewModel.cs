@@ -248,7 +248,16 @@ public sealed partial class ProofStepView : ObservableObject
 
     /// <summary>The step closed every goal: the proof is done there.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsGoalCount))]
     private bool _closesAll;
+
+    /// <summary>The step "closes" the goal with <c>sorry</c> or <c>admit</c>: nothing is proved, only put off.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsGoalCount))]
+    private bool _closedBySorry;
+
+    /// <summary>Show how many goals are left (not when the step finishes the proof, or puts it off with sorry).</summary>
+    public bool ShowsGoalCount => !ClosesAll && !ClosedBySorry;
 
     /// <summary>Lean reports an error on the step's line.</summary>
     [ObservableProperty]
@@ -753,8 +762,12 @@ public sealed partial class InfoViewModel : ObservableObject
                 // A line like `cases h with` or `calc` opens a tactic that the following, deeper lines finish;
                 // the end of its first line is not the end of the tactic, so there is no "after" to compare yet.
                 bool continues = ProofSteps.ContinuesBelow(proof.Steps, v.Index);
-                v.Summary = continues && change.Summary == "no change" ? "continues below" : change.Summary;
-                v.ClosesAll = change.ClosedAll;
+                // sorry and admit "close" the goal only by putting it off: say so, rather than "goals accomplished".
+                bool bySorry = change.GoalsBefore > change.GoalsAfter
+                    && System.Text.RegularExpressions.Regex.IsMatch(v.Step.Text, @"(?<![\w.])(sorry|admit)(?![\w'])");
+                v.Summary = bySorry ? "put off with sorry" : continues && change.Summary == "no change" ? "continues below" : change.Summary;
+                v.ClosesAll = change.ClosedAll && !bySorry;
+                v.ClosedBySorry = bySorry;
                 v.HasError = doc.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error && d.Extent.Start.Line <= v.Line && v.Line <= d.Extent.End.Line);
             }
         }

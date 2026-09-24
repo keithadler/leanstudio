@@ -196,12 +196,16 @@
         <TextBlock Grid.Column="0" Text="{Binding ServerStatus}" Foreground="White" FontSize="12" Margin="0,0,16,0" />
         <TextBlock Grid.Column="1" Text="{Binding ProblemSummary}" Foreground="White" FontSize="12" Margin="0,0,16,0" Cursor="Hand" PointerPressed="OnProblemsClicked" />
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
-          <ProgressBar IsIndeterminate="True" Width="80" MinWidth="80" Height="4" VerticalAlignment="Center" />
+          <ProgressBar IsIndeterminate="{Binding !HasBusyFraction}" Value="{Binding BusyFraction}" Maximum="1" Width="120" MinWidth="120" Height="4" VerticalAlignment="Center" />
           <TextBlock Text="{Binding BusyText}" Foreground="White" FontSize="12" />
+          <TextBlock Text="{Binding BusyShort}" Foreground="White" Opacity="0.8" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="260" />
         </StackPanel>
+        <Button Grid.Column="2" Classes="flat" Foreground="White" FontSize="12" Padding="0" HorizontalAlignment="Left"
+                Content="{Binding DoneNotice}" Command="{Binding DismissDoneNoticeCommand}" ToolTip.Tip="Dismiss"
+                IsVisible="{Binding DoneNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <StackPanel Grid.Column="3" Orientation="Horizontal">
           <TextBlock Text="{Binding BlameText}" Foreground="White" Opacity="0.75" FontSize="12" Margin="16,0,0,0" MaxWidth="420" TextTrimming="CharacterEllipsis"
-                     ToolTip.Tip="{Binding BlameText}" />
+                     ToolTip.Tip="{Binding BlameText}" IsVisible="{Binding !IsBusy}" />
           <TextBlock Text="{Binding VimStatus}" Foreground="White" FontSize="12" Margin="16,0,0,0" FontWeight="SemiBold"
                      IsVisible="{Binding VimStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <TextBlock Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
@@ -359,7 +363,23 @@
           </TabStrip.ItemTemplate>
         </TabStrip>
 
-        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,*">
+        <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*">
+          <!-- A long task (build, cache, verification): how far it has got, over the editor -->
+          <Border Grid.Row="2" IsVisible="{Binding HasBusyFraction}" Background="{DynamicResource CurrentStepBackground}" Padding="12,8">
+            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{Binding BusyText}" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding BusyPercent}" Classes="dim" />
+              </StackPanel>
+              <Button Grid.Column="1" Grid.RowSpan="3" Content="Cancel" Command="{Binding CancelTaskCommand}" VerticalAlignment="Center" Margin="12,0,0,0" />
+              <ProgressBar Grid.Row="1" Value="{Binding BusyFraction}" Maximum="1" Height="6" MinHeight="6" Margin="0,6,0,4" />
+              <StackPanel Grid.Row="2" Spacing="2">
+                <TextBlock Text="{Binding BusyDetail}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding BusySlowest}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding BusySlowest, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Grid>
+          </Border>
           <Border Grid.Row="0" IsVisible="{Binding LeanMissing}" Background="{DynamicResource CurrentStepBackground}" Padding="12,8">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Text="Lean is not installed yet. Lean Studio can install it for you with the official installer (elan and the latest stable Lean, a few hundred MB)."
@@ -374,7 +394,7 @@
             </Grid>
           </Border>
           <!-- The editor, split in two side by side when View ▸ Split Editor is on -->
-          <Grid Grid.Row="2" x:Name="EditorGrid" ColumnDefinitions="*,0,0">
+          <Grid Grid.Row="3" x:Name="EditorGrid" ColumnDefinitions="*,0,0">
             <ed:LeanEditor Grid.Column="0" x:Name="Editor" Document="{Binding PrimaryDocument}" Main="{Binding}" />
             <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="{DynamicResource Divider}" IsVisible="{Binding IsSplit}" />
             <DockPanel Grid.Column="2" IsVisible="{Binding IsSplit}">
@@ -394,7 +414,7 @@
               <ed:LeanEditor x:Name="SplitEditor" Document="{Binding SplitDocument}" Main="{Binding}" />
             </DockPanel>
           </Grid>
-          <v:WelcomeView Grid.Row="2" IsVisible="{Binding !HasDocument}" />
+          <v:WelcomeView Grid.Row="3" IsVisible="{Binding !HasDocument}" />
         </Grid>
 
         <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" />

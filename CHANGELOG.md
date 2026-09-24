@@ -23,6 +23,13 @@
 - *Copy Goals*, and *Goals as a Comment Above the Cursor* (VS Code's Copy Contents to Comment).
 - The end of each proof is marked in the editor: a quiet ✔ where Lean says the goals are accomplished, "⊢ goals left" where they aren't (Preferences can turn it off). Lean's silent "Goals accomplished!" messages are asked for and kept apart, so they never show as messages.
 
+**Progress you can read**:
+- A build, the Mathlib cache and Tenet's verification show a real progress bar: Lake's own `[done/total]`, what came from the cache and what was compiled, the time left (from the rate of real work, not replayed jobs), the module just finished, and the slowest ones so far. It sits in the status bar and in a banner over the editor, with Cancel. The percentage rounds down, so 8,705 of 8,712 reads 99%.
+- Warnings and errors reach Problems while the build is still running.
+- When Lean has to be downloaded or installed first, the status bar says so.
+- A long task ends with a note of how long it took and what it found.
+- Proof Steps no longer calls a `sorry` "goals accomplished": it says "put off with sorry".
+
 **Fixes**:
 - Tenet no longer counts a module whose source file was deleted but whose build was left behind.
 - A name declared in two of the project's modules that don't import each other (a benchmark's challenge statement and its solution) was dropped from Tenet's report, and its axioms came back empty. Each module's declarations are now read from that module, such a name is resolved as the module reading it sees it, and asking about it without saying which module is refused rather than guessed. Found while validating the ζ(5) formalization (mo271/zeta5).
