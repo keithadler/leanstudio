@@ -293,6 +293,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <param name="restoreSession">False for a new, empty window.</param>
     public async Task StartAsync(bool restoreSession = true)
     {
+        RegisterRemotes();
         await Toolchains.RefreshAsync();
         LeanMissing = !Elan.IsInstalled;
         if (!restoreSession)
@@ -564,18 +565,23 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task StartServerAsync()
     {
         await StopServerAsync();
-        if (Project is null || !Elan.IsInstalled)
+        RemoteTarget? remote = Project is null ? null : RemoteTargets.For(Project.Root);
+        if (Project is null || (!Elan.IsInstalled && remote is null))
         {
             return;
         }
         string? fallback = Settings.FallbackToolchain;
-        if (Project.Toolchain is null && fallback is null)
+        if (Project.Toolchain is null && fallback is null && remote is null)
         {
             fallback = (await Elan.ListAsync()).Select(t => t.Name).OrderDescending(StringComparer.Ordinal).FirstOrDefault(n => !n.Contains("rc", StringComparison.Ordinal));
         }
         string[] leanArguments = Settings.LeanServerArguments.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         LeanServerCommand cmd = Project.ServerCommand(fallback, leanArguments);
         ToolchainLabel = Project.Toolchain ?? (fallback is null ? "elan default" : fallback + " (not pinned)");
+        if (remote is not null)
+        {
+            ToolchainLabel += " on " + remote.Host;
+        }
         var server = new LeanServer(cmd);
         if (Settings.LogServerMessages)
         {
@@ -608,7 +614,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         };
         server.DiagnosticsPublished += (uri, diags) => Dispatcher.UIThread.Post(() => OnDiagnostics(uri, diags));
         server.FileProgress += (uri, ranges) => Dispatcher.UIThread.Post(() => OnProgress(uri, ranges));
-        Log($"Starting {cmd} in {cmd.WorkingDirectory}");
+        Log(remote is null
+            ? $"Starting {cmd} in {cmd.WorkingDirectory}"
+            : $"Starting {Path.GetFileNameWithoutExtension(cmd.FileName)} {string.Join(' ', cmd.Arguments)} on {remote.Host}, in {remote.RemoteRoot}");
         try
         {
             await server.StartAsync();

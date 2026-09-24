@@ -59,6 +59,12 @@ public sealed class Settings
     /// <summary>The Tactic State leaves out hypotheses that are types (<c>α : Type</c>).</summary>
     public bool HideTypeAssumptions { get; set; }
 
+    /// <summary>
+    /// Projects on other machines: a local folder (where the project is mounted) whose Lean, Lake and elan run over
+    /// SSH on the machine that has it.
+    /// </summary>
+    public List<RemoteProject> RemoteProjects { get; set; } = [];
+
     /// <summary>The Tactic State leaves out type class instances.</summary>
     public bool HideInstanceAssumptions { get; set; }
 
@@ -153,4 +159,17 @@ public sealed class Settings
         }
         LastProject = root;
     }
+}
+
+/// <summary>A project on another machine, as the settings keep it.</summary>
+public sealed class RemoteProject
+{
+    /// <summary>The SSH destination: <c>user@host</c>, or a <c>Host</c> from ~/.ssh/config.</summary>
+    public string Host { get; set; } = "";
+
+    /// <summary>The project's folder on that machine.</summary>
+    public string RemoteRoot { get; set; } = "";
+
+    /// <summary>Where that folder is mounted here.</summary>
+    public string LocalRoot { get; set; } = "";
 }

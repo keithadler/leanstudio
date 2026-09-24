@@ -1172,6 +1172,54 @@ internal static class Scenario
         Check(vm.Toolchains.Installed.Count > 0, "installed toolchains are listed");
         Snap(window, outDir, "05-toolchains");
 
+        if (!OperatingSystem.IsWindows())
+        {
+            Console.WriteLine("a project on another machine");
+            // A stand-in for ssh runs the command here, in the "remote" folder; the "mount" is a link to it, so
+            // every path Lean sees differs from the editor's, as with a real sshfs mount.
+            string scratch = LeanStudio.Core.Workflow.Lint.RealPath(Path.Combine(Path.GetTempPath(), "leanstudio-snapshot-remote-" + Environment.ProcessId));
+            string remoteRoot = Path.Combine(scratch, "remote", "Proofs");
+            Directory.CreateDirectory(Path.Combine(remoteRoot, "Proofs"));
+            foreach (string f in new[] { "lakefile.toml", "lean-toolchain", "lake-manifest.json", "Proofs.lean", "Proofs/Basic.lean" })
+            {
+                File.Copy(Path.Combine(repo, "samples", "Proofs", f), Path.Combine(remoteRoot, f));
+            }
+            Directory.CreateDirectory(Path.Combine(scratch, "mnt"));
+            string mounted = Path.Combine(scratch, "mnt", "Proofs");
+            Directory.CreateSymbolicLink(mounted, remoteRoot);
+            string fakeSsh = Path.Combine(scratch, "ssh");
+            File.WriteAllText(fakeSsh, "#!/bin/sh\nwhile [ \"$1\" = \"-o\" ]; do shift 2; done\nshift\nexec sh -c \"$1\"\n");
+            File.SetUnixFileMode(fakeSsh, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            try
+            {
+                await vm.SaveAllCommand.ExecuteAsync(null);
+                bool opened = await vm.OpenRemoteProjectAsync("me@box:" + remoteRoot, mounted, new LeanStudio.Lsp.RemoteTarget("", "", "") { Ssh = fakeSsh });
+                Check(opened && vm.Project?.Root == mounted && vm.Output.Text.Contains("on me@box", StringComparison.Ordinal),
+                    "a remote project opens once Lake answers over SSH");
+                DocumentViewModel? remoteDoc = await vm.OpenFileAsync(Path.Combine(mounted, "Proofs", "Basic.lean"));
+                Check(await WaitFor(() => remoteDoc!.Diagnostics.Any(x => x.Message.Contains("sorry", StringComparison.Ordinal)) && !vm.IsBusy, 180),
+                    "Lean, running on the other machine, checks the mounted file and its messages land in the editor");
+                Check(vm.ToolchainLabel.EndsWith("on me@box", StringComparison.Ordinal), "the status bar says where Lean runs");
+                await WaitFor(() => false, 1);
+                Snap(window, outDir, "36-remote");
+                await vm.ForgetRemoteCommand.ExecuteAsync(null);
+                Check(LeanStudio.Lsp.RemoteTargets.For(mounted) is null && vm.Settings.RemoteProjects.Count == 0, "and can be told to run Lean here again");
+                await vm.SaveAllCommand.ExecuteAsync(null);
+            }
+            finally
+            {
+                LeanStudio.Lsp.RemoteTargets.Unregister(mounted);
+                await vm.CloseAllAsync(force: true);
+                try
+                {
+                    Directory.Delete(scratch, true);
+                }
+                catch (IOException)
+                {
+                }
+            }
+        }
+
         await vm.DisposeAsync();
         return _failures;
     }

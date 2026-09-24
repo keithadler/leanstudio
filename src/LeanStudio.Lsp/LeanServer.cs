@@ -107,16 +107,21 @@ public sealed partial class LeanServer : IAsyncDisposable
             return;
         }
         SetState(LeanServerState.Starting);
-        var psi = new ProcessStartInfo(_command.FileName)
+        // A remote project's server runs on its machine, over SSH, with paths rewritten both ways.
+        RemoteTarget? remote = RemoteTargets.For(_command.WorkingDirectory);
+        (string fileName, IReadOnlyList<string> arguments) = remote is null
+            ? (_command.FileName, _command.Arguments)
+            : remote.Command(_command.FileName, _command.Arguments, _command.WorkingDirectory);
+        var psi = new ProcessStartInfo(fileName)
         {
-            WorkingDirectory = _command.WorkingDirectory,
+            WorkingDirectory = Directory.Exists(_command.WorkingDirectory) ? _command.WorkingDirectory : Environment.CurrentDirectory,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        foreach (string a in _command.Arguments)
+        foreach (string a in arguments)
         {
             psi.ArgumentList.Add(a);
         }
@@ -137,7 +142,7 @@ public sealed partial class LeanServer : IAsyncDisposable
         {
             if (e.Data is not null)
             {
-                Log?.Invoke(e.Data);
+                Log?.Invoke(remote is null ? e.Data : remote.ToLocal(e.Data));
             }
         };
         p.BeginErrorReadLine();
@@ -151,6 +156,11 @@ public sealed partial class LeanServer : IAsyncDisposable
         };
 
         _rpc = new JsonRpcConnection(p.StandardOutput.BaseStream, p.StandardInput.BaseStream);
+        if (remote is not null)
+        {
+            _rpc.Outgoing = remote.ToRemote;
+            _rpc.Incoming = remote.ToLocal;
+        }
         if (MessageLogPath is string logPath)
         {
             // Every message, with the time and its direction: for troubleshooting the server.

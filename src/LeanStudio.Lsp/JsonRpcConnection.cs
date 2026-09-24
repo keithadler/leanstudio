@@ -62,6 +62,15 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     public Action<bool, string>? Traffic { get; set; }
 
     /// <summary>
+    /// Rewrites each message's JSON text before it is sent (a remote server's paths, say), or null. Set before
+    /// <see cref="Start"/>.
+    /// </summary>
+    public Func<string, string>? Outgoing { get; set; }
+
+    /// <summary>Rewrites each message's JSON text as it is received, before anything reads it, or null.</summary>
+    public Func<string, string>? Incoming { get; set; }
+
+    /// <summary>
     /// Answers requests from the other side. Return null for a null result; an exception becomes an error response
     /// (code -32603). Called on a thread-pool thread, possibly for several requests at once.
     /// </summary>
@@ -139,6 +148,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private async Task WriteAsync(JsonObject msg)
     {
         string json = msg.ToJsonString();
+        if (Outgoing is not null)
+        {
+            json = Outgoing(json);
+        }
         Traffic?.Invoke(true, json);
         byte[] body = Encoding.UTF8.GetBytes(json);
         byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
@@ -186,6 +199,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
 
     private void Dispatch(byte[] body)
     {
+        if (Incoming is not null)
+        {
+            body = Encoding.UTF8.GetBytes(Incoming(Encoding.UTF8.GetString(body)));
+        }
         Traffic?.Invoke(false, Encoding.UTF8.GetString(body));
         JsonElement root;
         try

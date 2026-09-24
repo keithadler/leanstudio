@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using LeanStudio.Lsp;
 
 namespace LeanStudio.Core.Processes;
 
@@ -43,6 +44,17 @@ public static class ProcessRunner
         IReadOnlyDictionary<string, string>? environment = null,
         CancellationToken ct = default)
     {
+        // Lean's tools for a remote project run on its machine, over SSH; what they print names local paths.
+        RemoteTarget? remote = RemoteTarget.IsLeanTool(fileName) ? RemoteTargets.For(workingDirectory) : null;
+        if (remote is not null)
+        {
+            (fileName, IReadOnlyList<string> remoteArgs) = remote.Command(fileName, arguments, workingDirectory);
+            arguments = remoteArgs;
+            if (onLine is Action<string> inner)
+            {
+                onLine = l => inner(remote.ToLocal(l));
+            }
+        }
         var psi = new ProcessStartInfo(fileName)
         {
             RedirectStandardOutput = true,
@@ -80,7 +92,7 @@ public static class ProcessRunner
             lock (all)
             {
                 // "\n", not AppendLine: on Windows that adds "\r\n", and every parser here splits on "\n".
-                all.Append(s).Append('\n');
+                all.Append(remote is null ? s : remote.ToLocal(s)).Append('\n');
             }
             onLine?.Invoke(s);
         }

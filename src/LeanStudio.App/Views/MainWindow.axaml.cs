@@ -1001,6 +1001,8 @@ public sealed partial class MainWindow : Window, IDialogs
         {
             yield return (title, "", run);
         }
+        yield return ("Remote: Open a Project on Another Machine (SSH)…", "", OpenRemoteProjectAsync);
+        yield return ("Remote: Run This Project's Lean Here Again", "", Cmd(_vm.ForgetRemoteCommand));
         yield return ("Plugins: Open the Plugins Folder", "", OpenPluginsFolderAsync);
         yield return ("Plugins: List Loaded Plugins", "", Act(ListPlugins));
         yield return ("Preferences: Keyboard Shortcuts File (keybindings.json)", "", EditKeybindingsAsync);
@@ -1134,6 +1136,21 @@ public sealed partial class MainWindow : Window, IDialogs
 
     /// <inheritdoc/>
     public async Task LaunchAsync(Uri uri) => await Launcher.LaunchUriAsync(uri);
+
+    private async Task OpenRemoteProjectAsync()
+    {
+        string? destination = await Dialogs.PromptAsync(this, "Open a Project on Another Machine",
+            "Where is the project? Write it as user@host:/path/to/project. Lean, Lake and elan run there over SSH (it must log in without a password); you edit the files through a folder where it is mounted here, such as an sshfs mount or a network drive, which you choose next.",
+            "");
+        if (string.IsNullOrWhiteSpace(destination))
+        {
+            return;
+        }
+        if (await PickFolderAsync("Where is " + destination.Trim() + " mounted here?") is string local)
+        {
+            await _vm.OpenRemoteProjectAsync(destination, local);
+        }
+    }
 
     private async Task OpenPluginsFolderAsync()
     {
