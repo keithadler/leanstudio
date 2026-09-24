@@ -79,7 +79,7 @@ public static class LeanProcesses
             return null;
         }
         string? file = words.Skip(1).Select(w => w.Trim('"')).FirstOrDefault(w => w.EndsWith(".lean", StringComparison.Ordinal));
-        return file is null ? null : Path.GetFullPath(file);
+        return file;
     }
 
     /// <summary>Read <c>ps -axo pid=,rss=,etime=,args=</c>: the Lean workers in it (rss is in KiB).</summary>

@@ -13,6 +13,20 @@ internal static class Lean
     /// </summary>
     public const string Collection = "Lean";
 
+    /// <summary>Delete a folder and everything in it, git's read-only object files included (which Windows refuses otherwise).</summary>
+    public static void DeleteTree(string path)
+    {
+        if (!Directory.Exists(path))
+        {
+            return;
+        }
+        foreach (string f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            File.SetAttributes(f, FileAttributes.Normal);
+        }
+        Directory.Delete(path, true);
+    }
+
     /// <summary>How long to wait for Lean to finish a small file, generous for a cold CI runner.</summary>
     public static readonly TimeSpan Patience = TimeSpan.FromSeconds(240);
 

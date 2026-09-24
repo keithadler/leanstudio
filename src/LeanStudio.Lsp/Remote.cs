@@ -120,7 +120,8 @@ public sealed partial record RemoteTarget(string Host, string RemoteRoot, string
         sb.Append("cd ").Append(Quote(dir)).Append(" && PATH=\"$HOME/.elan/bin:$PATH\" exec ").Append(Quote(ToolName(program)));
         foreach (string a in arguments)
         {
-            sb.Append(' ').Append(Quote(ToRemote(a)));
+            // A local path in the project is mapped whole (a Windows path's separators too); other text is searched for paths.
+            sb.Append(' ').Append(Quote(Path.IsPathRooted(a) && Covers(a) ? ToRemotePath(a) : ToRemote(a)));
         }
         return (Ssh, [.. SshOptions, Host, sb.ToString()]);
     }

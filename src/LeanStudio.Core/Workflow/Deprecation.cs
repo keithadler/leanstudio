@@ -82,7 +82,9 @@ public static class Deprecation
         }
         int end = EndOfDeclaration(lines, declarationLine);
         var result = new List<string>(lines);
-        result.InsertRange(end, ["", AliasLine(oldName, newName, keyword, batteries, since)]);
+        // Keep the file's line endings: a CRLF file gets CRLF lines.
+        string cr = lines[Math.Max(0, end - 1)].EndsWith('\r') ? "\r" : "";
+        result.InsertRange(end, [cr, AliasLine(oldName, newName, keyword, batteries, since) + cr]);
         return string.Join('\n', result);
     }
 }

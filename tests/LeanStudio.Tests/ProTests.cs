@@ -67,7 +67,7 @@ public sealed class ProTests
             Assert.True(syntax.Keep); // only a notation and a tactic come from it, and they count
 
             string tidied = ImportCheck.Remove(text, report.Removable.Select(r => r.Module));
-            Assert.StartsWith("import Tidy.B\nimport Tidy.Syntax\n\ndef baz", tidied, StringComparison.Ordinal);
+            Assert.StartsWith("import Tidy.B\nimport Tidy.Syntax\n\ndef baz", tidied.Replace("\r\n", "\n", StringComparison.Ordinal), StringComparison.Ordinal);
         }
         finally
         {
@@ -165,10 +165,13 @@ public sealed class ProTests
         Assert.Equal("theorem", Deprecation.DeclarationKeyword("@[simp] protected theorem add_zero' (n : Nat) : n + 0 = n := by", "add_zero'"));
         Assert.Null(Deprecation.DeclarationKeyword("  exact add_zero' n", "add_zero'"));
 
-        string mathlib = Deprecation.AddAlias(text, 0, "zero_add'", "add_zero'", batteries: true, since);
+        // A CRLF file gets CRLF lines. (This file itself may be checked out with CRLF on Windows, so compare without.)
+        string crlf = Deprecation.AddAlias(text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal), 0, "zero_add'", "add_zero'", batteries: true, since);
+        Assert.All(crlf.Split('\n')[..^1], l => Assert.EndsWith("\r", l, StringComparison.Ordinal));
+        string mathlib = Deprecation.AddAlias(text, 0, "zero_add'", "add_zero'", batteries: true, since).Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains("  simp\n\n@[deprecated (since := \"2026-09-23\")] alias zero_add' := add_zero'\n\ndef twice", mathlib, StringComparison.Ordinal);
 
-        string core = Deprecation.AddAlias(text, 3, "double", "twice", batteries: false, since);
+        string core = Deprecation.AddAlias(text, 3, "double", "twice", batteries: false, since).Replace("\r\n", "\n", StringComparison.Ordinal);
         Assert.Contains("| n + 1 => twice n + 2\n\n@[deprecated twice (since := \"2026-09-23\")] def double : type_of% @twice := @twice\n\ntheorem other", core, StringComparison.Ordinal);
 
         Assert.Equal(text, Deprecation.AddAlias(text, 1, "x", "y", true, since)); // not a declaration of y
@@ -599,8 +602,8 @@ public sealed class ProTests
         }
         finally
         {
-            Directory.Delete(lib, true);
-            Directory.Delete(root, true);
+            Lean.DeleteTree(lib);
+            Lean.DeleteTree(root);
         }
     }
 
@@ -640,7 +643,7 @@ public sealed class ProTests
 
         var ctx = new CommandContext("/p", "/p/My Proofs/A.lean", "My.A", 12, "foo_bar", "sel");
         Assert.Equal(["build", "My.A"], ProjectCommands.Expand(build.Arguments, ctx));
-        Assert.Equal(["/p/My Proofs/A.lean", "My Proofs/A.lean", "A.lean:12", "foo_bar", "${nope}"],
+        Assert.Equal(["/p/My Proofs/A.lean", Path.Combine("My Proofs", "A.lean"), "A.lean:12", "foo_bar", "${nope}"],
             ProjectCommands.Expand(["${file}", "${relativeFile}", "${fileName}:${line}", "${word}", "${nope}"], ctx));
 
         var (_, bad) = ProjectCommands.Parse("""[ { "title": "x" }, { "title": "ok", "program": "echo", "save": false } ]""");

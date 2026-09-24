@@ -50,6 +50,7 @@
 **Fixes**:
 - Tenet no longer counts a module whose source file was deleted but whose build was left behind.
 - A name declared in two of the project's modules that don't import each other (a benchmark's challenge statement and its solution) was dropped from Tenet's report, and its axioms came back empty. Each module's declarations are now read from that module, such a name is resolved as the module reading it sees it, and asking about it without saying which module is refused rather than guessed. Found while validating the ζ(5) formalization (mo271/zeta5).
+- Keeping a renamed declaration's old name as a deprecated alias added LF lines to a file with Windows (CRLF) line endings. It now matches the file.
 
 ## 0.7.0
 
