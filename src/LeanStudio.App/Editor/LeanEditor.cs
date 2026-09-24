@@ -26,6 +26,9 @@ namespace LeanStudio.App.Editor;
 /// </summary>
 public sealed class LeanEditor : UserControl
 {
+    /// <summary>The cursors beyond the editor's own (⌘D, ⌥-click…).</summary>
+    public MultiCursorLayer MultiCursor => _multi;
+
     /// <summary>Defines the <see cref="Document"/> property.</summary>
     public static readonly StyledProperty<DocumentViewModel?> DocumentProperty =
         AvaloniaProperty.Register<LeanEditor, DocumentViewModel?>(nameof(Document));
@@ -46,6 +49,9 @@ public sealed class LeanEditor : UserControl
     private CancellationTokenSource? _semanticCts, _occurrenceCts;
     private readonly VimEngine _vim;
     private readonly VimBlockCaret _vimCaret;
+    private readonly MultiCursorLayer _multi;
+    private readonly EmacsEngine _emacs;
+    private bool _swallowText;
     private int _edits;
     private AvaloniaEdit.Folding.FoldingManager? _folding;
     private CancellationTokenSource? _foldCts;
@@ -77,6 +83,8 @@ public sealed class LeanEditor : UserControl
         _editor.Options.EnableHyperlinks = false;
         _editor.Options.EnableEmailHyperlinks = false;
         _editor.Options.AllowScrollBelowDocument = true;
+        _multi = new MultiCursorLayer(_editor);
+        _editor.Options.EnableRectangularSelection = true; // ⌥-drag (Alt+drag) selects a column
         _editor.TextArea.TextView.BackgroundRenderers.Add(_diagnostics);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_brackets);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_inline);
@@ -87,6 +95,15 @@ public sealed class LeanEditor : UserControl
         _vimCaret = new VimBlockCaret(_editor);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_vimCaret);
         _vim = new VimEngine(new EditorVimHost(_editor, VimEx));
+        _emacs = new EmacsEngine(new EditorVimHost(_editor, EmacsEx));
+        _emacs.Changed += OnEmacsChanged;
+        _emacs.KilledText += text =>
+        {
+            if (TopLevel.GetTopLevel(this)?.Clipboard is { } cb)
+            {
+                _ = Avalonia.Input.Platform.ClipboardExtensions.SetValueAsync(cb, Avalonia.Input.DataFormat.Text, text);
+            }
+        };
         _vim.Changed += OnVimChanged;
         _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
@@ -447,10 +464,87 @@ public sealed class LeanEditor : UserControl
         }
     }
 
+    // ---- Emacs ----
+
+    private bool EmacsOn => Main?.Settings.EmacsMode == true && Main.Settings.VimMode != true && _current is not null;
+
+    /// <summary>The Emacs engine (for tests and scripts).</summary>
+    public EmacsEngine Emacs => _emacs;
+
+    /// <summary>A key in Emacs's terms (<c>C-f</c>, <c>M-f</c>…), or null for one Emacs leaves to the editor.</summary>
+    private string? EmacsKey(KeyEventArgs e)
+    {
+        KeyModifiers m = e.KeyModifiers;
+        string? letter = e.Key is >= Key.A and <= Key.Z ? e.Key.ToString().ToLowerInvariant() : null;
+        if (m == KeyModifiers.Control)
+        {
+            return e.Key switch
+            {
+                Key.Space => "C-SPC",
+                Key.OemQuestion => "C-/",
+                _ => letter is null ? null : "C-" + letter,
+            };
+        }
+        if (m == (KeyModifiers.Control | KeyModifiers.Shift) && e.Key == Key.OemMinus)
+        {
+            return "C-_";
+        }
+        if (m == KeyModifiers.Alt)
+        {
+            return e.Key == Key.Back ? "M-<backspace>" : letter is null ? null : "M-" + letter;
+        }
+        if (m == (KeyModifiers.Alt | KeyModifiers.Shift))
+        {
+            return e.Key switch { Key.OemComma => "M-<", Key.OemPeriod => "M->", _ => null };
+        }
+        // After C-x, a plain letter finishes the sequence (C-x u, C-x h, C-x k).
+        return m == KeyModifiers.None && letter is not null && _emacs.Status.StartsWith("C-x", StringComparison.Ordinal) ? letter : null;
+    }
+
+    private bool EmacsKeyDown(KeyEventArgs e)
+    {
+        if (EmacsKey(e) is not string key || !_emacs.Key(key))
+        {
+            return false;
+        }
+        _swallowText = key.StartsWith("M-", StringComparison.Ordinal) || key.Length == 1; // ⌥-letters and C-x's letter also type a character
+        return true;
+    }
+
+    private bool EmacsEx(string command)
+    {
+        switch (command)
+        {
+            case "w":
+                Main?.SaveCommand.Execute(null);
+                return true;
+            case "open":
+                Main?.OpenFileDialogCommand.Execute(null);
+                return true;
+            case "find" or "find-backward":
+                _editor.SearchPanel.Open();
+                return true;
+            case "close":
+                Main?.CloseDocumentCommand.Execute(_current);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private void OnEmacsChanged()
+    {
+        if (Main is not null && EmacsOn)
+        {
+            Main.VimStatus = _emacs.Status;
+        }
+    }
+
     // ---- Lean's semantic tokens, inlay hints and occurrences ----
 
     private void OnTextChangedForLayers(object? sender, DocumentChangeEventArgs e)
     {
+        _multi.DocumentChanged();
         _edits++;
         _semantic.Shift(e);
         _hints.Shift(e);
@@ -651,6 +745,17 @@ public sealed class LeanEditor : UserControl
             }
             return;
         }
+        if (_swallowText)
+        {
+            _swallowText = false;
+            e.Handled = true;
+            return;
+        }
+        if (e.Text is { Length: > 0 } text && _multi.TextEntering(text))
+        {
+            e.Handled = true;
+            return;
+        }
         // Typing a closer right before the same closer steps over it instead of doubling it.
         if (_abbrevStart < 0 && _current is not null && e.Text is { Length: 1 } t && LeanText.IsCloser(t[0])
             && _editor.CaretOffset < _current.Document.TextLength && _current.Document.GetCharAt(_editor.CaretOffset) == t[0])
@@ -830,6 +935,16 @@ public sealed class LeanEditor : UserControl
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
         if (VimOn && VimKeyDown(e))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (EmacsOn && EmacsKeyDown(e))
+        {
+            e.Handled = true;
+            return;
+        }
+        if (!VimOn && _multi.KeyDown(e))
         {
             e.Handled = true;
             return;

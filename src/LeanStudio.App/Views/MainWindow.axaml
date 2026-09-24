@@ -81,11 +81,15 @@
         <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
         <MenuItem Header="Word Wrap" ToggleType="CheckBox" IsChecked="{Binding Settings.WordWrap}" Click="OnApplySettings" InputGesture="Alt+Z" />
         <MenuItem Header="Vim Mode" ToggleType="CheckBox" IsChecked="{Binding Settings.VimMode}" Click="OnApplySettings" />
+        <MenuItem Header="Emacs Keys" ToggleType="CheckBox" IsChecked="{Binding Settings.EmacsMode}" Click="OnApplySettings" />
+        <MenuItem Header="Keyboard Shortcuts File (keybindings.json)" Click="OnEditKeybindings" />
         <MenuItem Header="Show Who Changed the Current Line" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowBlame}" Click="OnApplySettings" />
         <Separator />
         <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
         <MenuItem Header="Toggle Bottom Panel" Click="OnTogglePanel" InputGesture="{OnPlatform Default='Ctrl+J', macOS='Cmd+J'}" />
         <MenuItem Header="Toggle Tactic State" Click="OnToggleInfo" InputGesture="{OnPlatform Default='Ctrl+Alt+I', macOS='Cmd+Alt+I'}" />
+        <MenuItem Header="Split Editor" Command="{Binding SplitEditorCommand}" InputGesture="{OnPlatform Default='Ctrl+OemPipe', macOS='Cmd+OemPipe'}" />
+        <MenuItem Header="Close Split" Command="{Binding CloseSplitCommand}" />
         <MenuItem Header="Lean Infoview (widgets)" Command="{Binding ShowInfoviewCommand}" />
         <MenuItem Header="Lean Infoview in Browser" Command="{Binding OpenInfoviewCommand}" />
         <MenuItem Header="Zen Mode (just the editor and the goals)" Click="OnZen" InputGesture="{OnPlatform Default='Ctrl+Alt+Z', macOS='Cmd+Alt+Z'}" />
@@ -343,7 +347,7 @@
 
       <!-- Editor and bottom panel -->
       <Grid x:Name="CenterGrid" Grid.Column="2" RowDefinitions="Auto,*,4,220">
-        <TabStrip x:Name="DocTabs" Grid.Row="0" Classes="docs" ItemsSource="{Binding Documents}" SelectedItem="{Binding ActiveDocument}">
+        <TabStrip x:Name="DocTabs" Grid.Row="0" Classes="docs" ItemsSource="{Binding Documents}" SelectedItem="{Binding PrimaryDocument}">
           <TabStrip.ItemTemplate>
             <DataTemplate x:DataType="vm:DocumentViewModel">
               <StackPanel Orientation="Horizontal" Spacing="4" ToolTip.Tip="{Binding Path}">
@@ -369,7 +373,27 @@
               <Button Grid.Column="1" Content="Rebuild imports and recheck" Classes="accent" Command="{Binding RestartFileCommand}" Margin="12,0,0,0" />
             </Grid>
           </Border>
-          <ed:LeanEditor Grid.Row="2" x:Name="Editor" Document="{Binding ActiveDocument}" Main="{Binding}" />
+          <!-- The editor, split in two side by side when View ▸ Split Editor is on -->
+          <Grid Grid.Row="2" x:Name="EditorGrid" ColumnDefinitions="*,0,0">
+            <ed:LeanEditor Grid.Column="0" x:Name="Editor" Document="{Binding PrimaryDocument}" Main="{Binding}" />
+            <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="{DynamicResource Divider}" IsVisible="{Binding IsSplit}" />
+            <DockPanel Grid.Column="2" IsVisible="{Binding IsSplit}">
+              <Border DockPanel.Dock="Top" Padding="8,3" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource Divider}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <ComboBox x:Name="SplitPicker" ItemsSource="{Binding Documents}" SelectedItem="{Binding SplitDocument}" MinWidth="160"
+                            ToolTip.Tip="The file on this side">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DocumentViewModel">
+                        <TextBlock Text="{Binding Title}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Button Grid.Column="1" Classes="flat" Content="×" FontSize="14" Padding="6,0" Command="{Binding CloseSplitCommand}" ToolTip.Tip="Close this side" />
+                </Grid>
+              </Border>
+              <ed:LeanEditor x:Name="SplitEditor" Document="{Binding SplitDocument}" Main="{Binding}" />
+            </DockPanel>
+          </Grid>
           <v:WelcomeView Grid.Row="2" IsVisible="{Binding !HasDocument}" />
         </Grid>
 

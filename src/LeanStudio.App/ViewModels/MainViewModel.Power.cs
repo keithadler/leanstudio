@@ -320,7 +320,9 @@ public sealed partial class MainViewModel
         string oldModule = Refactor.ModuleOf(Project.Root, oldPath);
         int caretLine = d.CaretLine, caretColumn = d.CaretColumn;
         IReadOnlyList<string> changed = Refactor.RenameModule(Project.Root, oldPath, newFile);
+        int index = Documents.IndexOf(d);
         Documents.Remove(d);
+        SidesForget(d, index);
         if (_server is { State: LeanServerState.Running } s)
         {
             await s.CloseAsync(d.Uri);

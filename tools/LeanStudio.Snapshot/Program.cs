@@ -870,6 +870,129 @@ internal static class Scenario
         }
         vm.ActiveDocument = doc;
 
+        Console.WriteLine("split editor");
+        vm.ActiveDocument = doc;
+        vm.SplitEditorCommand.Execute(null);
+        Check(vm.IsSplit && vm.SplitDocument == doc && window.SplitEditorControl.Document == doc, "Split Editor shows the file on both sides");
+        DocumentViewModel second = vm.Documents.First(d => d != doc && d.IsLean);
+        vm.SplitDocument = second;
+        vm.EditorFocused(split: true);
+        Check(vm.ActiveDocument == second && vm.PrimaryDocument == doc && window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!.Document == doc,
+            "focusing the right side makes its file the active one, and the left side keeps its own");
+        await Task.Delay(300);
+        Check(window.SplitEditorControl.Bounds.Width > 300 && window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!.Bounds.Width > 300, "the two sides share the width");
+        Snap(window, outDir, "30-split-editor");
+        vm.EditorFocused(split: false);
+        Check(vm.ActiveDocument == doc, "and focusing the left side makes its file the active one again");
+        vm.EditorFocused(split: true);
+        vm.CloseSplitCommand.Execute(null);
+        Check(!vm.IsSplit && vm.ActiveDocument == doc, "closing the split goes back to the left side's file");
+
+        Console.WriteLine("several cursors");
+        string multiFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "Cursors.lean");
+        try
+        {
+            await File.WriteAllTextAsync(multiFile, "example (a b : Nat) (h1 : a = b) (h2 : b = a) : True := by\n  have k1 := h1\n  have k2 := h2\n  trivial\n");
+            DocumentViewModel md = (await vm.OpenFileAsync(multiFile))!;
+            var ed = window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!;
+            AvaloniaEdit.Editing.TextArea area = ed.TextEditor.TextArea;
+            void Press(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods = Avalonia.Input.KeyModifiers.None) =>
+                area.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = key, KeyModifiers = mods, Source = area });
+            var cmd = OperatingSystem.IsMacOS() ? Avalonia.Input.KeyModifiers.Meta : Avalonia.Input.KeyModifiers.Control;
+            string before = md.Document.Text;
+            area.Caret.Offset = md.Document.Text.IndexOf("k1", StringComparison.Ordinal);
+            Press(Avalonia.Input.Key.D, cmd); // selects k1
+            area.Selection = AvaloniaEdit.Editing.Selection.Create(area, area.Selection.SurroundingSegment.Offset, area.Selection.SurroundingSegment.Offset + 1); // just "k"
+            Press(Avalonia.Input.Key.D, cmd); // and the next k
+            Check(ed.MultiCursor.Cursors.Count == 2, "⌘D adds the next occurrence of the selection");
+            area.PerformTextInput("hyp");
+            Check(md.Document.Text.Contains("have hyp1 := h1\n  have hyp2 := h2", StringComparison.Ordinal), "typing goes in at every cursor");
+            Press(Avalonia.Input.Key.Back);
+            Check(md.Document.Text.Contains("have hy1 := h1\n  have hy2 := h2", StringComparison.Ordinal), "and so does Backspace");
+            Snap(window, outDir, "31-cursors");
+            ed.TextEditor.Undo();
+            ed.TextEditor.Undo();
+            Check(md.Document.Text == before && !ed.MultiCursor.IsActive, "each edit at every cursor is one undo step, and undo goes back to one cursor");
+            area.ClearSelection();
+            area.Caret.Offset = md.Document.Text.IndexOf("have k1", StringComparison.Ordinal);
+            Press(Avalonia.Input.Key.Down, cmd | Avalonia.Input.KeyModifiers.Alt);
+            Press(Avalonia.Input.Key.Down, cmd | Avalonia.Input.KeyModifiers.Alt);
+            Check(ed.MultiCursor.Cursors.Count == 3, "⌘⌥↓ adds a cursor on each line below");
+            area.PerformTextInput("-- ");
+            Check(md.Document.Text.Contains("  -- have k1 := h1\n  -- have k2 := h2\n  -- trivial", StringComparison.Ordinal), "so three lines are commented at once: " + md.Document.Text.Replace("\n", "⏎"));
+            Press(Avalonia.Input.Key.Escape);
+            Check(!ed.MultiCursor.IsActive, "Escape goes back to one cursor");
+            ed.TextEditor.Undo();
+            // A column selection (⌥-drag): typing replaces the column on every line.
+            area.Selection = new AvaloniaEdit.Editing.RectangleSelection(area,
+                new AvaloniaEdit.TextViewPosition(2, 8), new AvaloniaEdit.TextViewPosition(3, 9)); // the k of k1 and k2 (columns count from 1)
+            area.PerformTextInput("g");
+            Check(md.Document.Text.Contains("have g1 := h1\n  have g2 := h2", StringComparison.Ordinal), "a column selection replaces the same columns on every line: " + md.Document.Text.Replace("\n", "⏎"));
+            md.ReplaceAll(before);
+            await md.SaveAsync();
+            await vm.CloseDocumentCommand.ExecuteAsync(md);
+        }
+        finally
+        {
+            File.Delete(multiFile);
+        }
+        vm.ActiveDocument = doc;
+
+        Console.WriteLine("keyboard: your own shortcuts, and Emacs's keys");
+        string keysFile = MainWindow.KeybindingsPath;
+        string emacsFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "Keys.lean");
+        try
+        {
+            File.Delete(keysFile);
+            await window.EditKeybindingsAsync();
+            Check(File.Exists(keysFile) && vm.ActiveDocument?.Path == keysFile && vm.ActiveDocument.Document.Text.Contains("//   Lean: Prove It", StringComparison.Ordinal),
+                "keybindings.json opens, listing every command to bind");
+            await vm.CloseDocumentCommand.ExecuteAsync(vm.ActiveDocument);
+            await File.WriteAllTextAsync(keysFile, "[ { \"key\": \"Cmd+Alt+J\", \"command\": \"View: Split Editor\" } ]");
+            Check(window.LoadUserKeys() == 1, "a shortcut of one's own is read");
+            vm.ActiveDocument = doc;
+            var cmdKey = OperatingSystem.IsMacOS() ? Avalonia.Input.KeyModifiers.Meta : Avalonia.Input.KeyModifiers.Control;
+            window.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.J, KeyModifiers = cmdKey | Avalonia.Input.KeyModifiers.Alt, Source = window });
+            Check(vm.IsSplit, "and runs its command");
+            vm.CloseSplitCommand.Execute(null);
+
+            await File.WriteAllTextAsync(emacsFile, "theorem t : True := by\n  trivial\n");
+            DocumentViewModel ed = (await vm.OpenFileAsync(emacsFile))!;
+            vm.Settings.EmacsMode = true;
+            var emacsEditor = window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!;
+            AvaloniaEdit.Editing.TextArea emacsArea = emacsEditor.TextEditor.TextArea;
+            void Emacs(Avalonia.Input.Key key, Avalonia.Input.KeyModifiers mods) =>
+                emacsArea.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = key, KeyModifiers = mods, Source = emacsArea });
+            var C = Avalonia.Input.KeyModifiers.Control;
+            emacsArea.ClearSelection();
+            emacsArea.Caret.Offset = 0;
+            Emacs(Avalonia.Input.Key.E, C);
+            Check(emacsArea.Caret.Offset == 22, "Emacs keys: C-e goes to the end of the line");
+            Emacs(Avalonia.Input.Key.N, C);
+            Emacs(Avalonia.Input.Key.A, C);
+            Emacs(Avalonia.Input.Key.K, C);
+            Check(ed.Document.Text == "theorem t : True := by\n\n", "C-k kills the rest of the line");
+            Emacs(Avalonia.Input.Key.Y, C);
+            Check(ed.Document.Text == "theorem t : True := by\n  trivial\n", "and C-y yanks it back");
+            Emacs(Avalonia.Input.Key.X, C);
+            Check(vm.VimStatus == "C-x-", "the status bar shows a pending C-x");
+            Emacs(Avalonia.Input.Key.S, C);
+            Check(!ed.IsDirty && vm.VimStatus == "", "and C-x C-s saves");
+            Snap(window, outDir, "32-emacs");
+        }
+        finally
+        {
+            vm.Settings.EmacsMode = false;
+            File.Delete(keysFile);
+            window.LoadUserKeys();
+            if (vm.Documents.FirstOrDefault(d => d.Path == emacsFile) is DocumentViewModel open)
+            {
+                await vm.CloseDocumentCommand.ExecuteAsync(open);
+            }
+            File.Delete(emacsFile);
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
         void OnDialog(Window d) => Dispatcher.UIThread.Post(async () =>

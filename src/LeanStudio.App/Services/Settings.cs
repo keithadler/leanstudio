@@ -41,6 +41,9 @@ public sealed class Settings
 
     /// <summary>Edit with Vim's keys: normal, insert and visual modes, motions, operators and ex commands.</summary>
     public bool VimMode { get; set; }
+
+    /// <summary>Edit with Emacs's keys: C-f, M-f, C-k, C-y, the mark and region, C-x C-s. Vim mode wins if both are on.</summary>
+    public bool EmacsMode { get; set; }
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
     /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>

@@ -329,7 +329,9 @@ public sealed partial class MainViewModel
         if (open is not null)
         {
             var (line, col) = (open.CaretLine, open.CaretColumn);
+            int index = Documents.IndexOf(open);
             Documents.Remove(open);
+            SidesForget(open, index);
             if (_server is { State: LeanServerState.Running } s && open.IsLean)
             {
                 await s.CloseAsync(open.Uri);
@@ -350,7 +352,9 @@ public sealed partial class MainViewModel
     {
         foreach (DocumentViewModel d in Documents.Where(d => d.Path == path || d.Path.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.Ordinal)).ToList())
         {
+            int index = Documents.IndexOf(d);
             Documents.Remove(d);
+            SidesForget(d, index);
             if (_server is { State: LeanServerState.Running } s && d.IsLean)
             {
                 await s.CloseAsync(d.Uri);

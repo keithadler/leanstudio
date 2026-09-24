@@ -12,6 +12,7 @@ using LeanStudio.Core.Agents;
 using LeanStudio.App.Editor;
 using LeanStudio.App.Services;
 using LeanStudio.App.ViewModels;
+using LeanStudio.Core.Editing;
 
 namespace LeanStudio.App.Views;
 
@@ -42,8 +43,22 @@ public sealed partial class MainWindow : Window, IDialogs
         _vm.ProjectMapReady += map => ShowProjectMap(map);
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         this.FindControl<CodeView>("CView")!.DataContext = _vm;
-        EditorControl.QuickFixAtLineRequested += line => _ = QuickFixAtLineAsync(line);
-        EditorControl.ApplySettings(settings);
+        foreach (LeanEditor ed in Editors)
+        {
+            ed.QuickFixAtLineRequested += line => _ = QuickFixAtLineAsync(line);
+            ed.ApplySettings(settings);
+        }
+        // The side that gets the focus is the one the commands, the Tactic State and the status bar follow.
+        Editor.AddHandler(GotFocusEvent, (_, _) => _vm.EditorFocused(split: false), RoutingStrategies.Bubble);
+        SplitEditor.AddHandler(GotFocusEvent, (_, _) => _vm.EditorFocused(split: true), RoutingStrategies.Bubble);
+        DocTabs.SelectionChanged += (_, _) => { if (DocTabs.IsKeyboardFocusWithin || DocTabs.IsPointerOver) { _vm.EditorFocused(split: false); } };
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.IsSplit))
+            {
+                LayOutSplit();
+            }
+        };
         _vm.SelectionProvider = () => EditorControl.TextEditor.SelectedText;
         _vm.InsertRequested += text => EditorControl.InsertAtCaret(text);
         Opened += async (_, _) =>
@@ -74,6 +89,7 @@ public sealed partial class MainWindow : Window, IDialogs
         };
         Closing += OnClosing;
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        WatchUserKeys();
         Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(Avalonia.Input.DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
@@ -120,7 +136,21 @@ public sealed partial class MainWindow : Window, IDialogs
     /// <summary>The view model the window is bound to.</summary>
     public MainViewModel ViewModel => _vm;
 
-    private LeanEditor EditorControl => this.FindControl<LeanEditor>("Editor")!;
+    /// <summary>The editor with the focus: the split (right) side when it has it, else the main one.</summary>
+    private LeanEditor EditorControl => _vm.SplitFocused ? SplitEditor : Editor;
+
+    /// <summary>Both editor sides, for settings and events that apply to each.</summary>
+    private IEnumerable<LeanEditor> Editors => [Editor, SplitEditor];
+
+    /// <summary>The split (right) editor (for checks).</summary>
+    public LeanEditor SplitEditorControl => SplitEditor;
+
+    /// <summary>Give the split side half the width when it is shown, and nothing when it isn't.</summary>
+    private void LayOutSplit()
+    {
+        EditorGrid.ColumnDefinitions[1].Width = new GridLength(_vm.IsSplit ? 4 : 0);
+        EditorGrid.ColumnDefinitions[2].Width = _vm.IsSplit ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+    }
 
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
@@ -187,8 +217,94 @@ public sealed partial class MainWindow : Window, IDialogs
     private static bool Cmd(KeyEventArgs e) =>
         OperatingSystem.IsMacOS() ? e.KeyModifiers.HasFlag(KeyModifiers.Meta) : e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
+    // ---- the person's own shortcuts (keybindings.json) ----
+
+    private IReadOnlyList<(KeyChord Chord, string Command)> _userKeys = [];
+    private FileSystemWatcher? _keysWatcher;
+
+    /// <summary>Where the person's own shortcuts are kept.</summary>
+    public static string KeybindingsPath => Path.Combine(Settings.Directory, KeyBindingsFile.FileName);
+
+    /// <summary>Read keybindings.json (again), saying in Output what couldn't be read. Returns how many bindings there are.</summary>
+    public int LoadUserKeys()
+    {
+        string path = KeybindingsPath;
+        if (!File.Exists(path))
+        {
+            _userKeys = [];
+            return 0;
+        }
+        string json;
+        try
+        {
+            json = File.ReadAllText(path);
+        }
+        catch (IOException)
+        {
+            return _userKeys.Count; // being written; the watcher calls again
+        }
+        var (bindings, problems) = KeyBindingsFile.Parse(json);
+        _userKeys = bindings.Select(b => (KeyChord.Parse(b.Key, OperatingSystem.IsMacOS())!, b.Command)).ToList();
+        var titles = new HashSet<string>(Commands().Select(c => c.Title), StringComparer.OrdinalIgnoreCase);
+        foreach (string p in problems.Concat(bindings.Where(b => !titles.Contains(b.Command)).Select(b => $"no command is called \"{b.Command}\" (use the name the command palette shows)")))
+        {
+            _vm.Log("keybindings.json: " + p);
+        }
+        return _userKeys.Count;
+    }
+
+    private void WatchUserKeys()
+    {
+        Directory.CreateDirectory(Settings.Directory);
+        _keysWatcher = new FileSystemWatcher(Settings.Directory, KeyBindingsFile.FileName) { EnableRaisingEvents = true };
+        _keysWatcher.Changed += (_, _) => Dispatcher.UIThread.Post(() => LoadUserKeys());
+        _keysWatcher.Created += (_, _) => Dispatcher.UIThread.Post(() => LoadUserKeys());
+        LoadUserKeys();
+    }
+
+    /// <summary>Run the command bound to this key in keybindings.json, if there is one.</summary>
+    private bool RunUserKey(KeyEventArgs e)
+    {
+        string key = e.Key.ToString();
+        KeyModifiers m = e.KeyModifiers;
+        foreach ((KeyChord chord, string command) in _userKeys)
+        {
+            if (chord.Key == key && chord.Ctrl == m.HasFlag(KeyModifiers.Control) && chord.Alt == m.HasFlag(KeyModifiers.Alt)
+                && chord.Shift == m.HasFlag(KeyModifiers.Shift) && chord.Meta == m.HasFlag(KeyModifiers.Meta))
+            {
+                var run = Commands().FirstOrDefault(c => string.Equals(c.Title, command, StringComparison.OrdinalIgnoreCase)).Run;
+                if (run is null)
+                {
+                    return false;
+                }
+                _ = run();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Open keybindings.json, starting it from a template that lists every command if it doesn't exist.</summary>
+    public async Task EditKeybindingsAsync()
+    {
+        string path = KeybindingsPath;
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Settings.Directory);
+            await File.WriteAllTextAsync(path, KeyBindingsFile.Template(Commands().Select(c => (c.Title, c.Keys))));
+        }
+        await _vm.OpenFileAsync(path);
+    }
+
+    private void OnEditKeybindings(object? sender, RoutedEventArgs e) => _ = EditKeybindingsAsync();
+
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
+        if (RunUserKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
         bool cmd = Cmd(e), shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
         Action? action = (e.Key, cmd, shift) switch
         {
@@ -729,6 +845,10 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
+        yield return ("Preferences: Keyboard Shortcuts File (keybindings.json)", "", EditKeybindingsAsync);
+        yield return ("View: Toggle Emacs Keys", "", Act(() => { _vm.Settings.EmacsMode = !_vm.Settings.EmacsMode; ApplySettings(); _vm.Log("Emacs keys: " + (_vm.Settings.EmacsMode ? "on" : "off")); }));
+        yield return ("View: Split Editor", m + "\\", Cmd(_vm.SplitEditorCommand));
+        yield return ("View: Close Split", "", Cmd(_vm.CloseSplitCommand));
         yield return ("View: Lean Infoview (ProofWidgets and other widgets)", "", Cmd(_vm.ShowInfoviewCommand));
         yield return ("View: Lean Infoview in Browser", "", Cmd(_vm.OpenInfoviewCommand));
         yield return ("View: REPL (evaluate Lean at the cursor)", "", Act(() => { _vm.BottomTab = MainViewModel.ReplPanel; this.FindControl<TextBox>("ReplBox")?.Focus(); }));
@@ -930,7 +1050,10 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private void ApplySettings()
     {
-        EditorControl.ApplySettings(_vm.Settings);
+        foreach (LeanEditor ed in Editors)
+        {
+            ed.ApplySettings(_vm.Settings);
+        }
         _vm.Info.ExplainErrors = _vm.Settings.ExplainErrors;
         _vm.Settings.Save();
     }

@@ -262,6 +262,13 @@ What CI and reviewers check, before you push:
 - **The library root stays complete.** A new file is added to its library's root file when that imports every module (as `Mathlib.lean` does), and a deleted one is taken out. *Import Every Module in the Library Root* adds any that are missing, like `lake exe mk_all`.
 - **In the Mathlib repository,** *Get Mathlib Cache for Open Files* fetches only what the open files need.
 
+### Editing like a pro
+
+- **Split editor.** *View ▸ Split Editor* (⌘\\ / Ctrl+\\) shows two files, or two places in one, side by side. The side you're typing in is the one the Tactic State and every command follow.
+- **Several cursors.** ⌘D (Ctrl+D) adds the next occurrence of the selection, ⌘⇧L (Ctrl+Shift+L) selects every occurrence, ⌘⌥↑/↓ (Ctrl+Alt+↑/↓) add a cursor above or below, and ⌥-click (Alt+click) adds one anywhere. Typing, Backspace and Delete happen at every cursor, as one undo step. ⌥-drag (Alt+drag) selects a column.
+- **Your own shortcuts.** *View ▸ Keyboard Shortcuts File* opens `keybindings.json`, which binds any command in the command palette to any key: `{ "key": "Cmd+Alt+L", "command": "Lean: Lint File (the linters CI runs)" }`. `Cmd` means ⌘ on a Mac and Ctrl elsewhere. It starts with every command listed, and applies when you save it.
+- **Emacs keys.** *View ▸ Emacs Keys* turns on C-f/b/n/p/a/e, M-f/b, C-k and C-y (kills in a row add up, and go to the clipboard), the mark and region (C-SPC, C-w, M-w, C-x C-x), C-/ to undo, C-s to search, and C-x C-s to save.
+
 ### Vim mode
 
 *View ▸ Vim Mode* (or Preferences) makes the editor modal:

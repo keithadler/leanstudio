@@ -207,6 +207,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     partial void OnActiveDocumentChanged(DocumentViewModel? value)
     {
+        FollowActiveDocument(value);
         if (value is null)
         {
             Info.Clear("No file open");
@@ -981,6 +982,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             await CClosedAsync(d);
         }
+        SidesForget(d, index);
         if (ActiveDocument == d)
         {
             ActiveDocument = Documents.Count == 0 ? null : Documents[Math.Clamp(index, 0, Documents.Count - 1)];
