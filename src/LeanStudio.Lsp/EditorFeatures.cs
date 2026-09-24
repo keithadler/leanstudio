@@ -53,6 +53,11 @@ public sealed record TraceNode(string Class, string Text, bool Collapsed, IReadO
 /// <param name="Traces">The trace trees in it, outermost first.</param>
 public sealed record InteractiveMessage(Range Range, DiagnosticSeverity Severity, string Text, IReadOnlyList<TraceNode> Traces);
 
+/// <summary>A user widget Lean shows at a position: a panel widget from <c>#widget</c>, ProofWidgets and the like.</summary>
+/// <param name="Id">The widget module's declaration name, e.g. <c>ProofWidgets.HtmlDisplayPanel</c>.</param>
+/// <param name="Range">The syntax it belongs to, when Lean says.</param>
+public sealed record UserWidget(string Id, Range? Range);
+
 public sealed partial class LeanServer
 {
     /// <summary>Every notification the server sends, as it arrives (on the reader's thread).</summary>
@@ -190,6 +195,35 @@ public sealed partial class LeanServer
         e.GetProperty("range").As<Range>(),
         e.GetProperty("selectionRange").As<Range>(),
         e.Clone());
+
+    // ---- user widgets ----
+
+    /// <summary>
+    /// The user widgets Lean shows at a position (<c>Lean.Widget.getWidgets</c>): what the infoview would render
+    /// there beyond the goals and messages. Empty when there are none.
+    /// </summary>
+    public async Task<IReadOnlyList<UserWidget>> WidgetsAtAsync(string uri, Position pos, CancellationToken ct = default)
+    {
+        JsonElement r = await RpcCallAsync(uri, pos, "Lean.Widget.getWidgets", new JsonObject { ["line"] = pos.Line, ["character"] = pos.Character }, ct).ConfigureAwait(false);
+        return ParseWidgets(r);
+    }
+
+    /// <summary>Read <c>getWidgets</c>' answer: <c>{widgets: [{id, javascriptHash, props, range?}]}</c>.</summary>
+    internal static IReadOnlyList<UserWidget> ParseWidgets(JsonElement r)
+    {
+        var list = new List<UserWidget>();
+        if (r.ValueKind != JsonValueKind.Object || !r.TryGetProperty("widgets", out JsonElement ws) || ws.ValueKind != JsonValueKind.Array)
+        {
+            return list;
+        }
+        foreach (JsonElement w in ws.EnumerateArray())
+        {
+            string id = w.TryGetProperty("id", out JsonElement i) && i.ValueKind == JsonValueKind.String ? i.GetString()! : "";
+            Range? range = w.TryGetProperty("range", out JsonElement rg) && rg.ValueKind == JsonValueKind.Object ? rg.As<Range>() : null;
+            list.Add(new UserWidget(id, range));
+        }
+        return list;
+    }
 
     // ---- messages with their traces ----
 

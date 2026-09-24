@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -5,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System.Text.Json.Nodes;
 using LeanStudio.Core.Agents;
 using LeanStudio.App.Editor;
@@ -75,7 +77,39 @@ public sealed partial class MainWindow : Window, IDialogs
         Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(Avalonia.Input.DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
+        InfoviewHost.DataContext = _vm;
+        InfoviewSlot.SizeChanged += (_, _) => PlaceInfoview();
+        InfoviewSlot.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(PlaceInfoview, DispatcherPriority.Loaded);
+        InfoviewSlot.DetachedFromVisualTree += (_, _) => PlaceInfoview();
+        _vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.RightTab))
+            {
+                Dispatcher.UIThread.Post(PlaceInfoview, DispatcherPriority.Loaded);
+            }
+        };
     }
+
+    /// <summary>
+    /// Lay the infoview over its tab's area while that tab is shown, and hide it otherwise. The pane lives outside
+    /// the tab so its web view (a native control, torn down when it leaves the window) keeps its page.
+    /// </summary>
+    private void PlaceInfoview()
+    {
+        bool show = _vm.RightTab == MainViewModel.InfoviewTab && InfoviewSlot.IsAttachedToVisualTree()
+            && InfoviewSlot.Bounds.Width > 1 && InfoviewSlot.Bounds.Height > 1;
+        if (show && InfoviewSlot.TranslatePoint(default, RightColumn) is Point at)
+        {
+            InfoviewHost.Margin = new Thickness(at.X, at.Y, 0, 0);
+            InfoviewHost.Width = InfoviewSlot.Bounds.Width;
+            InfoviewHost.Height = InfoviewSlot.Bounds.Height;
+            InfoviewHost.EnsureLoaded();
+        }
+        InfoviewHost.IsVisible = show;
+    }
+
+    /// <summary>The infoview pane (for checks).</summary>
+    public InfoviewPane Infoview => InfoviewHost;
 
     /// <summary>Opened with --new-window: start empty rather than reopening the last session.</summary>
     public bool NewWindow { get; set; }
@@ -691,7 +725,8 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
-        yield return ("View: Lean Infoview in Browser (ProofWidgets and other widgets)", "", Cmd(_vm.OpenInfoviewCommand));
+        yield return ("View: Lean Infoview (ProofWidgets and other widgets)", "", Cmd(_vm.ShowInfoviewCommand));
+        yield return ("View: Lean Infoview in Browser", "", Cmd(_vm.OpenInfoviewCommand));
         yield return ("View: REPL (evaluate Lean at the cursor)", "", Act(() => { _vm.BottomTab = MainViewModel.ReplPanel; this.FindControl<TextBox>("ReplBox")?.Focus(); }));
         yield return ("Help: Keyboard Shortcuts", "", Act(() => OnShortcuts(null, new RoutedEventArgs())));
         yield return ("Help: About Lean Studio", "", Act(() => OnAbout(null, new RoutedEventArgs())));
@@ -872,6 +907,7 @@ public sealed partial class MainWindow : Window, IDialogs
             app.RequestedThemeVariant = theme == "Light" ? ThemeVariant.Light : ThemeVariant.Dark;
         }
         ApplySettings();
+        _vm.InfoviewThemeChanged();
     }
 
     private void OnFontBigger(object? sender, RoutedEventArgs e)

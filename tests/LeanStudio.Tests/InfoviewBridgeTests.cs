@@ -147,6 +147,11 @@ public sealed class InfoviewBridgeTests
         JsonObject cursor = await client.ReceiveAsync(o => o["op"]?.GetValue<string>() == "cursor");
         Assert.Equal(3, cursor["loc"]!["range"]!["start"]!["line"]!.GetValue<int>());
 
+        // So does the theme.
+        bridge.SetTheme("light");
+        JsonObject theme = await client.ReceiveAsync(o => o["op"]?.GetValue<string>() == "theme");
+        Assert.Equal("light", theme["theme"]!.GetValue<string>());
+
         // What the infoview asks of the editor reaches it.
         await client.SendAsync(new JsonObject
         {

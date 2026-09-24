@@ -388,6 +388,27 @@ public sealed partial class InfoViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasExpectedType;
 
+    /// <summary>
+    /// How many user widgets Lean shows at the cursor (from <c>#widget</c>, ProofWidgets and the like). This panel
+    /// can't draw them; <see cref="OpenWidgetsCommand"/> opens Lean's own infoview, which can.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWidgets), nameof(WidgetsLabel))]
+    private int _widgetCount;
+
+    /// <summary>There is at least one user widget at the cursor.</summary>
+    public bool HasWidgets => WidgetCount > 0;
+
+    /// <summary>The widget chip's text.</summary>
+    public string WidgetsLabel => WidgetCount == 1 ? "Widget" : $"{WidgetCount} widgets";
+
+    /// <summary>What <see cref="OpenWidgetsCommand"/> does: set by the main window's view model.</summary>
+    public Action? ShowWidgets { get; set; }
+
+    /// <summary>Show the widgets at the cursor, in Lean's own infoview.</summary>
+    [RelayCommand]
+    private void OpenWidgets() => ShowWidgets?.Invoke();
+
     /// <summary>Show the plain-text rendering Lean would put in a hover, instead of the structured view.</summary>
     [ObservableProperty]
     private bool _plainText;
@@ -460,6 +481,7 @@ public sealed partial class InfoViewModel : ObservableObject
         HasMessages = msgs.Count > 0;
         _ = LoadSuggestionsAsync(server, doc, msgs, cts.Token);
         _ = LoadTracesAsync(server, doc, msgs, pos, cts.Token);
+        _ = LoadWidgetsAsync(server, doc, pos, cts.Token);
 
         TacticProof? proof = ProofSteps.Find(doc.Lines(), pos.Line);
         InProof = proof is not null;
@@ -528,6 +550,26 @@ public sealed partial class InfoViewModel : ObservableObject
             _stepsKey = null;
             Steps.Reset([]);
             HasSteps = false;
+        }
+    }
+
+    /// <summary>Ask Lean which user widgets it shows at the cursor, for the widget chip.</summary>
+    private async Task LoadWidgetsAsync(LeanServer server, DocumentViewModel doc, Position pos, CancellationToken ct)
+    {
+        try
+        {
+            int n = (await server.WidgetsAtAsync(doc.Uri, pos, ct)).Count;
+            if (!ct.IsCancellationRequested)
+            {
+                WidgetCount = n;
+            }
+        }
+        catch (Exception e) when (e is JsonRpcException or OperationCanceledException or IOException or InvalidOperationException)
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                WidgetCount = 0;
+            }
         }
     }
 

@@ -152,6 +152,14 @@ Lean's own diff flags mark hypotheses that were added or removed. `ProofSteps` f
 surrounding proof by indentation, and asks for the goals after each one. The result is cached per document
 version, so moving through a proof doesn't send new queries.
 
+**Lean's own infoview.** `InfoviewBridge` (Core) serves the vendored `@leanprover/infoview` page on 127.0.0.1, with
+a secret token, and relays between it and `LeanServer` over a WebSocket: the page's `EditorApi` calls become LSP
+requests or editor actions (`IInfoviewEditor`), and server notifications, document changes, cursor moves and theme
+changes go back to it. The Infoview tab shows the page in `InfoviewPane`, the platform's web view
+(`Avalonia.Controls.WebView`), laid over the tab's area rather than inside it so switching tabs doesn't reload
+it. *View ▸ Lean Infoview in Browser* opens the same page in a browser. `InfoViewModel` asks Lean for the user
+widgets at the cursor (`Lean.Widget.getWidgets`) to show the Widget button.
+
 **Build and verify.** `Lake.BuildAsync` runs `lake build`. Then `TenetWorkspace` opens the fresh `.olean` files,
 re-checks each of the project's declarations with Tenet's kernel, and gives each one a `DeclarationVerdict`:
 verified, rests on `sorry` or a project axiom, or rejected.

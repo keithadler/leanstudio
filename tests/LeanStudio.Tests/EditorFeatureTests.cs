@@ -85,4 +85,35 @@ public sealed class EditorFeatureTests
         Assert.NotEmpty(children);
         Assert.All(children, c => Assert.NotEmpty(c.Class));
     }
+
+    [Fact]
+    public async Task FindsTheUserWidgetsAtAPosition()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        await server.StartAsync(ct);
+        string uri = LeanServer.UriOf(Path.Combine(dir, "Widgets.lean"));
+        await server.OpenAsync(uri, """
+            import Lean
+            open Lean Widget
+
+            @[widget_module]
+            def helloWidget : Widget.Module where
+              javascript := "
+                import * as React from 'react';
+                export default function(props) { return React.createElement('p', {}, 'Hello ' + props.name) }"
+
+            #widget helloWidget with Json.mkObj [("name", Json.str "Lean Studio")]
+
+            theorem plain : True := trivial
+            """);
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+
+        IReadOnlyList<UserWidget> at = await server.WidgetsAtAsync(uri, new Position(9, 3), ct);
+        UserWidget w = Assert.Single(at);
+        Assert.Equal("helloWidget", w.Id);
+        Assert.Empty(await server.WidgetsAtAsync(uri, new Position(11, 3), ct));
+    }
 }

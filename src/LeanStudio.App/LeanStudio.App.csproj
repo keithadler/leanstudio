@@ -19,6 +19,8 @@
     <PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
+    <!-- The platform's own web view (WebKit, WebView2, WebKitGTK), for Lean's infoview in the window. MIT. -->
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.0" />
     <PackageReference Include="Avalonia.AvaloniaEdit" Version="$(AvaloniaEditVersion)" />
     <PackageReference Include="AvaloniaEdit.TextMate" Version="$(AvaloniaEditVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />

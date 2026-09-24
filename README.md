@@ -45,7 +45,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
 | An MCP server so AI assistants can use Lean | | ✓ |
-| ProofWidgets and other JavaScript widgets in the infoview | ✓ | ✓ (Lean's own infoview, in the browser) |
+| ProofWidgets and other JavaScript widgets in the infoview | ✓ | ✓ (Lean's own infoview, in the window or a browser) |
 | Vim mode | ✓ (an extension) | ✓ built in |
 | The VS Code ecosystem: its other extensions, remote development | ✓ | |
 
@@ -244,7 +244,11 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 
 ### Lean's own infoview, widgets and all
 
-*View ▸ Lean Infoview in Browser* opens the infoview VS Code uses (the official `@leanprover/infoview`) in a browser tab. It's connected to Lean Studio, follows the cursor there, and renders what that infoview renders. That includes user widgets such as those from **ProofWidgets**, because it's the same infoview loading them the same way. The tests check a widget defined in a Lean file. It shares Lean Studio's Lean server, so nothing starts twice. "Try this", "go to definition" and "insert" from the infoview act on Lean Studio's editor. It only accepts connections from this machine, with a secret token in the page's address. The Tactic State panel stays the everyday view.
+The **Infoview** tab, next to Goals, is the infoview VS Code uses (the official `@leanprover/infoview`), inside Lean Studio's window. It follows the cursor and renders what that infoview renders. That includes user widgets such as those from **ProofWidgets**, because it's the same infoview loading them the same way. When Lean shows a widget at the cursor, the Tactic State says so with a **Widget** button that opens the tab. The tests check a widget defined in a Lean file, rendered in the window.
+
+The tab uses the system's own web view: WebKit on macOS, WebView2 on Windows (built into Windows 10 and 11), WebKitGTK on Linux. On a Linux without WebKitGTK (`libwebkit2gtk-4.1`), the tab says so and offers the browser. *View ▸ Lean Infoview in Browser* opens the same infoview in a browser tab, on any system.
+
+The infoview shares Lean Studio's Lean server, so nothing starts twice. "Try this", "go to definition" and "insert" from it act on Lean Studio's editor, and links in it open in your browser. It only accepts connections from this machine, with a secret token in the page's address. The Tactic State panel stays the everyday view.
 
 ![Lean's own infoview in the browser, rendering a user widget from a Lean file open in Lean Studio](docs/images/infoview-widgets.png)
 
@@ -525,7 +529,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 Lean Studio is at **0.6**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
-- ProofWidgets and other user widgets render in Lean's own infoview, which opens in a browser (*View ▸ Lean Infoview in Browser*), not inside the app's window. The Tactic State panel shows Lean's interactive text without custom widget views.
+- User widgets render in the Infoview tab, not in the Tactic State panel, which shows Lean's interactive text. On Linux the tab needs WebKitGTK; without it, widgets open in the browser.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.
 - Release builds aren't signed or notarized.
 

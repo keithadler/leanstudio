@@ -66,6 +66,14 @@ dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll . s
 It exits non-zero if anything doesn't behave as expected. If your change affects something visible, look at the
 screenshots in `snapshots/`. The images in `docs/images/` come from this run.
 
+The headless run has no native window, so the Infoview tab shows its fallback there. To check the tab with the
+platform's web view (after changing the infoview or its bridge), run this on a Mac or a Windows machine with a
+desktop session. It opens a real window, and checks that Lean's infoview renders a user widget in it:
+
+```bash
+dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll --native-infoview . snapshots
+```
+
 CI runs the build and tests on Linux, macOS and Windows, and runs the snapshot on Linux and macOS. Please make sure
 they pass locally first.
 

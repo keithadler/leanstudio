@@ -14,6 +14,10 @@
           <TextBlock Text="{Binding Position}" Classes="dim" FontSize="11" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Classes="chip accent" Command="{Binding OpenWidgetsCommand}" IsVisible="{Binding HasWidgets}"
+                  ToolTip.Tip="Lean shows a widget here (from #widget, ProofWidgets and the like). Open it in Lean's own infoview, in the Infoview tab.">
+            <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource IconWidget}" /><TextBlock Text="{Binding WidgetsLabel}" /></StackPanel>
+          </Button>
           <Button Classes="chip accent" Command="{Binding Search.ProveCommand}"
                   ToolTip.Tip="Try rfl, decide, simp, omega, norm_num, linarith, aesop, grind, exact? and more on the sorry at the cursor, each on its own, and show which close it">
             <StackPanel Orientation="Horizontal" Spacing="5"><PathIcon Data="{StaticResource IconBolt}" /><TextBlock Text="Prove it" /></StackPanel>

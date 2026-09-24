@@ -86,7 +86,8 @@
         <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
         <MenuItem Header="Toggle Bottom Panel" Click="OnTogglePanel" InputGesture="{OnPlatform Default='Ctrl+J', macOS='Cmd+J'}" />
         <MenuItem Header="Toggle Tactic State" Click="OnToggleInfo" InputGesture="{OnPlatform Default='Ctrl+Alt+I', macOS='Cmd+Alt+I'}" />
-        <MenuItem Header="Lean Infoview in Browser (widgets)" Command="{Binding OpenInfoviewCommand}" />
+        <MenuItem Header="Lean Infoview (widgets)" Command="{Binding ShowInfoviewCommand}" />
+        <MenuItem Header="Lean Infoview in Browser" Command="{Binding OpenInfoviewCommand}" />
         <MenuItem Header="Zen Mode (just the editor and the goals)" Click="OnZen" InputGesture="{OnPlatform Default='Ctrl+Alt+Z', macOS='Cmd+Alt+Z'}" />
       </MenuItem>
       <MenuItem Header="_Go">
@@ -527,8 +528,9 @@
 
       <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="Transparent" />
 
-      <!-- Right column: the goals, or the compiled C of the definition at the cursor -->
-      <TabControl Grid.Column="4" Classes="panel" SelectedIndex="{Binding RightTab}" Padding="0">
+      <!-- Right column: the goals, the compiled C of the definition at the cursor, or Lean's own infoview -->
+      <Grid Grid.Column="4" x:Name="RightColumn">
+      <TabControl Classes="panel" SelectedIndex="{Binding RightTab}" Padding="0">
         <TabItem Header="Goals">
           <v:InfoView DataContext="{Binding Info}" Background="{DynamicResource PanelBackground}" />
         </TabItem>
@@ -538,7 +540,13 @@
             <ed:CodeView x:Name="CView" />
           </DockPanel>
         </TabItem>
+        <TabItem Header="Infoview" ToolTip.Tip="Lean's own infoview, the one VS Code uses: ProofWidgets and every other widget">
+          <!-- Where the infoview goes; the pane itself is laid over it (below), so it isn't reloaded on each tab switch. -->
+          <Border x:Name="InfoviewSlot" Background="{DynamicResource PanelBackground}" />
+        </TabItem>
       </TabControl>
+      <v:InfoviewPane x:Name="InfoviewHost" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" />
+      </Grid>
     </Grid>
   </DockPanel>
 </Window>

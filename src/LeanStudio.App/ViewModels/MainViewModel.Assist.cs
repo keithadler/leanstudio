@@ -63,6 +63,7 @@ public sealed partial class MainViewModel
         Info.Search.ApplyTrial = ApplyTrial;
         Info.Search.Cancel = () => _proveCts?.Cancel();
         Info.Search.Extract = r => _ = ExtractFromSearchAsync(r);
+        Info.ShowWidgets = ShowInfoview;
         Verification.Explain = WhyNotProvedAsync;
         Verification.OpenRequested += (file, line) => _ = OpenFileAsync(file, line - 1, 0);
     }

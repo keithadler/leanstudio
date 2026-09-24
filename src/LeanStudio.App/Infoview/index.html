@@ -117,6 +117,7 @@
                font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
   #bar { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; padding: 6px 12px;
          background: var(--studio-bar); border-bottom: 1px solid var(--vscode-editorGroup-border); font-size: 12px; }
+  #bar[hidden] { display: none; }
   #bar b { font-weight: 600; }
   #dot { width: 8px; height: 8px; border-radius: 50%; background: #808080; flex: none; }
   #dot.on { background: #3fb950; }
@@ -131,7 +132,11 @@
   import { loadRenderInfoview } from './iv/loader.production.min.js';
 
   const query = new URLSearchParams(location.search);
-  document.documentElement.dataset.theme = query.get('theme') === 'light' ? 'light' : 'dark';
+  const setTheme = theme => { document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark'; };
+  setTheme(query.get('theme'));
+  // Inside Lean Studio's window the tab says what this is; the bar only comes back to say the connection is gone.
+  const embedded = query.get('embedded') === '1';
+  document.getElementById('bar').hidden = embedded;
   const status = (text, on) => {
     document.getElementById('status').textContent = text;
     document.getElementById('dot').classList.toggle('on', !!on);
@@ -188,10 +193,14 @@
       if (msg.error) reject(msg.error); else resolve(msg.result);
       return;
     }
+    if (msg.op === 'theme') { setTheme(msg.theme); return; }
     if (infoview) deliver(msg); else early.push(msg);
   });
   socket.addEventListener('open', () => status('connected to Lean Studio: follows the cursor there', true));
-  socket.addEventListener('close', () => status('disconnected: open it again from Lean Studio (View ▸ Lean Infoview in Browser)', false));
+  socket.addEventListener('close', () => {
+    document.getElementById('bar').hidden = false;
+    status(embedded ? 'disconnected from Lean Studio' : 'disconnected: open it again from Lean Studio (View ▸ Lean Infoview in Browser)', false);
+  });
 
   const base = new URL('./iv/', location.href).href;
   loadRenderInfoview({

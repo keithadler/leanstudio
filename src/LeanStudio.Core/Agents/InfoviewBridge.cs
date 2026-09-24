@@ -163,7 +163,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
         var page = new Page(socket);
         _pages[page] = 0;
         WireServer();
-        Log?.Invoke("Infoview: a browser page connected.");
+        Log?.Invoke("Infoview: a page connected.");
         var buffer = new byte[1 << 16];
         try
         {
@@ -197,7 +197,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
             {
                 await timer.DisposeAsync().ConfigureAwait(false);
             }
-            Log?.Invoke("Infoview: a browser page disconnected.");
+            Log?.Invoke("Infoview: a page disconnected.");
         }
     }
 
@@ -351,6 +351,9 @@ public sealed class InfoviewBridge : IAsyncDisposable
         WireServer();
         Broadcast(_ => true, () => new JsonObject { ["op"] = "serverRestarted", ["result"] = InitializeResult() });
     }
+
+    /// <summary>Lean Studio's theme changed: connected pages restyle to match (<paramref name="theme"/> is "light" or "dark").</summary>
+    public void SetTheme(string theme) => Broadcast(_ => true, () => new JsonObject { ["op"] = "theme", ["theme"] = theme });
 
     /// <summary>The cursor moved in Lean Studio: the infoview shows the state there.</summary>
     public void CursorMoved(string uri, Position pos)

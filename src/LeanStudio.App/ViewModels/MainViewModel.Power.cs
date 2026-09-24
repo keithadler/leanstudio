@@ -11,15 +11,16 @@ namespace LeanStudio.App.ViewModels;
 public sealed partial class MainViewModel
 {
     /// <summary>
-    /// The right-hand panels' indices in <see cref="RightTab"/>: the Tactic State, and the C that Lean emits.
+    /// The right-hand panels' indices in <see cref="RightTab"/>: the Tactic State, the C that Lean emits, and Lean's
+    /// own infoview (with widgets).
     /// </summary>
-    public const int GoalsTab = 0, CodeTab = 1;
+    public const int GoalsTab = 0, CodeTab = 1, InfoviewTab = 2;
 
     // ---- the C that Lean emits, beside the definition at the cursor ----
 
     /// <summary>
-    /// The right-hand panel shown: <see cref="GoalsTab"/> or <see cref="CodeTab"/>. Switching to the C view compiles
-    /// the file to C if needed.
+    /// The right-hand panel shown: <see cref="GoalsTab"/>, <see cref="CodeTab"/> or <see cref="InfoviewTab"/>.
+    /// Switching to the C view compiles the file to C if needed.
     /// </summary>
     [ObservableProperty]
     private int _rightTab;

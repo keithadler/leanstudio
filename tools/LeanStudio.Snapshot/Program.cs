@@ -23,6 +23,15 @@ Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", "leanstudio-snapshot-" + E
 // The tutorial and playground go in a temporary folder, not the person's Documents.
 Environment.SetEnvironmentVariable("LEANSTUDIO_HOME", Path.Combine(settingsDir, "home"));
 
+if (args.Length > 0 && args[0] == "--native-infoview")
+{
+    // Not headless: the real window, with the platform's web view, to see the infoview render a widget in it.
+    return NativeInfoview.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.GetFullPath("."), args.Length > 2 ? Path.GetFullPath(args[2]) : Path.GetFullPath("snapshots"));
+}
+
+// Headless: there is no native window to put a web view in, so the Infoview tab shows its fallback.
+InfoviewPane.NativeWebViewAllowed = false;
+
 AppBuilder.Configure<App>()
     .UseSkia()
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
@@ -61,6 +70,30 @@ return failures == 0 ? 0 : 1;
 internal static class Scenario
 {
     private static int _failures;
+
+    /// <summary>A Lean file with a user widget (core Lean, no ProofWidgets), and the 0-based line of its #widget.</summary>
+    internal const string WidgetSource = """
+        import Lean
+        open Lean Widget
+
+        @[widget_module]
+        def helloWidget : Widget.Module where
+          javascript := "
+            import * as React from 'react';
+            export default function(props) {
+              return React.createElement('div', {id: 'lean-studio-widget', style: {padding: '8px', border: '2px solid orange', borderRadius: '6px'}},
+                'Hello ' + props.name + ' from a Lean widget, in Lean Studio')
+            }"
+
+        #widget helloWidget with Json.mkObj [("name", Json.str "Lean Studio")]
+
+        theorem demo (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+          constructor
+          · exact hp
+          · exact hq
+        """;
+
+    internal const int WidgetLine = 12;
 
     private static void Check(bool ok, string what)
     {
@@ -696,6 +729,33 @@ internal static class Scenario
                 && noToken.StatusCode == System.Net.HttpStatusCode.Forbidden,
                 "the app serves Lean's infoview (with its widgets' runtime) to the browser, only with its token");
         }
+        string widgetFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "WidgetDemo.lean");
+        try
+        {
+            await File.WriteAllTextAsync(widgetFile, WidgetSource);
+            DocumentViewModel wd = (await vm.OpenFileAsync(widgetFile))!;
+            Check(await WaitFor(() => !wd.IsProcessing && wd.Diagnostics.All(d => d.Severity != LeanStudio.Lsp.DiagnosticSeverity.Error), 120), "a file with a user widget elaborates");
+            wd.Reveal(WidgetLine, 3);
+            Check(await WaitFor(() => vm.Info.HasWidgets, 30) && vm.Info.WidgetsLabel == "Widget", "the Tactic State says there is a widget at the cursor");
+            vm.Info.OpenWidgetsCommand.Execute(null);
+            Check(vm.RightTab == MainViewModel.InfoviewTab, "and its Widget chip opens the Infoview tab");
+            InfoviewPane pane = window.Infoview;
+            Border slot = window.FindControl<Border>("InfoviewSlot")!;
+            Check(await WaitFor(() => pane.IsVisible && pane.UnavailableReason is not null, 10)
+                && Math.Abs(pane.Bounds.Width - slot.Bounds.Width) < 1 && Math.Abs(pane.Bounds.Height - slot.Bounds.Height) < 1,
+                "the infoview pane covers the tab (here, headless, it offers the browser instead of a web view)");
+            Snap(window, outDir, "27-infoview-tab");
+            vm.RightTab = MainViewModel.GoalsTab;
+            Check(await WaitFor(() => !pane.IsVisible, 5), "and goes away with the tab");
+            wd.Reveal(WidgetLine + 2, 3);
+            Check(await WaitFor(() => !vm.Info.HasWidgets, 30), "off the widget, the chip goes too");
+            await vm.CloseDocumentCommand.ExecuteAsync(wd);
+        }
+        finally
+        {
+            File.Delete(widgetFile);
+        }
+        vm.ActiveDocument = doc;
 
         Console.WriteLine("C and the FFI");
         string nativeLean = Path.Combine(proofsDir, "Native.lean");

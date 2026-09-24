@@ -7,9 +7,9 @@ using LeanStudio.Lsp;
 namespace LeanStudio.App.ViewModels;
 
 /// <summary>
-/// Lean's own infoview, the one VS Code uses, in a browser tab connected to this window: it renders ProofWidgets and
-/// every other user widget, and follows the cursor here. The Tactic State panel stays the everyday view; this is
-/// for widgets and for anyone who wants the infoview they know.
+/// Lean's own infoview, the one VS Code uses, connected to this window: in the Infoview tab beside the Tactic State,
+/// or in a browser tab. It renders ProofWidgets and every other user widget, and follows the cursor here. The Tactic
+/// State panel stays the everyday view; this is for widgets and for anyone who wants the infoview they know.
 /// </summary>
 public sealed partial class MainViewModel : IInfoviewEditor
 {
@@ -31,6 +31,23 @@ public sealed partial class MainViewModel : IInfoviewEditor
         Log("Lean's own infoview is open in your browser, with widgets. It follows the cursor here.");
         return url;
     }
+
+    /// <summary>Show Lean's infoview in the Infoview tab, beside the Tactic State.</summary>
+    [RelayCommand]
+    public void ShowInfoview() => RightTab = InfoviewTab;
+
+    /// <summary>Start the bridge if needed and return the address of the page for the Infoview tab.</summary>
+    public Uri StartEmbeddedInfoview() => new(StartInfoview() + "&embedded=1");
+
+    /// <summary>
+    /// Open a link the infoview followed (documentation, say) in the browser. Only web links: a widget's page is
+    /// not trusted to open files or other apps.
+    /// </summary>
+    public Task OpenLinkAsync(Uri link) =>
+        link.Scheme is "http" or "https" ? _dialogs.LaunchAsync(link) : Task.CompletedTask;
+
+    /// <summary>The theme changed: the infoview pages follow.</summary>
+    public void InfoviewThemeChanged() => _infoviewBridge?.SetTheme(Settings.Theme == "Light" ? "light" : "dark");
 
     /// <summary>Start the bridge without opening a browser (for tests and scripts). Returns the page's address.</summary>
     public Uri StartInfoview()
