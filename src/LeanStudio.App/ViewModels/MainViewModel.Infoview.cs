@@ -15,6 +15,10 @@ public sealed partial class MainViewModel : IInfoviewEditor
 {
     private InfoviewBridge? _infoviewBridge;
 
+    /// <summary>Vim's mode and pending keys for the status bar, empty when Vim mode is off.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    private string _vimStatus = "";
+
     /// <summary>The infoview bridge, once the infoview has been opened.</summary>
     public InfoviewBridge? InfoviewBridge => _infoviewBridge;
 

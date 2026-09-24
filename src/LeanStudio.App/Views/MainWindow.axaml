@@ -80,6 +80,7 @@
         <MenuItem Header="Smaller Font" Click="OnFontSmaller" InputGesture="{OnPlatform Default='Ctrl+OemMinus', macOS='Cmd+OemMinus'}" />
         <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
         <MenuItem Header="Word Wrap" ToggleType="CheckBox" IsChecked="{Binding Settings.WordWrap}" Click="OnApplySettings" InputGesture="Alt+Z" />
+        <MenuItem Header="Vim Mode" ToggleType="CheckBox" IsChecked="{Binding Settings.VimMode}" Click="OnApplySettings" />
         <MenuItem Header="Show Who Changed the Current Line" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowBlame}" Click="OnApplySettings" />
         <Separator />
         <MenuItem Header="Toggle Sidebar" Click="OnToggleSidebar" InputGesture="{OnPlatform Default='Ctrl+Alt+B', macOS='Cmd+Alt+B'}" />
@@ -191,6 +192,8 @@
         <StackPanel Grid.Column="3" Orientation="Horizontal">
           <TextBlock Text="{Binding BlameText}" Foreground="White" Opacity="0.75" FontSize="12" Margin="16,0,0,0" MaxWidth="420" TextTrimming="CharacterEllipsis"
                      ToolTip.Tip="{Binding BlameText}" />
+          <TextBlock Text="{Binding VimStatus}" Foreground="White" FontSize="12" Margin="16,0,0,0" FontWeight="SemiBold"
+                     IsVisible="{Binding VimStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <TextBlock Text="{Binding CaretLabel}" Foreground="White" FontSize="12" Margin="16,0,0,0" />
         </StackPanel>
         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" Margin="16,0,0,0" IsVisible="{Binding ActiveDocument.IsProcessing, FallbackValue=False}">

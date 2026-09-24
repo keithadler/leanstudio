@@ -44,6 +44,8 @@ public sealed class LeanEditor : UserControl
     private readonly OccurrenceHighlighter _occurrences = new();
     private readonly InlayHintGenerator _hints = new();
     private CancellationTokenSource? _semanticCts, _occurrenceCts;
+    private readonly VimEngine _vim;
+    private readonly VimBlockCaret _vimCaret;
     private int _edits;
     private AvaloniaEdit.Folding.FoldingManager? _folding;
     private CancellationTokenSource? _foldCts;
@@ -82,6 +84,10 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timingLabels);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_occurrences);
         _editor.TextArea.TextView.ElementGenerators.Add(_hints);
+        _vimCaret = new VimBlockCaret(_editor);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_vimCaret);
+        _vim = new VimEngine(new EditorVimHost(_editor, VimEx));
+        _vim.Changed += OnVimChanged;
         _editor.TextArea.IndentationStrategy = new LeanIndentationStrategy();
         _editor.TextArea.LeftMargins.Insert(0, _margin);
         _textMate = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
@@ -140,6 +146,7 @@ public sealed class LeanEditor : UserControl
         _inline.Enabled = s.InlineResults;
         _editor.WordWrap = s.WordWrap;
         _editor.TextArea.TextView.InvalidateLayer(_inline.Layer);
+        OnVimChanged();
         _semantic.Enabled = s.SemanticHighlighting;
         _hints.Enabled = s.InlayHints;
         _hints.FontFamily = _editor.FontFamily;
@@ -346,6 +353,10 @@ public sealed class LeanEditor : UserControl
         TextViewPosition p = _editor.TextArea.Caret.Position;
         Main.CaretMoved(_current, p.Line - 1, p.Column - 1);
         UpdateBracketMatch();
+        if (_vimCaret.Visible)
+        {
+            _editor.TextArea.TextView.InvalidateLayer(_vimCaret.Layer);
+        }
         ScheduleOccurrences();
         if (_abbrevStart >= 0)
         {
@@ -354,6 +365,85 @@ public sealed class LeanEditor : UserControl
             {
                 EndAbbreviation();
             }
+        }
+    }
+
+    // ---- Vim ----
+
+    private bool VimOn => Main?.Settings.VimMode == true && _current is not null;
+
+    /// <summary>The Vim engine (for tests and scripts).</summary>
+    public VimEngine Vim => _vim;
+
+    /// <summary>
+    /// Keys that are not text: Escape, Enter, Backspace, the arrows, and Ctrl-R/D/U. In insert mode only Escape is
+    /// Vim's; ⌘ and other Ctrl shortcuts always stay the app's.
+    /// </summary>
+    private bool VimKeyDown(KeyEventArgs e)
+    {
+        if (_vim.Mode == VimMode.Insert)
+        {
+            return e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && _vim.Key("<Esc>");
+        }
+        string? key;
+        if (e.KeyModifiers == KeyModifiers.Control)
+        {
+            key = e.Key switch { Key.R => "<C-r>", Key.D => "<C-d>", Key.U => "<C-u>", Key.OemOpenBrackets => "<Esc>", _ => null };
+        }
+        else if (e.KeyModifiers is KeyModifiers.None or KeyModifiers.Shift)
+        {
+            key = e.Key switch
+            {
+                Key.Escape => "<Esc>",
+                Key.Enter => "<CR>",
+                Key.Back => "<BS>",
+                Key.Left => "h",
+                Key.Right => "l",
+                Key.Up => "k",
+                Key.Down => "j",
+                _ => null,
+            };
+        }
+        else
+        {
+            return false;
+        }
+        return key is not null && _vim.Key(key);
+    }
+
+    private bool VimEx(string command)
+    {
+        switch (command)
+        {
+            case "w":
+                Main?.SaveCommand.Execute(null);
+                return true;
+            case "q" or "q!":
+                Main?.CloseDocumentCommand.Execute(_current);
+                return true;
+            case "wq" or "x":
+                if (Main is not null)
+                {
+                    Main.SaveCommand.Execute(null);
+                    Main.CloseDocumentCommand.Execute(_current);
+                }
+                return true;
+            case "noh" or "nohlsearch":
+                return true;
+            default:
+                Main?.Log($"Vim: :{command} is not supported here.");
+                return false;
+        }
+    }
+
+    private void OnVimChanged()
+    {
+        bool on = VimOn;
+        _vimCaret.Visible = on && _vim.Mode != VimMode.Insert;
+        _editor.TextArea.TextView.InvalidateLayer(_vimCaret.Layer);
+        if (Main is not null)
+        {
+            Main.VimStatus = !on ? "" : _vim.Status.Length > 0 ? _vim.Status : "-- NORMAL --";
         }
     }
 
@@ -540,6 +630,27 @@ public sealed class LeanEditor : UserControl
 
     private void OnTextEntering(object? sender, TextInputEventArgs e)
     {
+        // In Vim's normal, visual and command-line modes, typed characters are commands, not text.
+        if (VimOn && _vim.Mode != VimMode.Insert && e.Text is { Length: > 0 } typed)
+        {
+            e.Handled = true;
+            if (char.IsSurrogatePair(typed, 0))
+            {
+                _vim.Key(typed);
+                return;
+            }
+            for (int k = 0; k < typed.Length; k++)
+            {
+                if (_vim.Mode == VimMode.Insert)
+                {
+                    // A command switched to insert mode partway through (pasted or composed input): the rest is text.
+                    _editor.Document.Insert(_editor.CaretOffset, typed[k..]);
+                    return;
+                }
+                _vim.Key(typed[k] == '<' ? "<lt>" : typed[k].ToString());
+            }
+            return;
+        }
         // Typing a closer right before the same closer steps over it instead of doubling it.
         if (_abbrevStart < 0 && _current is not null && e.Text is { Length: 1 } t && LeanText.IsCloser(t[0])
             && _editor.CaretOffset < _current.Document.TextLength && _current.Document.GetCharAt(_editor.CaretOffset) == t[0])
@@ -718,6 +829,11 @@ public sealed class LeanEditor : UserControl
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (VimOn && VimKeyDown(e))
+        {
+            e.Handled = true;
+            return;
+        }
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {

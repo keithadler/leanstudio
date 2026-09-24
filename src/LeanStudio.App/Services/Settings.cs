@@ -38,6 +38,9 @@ public sealed class Settings
 
     /// <summary>Show Lean's inlay hints in the text, such as implicit arguments it binds automatically.</summary>
     public bool InlayHints { get; set; } = true;
+
+    /// <summary>Edit with Vim's keys: normal, insert and visual modes, motions, operators and ex commands.</summary>
+    public bool VimMode { get; set; }
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
     /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>

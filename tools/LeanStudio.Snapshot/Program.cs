@@ -647,6 +647,43 @@ internal static class Scenario
         }
         vm.ActiveDocument = doc;
 
+        Console.WriteLine("Vim mode");
+        string vimFile = Path.Combine(proofsDir, "VimCheck.lean");
+        try
+        {
+            await File.WriteAllTextAsync(vimFile, "theorem t : True := by\n  skip\n  trivial\n");
+            DocumentViewModel vd = (await vm.OpenFileAsync(vimFile))!;
+            var vimEditor = window.FindControl<LeanStudio.App.Editor.LeanEditor>("Editor")!;
+            vm.Settings.VimMode = true;
+            vimEditor.ApplySettings(vm.Settings);
+            vimEditor.TextEditor.CaretOffset = 0;
+            var area = vimEditor.TextEditor.TextArea;
+            area.PerformTextInput("jdd");
+            Check(vd.Document.Text == "theorem t : True := by\n  trivial\n" && vm.VimStatus == "-- NORMAL --",
+                $"Vim mode: typed keys are commands (jdd deletes a line) and the status bar shows the mode ({vm.VimStatus})");
+            area.PerformTextInput("u");
+            Check(vd.Document.Text == "theorem t : True := by\n  skip\n  trivial\n", "u undoes it through the editor's own undo");
+            area.PerformTextInput("GkA");
+            area.PerformTextInput(" -- done");
+            Check(vm.VimStatus == "-- INSERT --" && vd.Document.Text.Contains("trivial -- done", StringComparison.Ordinal), "in insert mode typing is text again");
+            vimEditor.Vim.Key("<Esc>");
+            area.PerformTextInput("^ciwexact");
+            vimEditor.Vim.Key("<Esc>");
+            Check(vd.Document.Text.Contains("  exact -- done", StringComparison.Ordinal) && vm.VimStatus == "-- NORMAL --", $"operators with text objects work in the editor (ciw) [{vd.Document.Text.Replace("\n", "⏎")}] [{vm.VimStatus}]");
+            Snap(window, outDir, "29-vim");
+            vm.Settings.VimMode = false;
+            vimEditor.ApplySettings(vm.Settings);
+            Check(vm.VimStatus == "", "and turning it off leaves ordinary editing");
+            await vd.SaveAsync();
+            await vm.CloseDocumentCommand.ExecuteAsync(vd);
+        }
+        finally
+        {
+            File.Delete(vimFile);
+            vm.Settings.VimMode = false;
+        }
+        vm.ActiveDocument = doc;
+
         Console.WriteLine("Lean's own infoview, for widgets");
         Uri infoviewPage = vm.StartInfoview();
         using (var http = new HttpClient())

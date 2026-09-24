@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Vim mode** (off by default):
+- Normal, insert and visual modes.
+- Motions and operators with counts, and text objects including Lean's ⟨⟩.
+- `.` to repeat, search, `:w` and `:q`, and the mode shown in the status bar.
+
 **Lean's own infoview, with widgets**: *View ▸ Lean Infoview in Browser* opens the official `@leanprover/infoview`,
 connected to Lean Studio's Lean server and following its cursor. It renders ProofWidgets and every other user
 widget. It runs on 127.0.0.1 only, with a secret token.

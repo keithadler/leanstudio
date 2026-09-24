@@ -266,6 +266,7 @@ internal static class Dialogs
         var inline = Check("Show #eval and #check results at the end of the line", s.InlineResults);
         var semantic = Check("Colour variables and fields as Lean sees them (semantic highlighting)", s.SemanticHighlighting);
         var hints = Check("Show inlay hints (what Lean fills in, such as implicit arguments)", s.InlayHints);
+        var vim = Check("Vim mode (normal, insert and visual modes; motions, operators, :w, :q)", s.VimMode);
         var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
         var explain = Check("Explain Lean's messages in plain words", s.ExplainErrors);
         var autofix = Check("Apply a lone Try this suggestion automatically", s.AutoApplyFixes);
@@ -300,7 +301,7 @@ internal static class Dialogs
             Children =
             {
                 Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
-                Head("Editing"), unicode, autosave, inline,
+                Head("Editing"), unicode, autosave, inline, vim,
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback),
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
@@ -323,6 +324,7 @@ internal static class Dialogs
             s.InlineResults = inline.IsChecked == true;
             s.SemanticHighlighting = semantic.IsChecked == true;
             s.InlayHints = hints.IsChecked == true;
+            s.VimMode = vim.IsChecked == true;
             s.ShowGoalsInEnglish = english.IsChecked == true;
             s.ExplainErrors = explain.IsChecked == true;
             s.AutoApplyFixes = autofix.IsChecked == true;

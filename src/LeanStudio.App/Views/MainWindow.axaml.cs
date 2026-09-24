@@ -650,6 +650,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("View: Toggle Tactic State", m + "⌥I", Act(ToggleInfo));
         yield return ("View: Zen Mode", m + "⌥Z", Act(Zen));
         yield return ("View: Toggle Word Wrap", "⌥Z", Act(() => { _vm.Settings.WordWrap = !_vm.Settings.WordWrap; ApplySettings(); }));
+        yield return ("View: Toggle Vim Mode", "", Act(() => { _vm.Settings.VimMode = !_vm.Settings.VimMode; ApplySettings(); _vm.Log("Vim mode " + (_vm.Settings.VimMode ? "on" : "off")); }));
         yield return ("View: Sorries & TODOs", "", Act(() => { _vm.BottomTab = MainViewModel.MarkersPanel; _ = _vm.RefreshMarkersAsync(); }));
         yield return ("Library: Search Mathlib with Loogle", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("Tactic State: Pin the Current Goals", "", Cmd(_vm.Info.PinCommand));
