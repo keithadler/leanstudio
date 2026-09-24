@@ -343,6 +343,16 @@ public sealed class LeanSearch(HttpClient? http = null)
 {
     private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 
+    /// <summary>What to say when a search failed: the service answered with an error, or couldn't be reached.</summary>
+    public static string Explain(Exception e) => e switch
+    {
+        HttpRequestException { StatusCode: System.Net.HttpStatusCode code } =>
+            $"LeanSearch is having trouble right now (it answered HTTP {(int)code}); try again later, or use Loogle.",
+        TaskCanceledException => "LeanSearch took too long to answer; try again later, or use Loogle.",
+        System.Text.Json.JsonException => "LeanSearch answered with something Lean Studio couldn't read; try again later.",
+        _ => "Could not reach LeanSearch (" + e.Message + "). Check the connection, or use Loogle.",
+    };
+
     /// <summary>The LeanSearch URL queries are posted to.</summary>
     public const string Endpoint = "https://leansearch.net/search";
 

@@ -119,7 +119,7 @@ public sealed partial class NavigatorViewModel : ObservableObject
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
-            MeaningStatus = "Could not reach LeanSearch: " + e.Message;
+            MeaningStatus = Core.Workflow.LeanSearch.Explain(e);
         }
         finally
         {

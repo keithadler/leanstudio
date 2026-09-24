@@ -203,6 +203,14 @@ public sealed class NetworkTests
     }
 
     [Fact]
+    public void SaysWhatWentWrongWithLeanSearch()
+    {
+        Assert.StartsWith("LeanSearch is having trouble right now (it answered HTTP 500)",
+            LeanSearch.Explain(new HttpRequestException("x", null, System.Net.HttpStatusCode.InternalServerError)), StringComparison.Ordinal);
+        Assert.StartsWith("Could not reach LeanSearch", LeanSearch.Explain(new HttpRequestException("no route")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task LeanSearchFindsATheoremFromADescription()
     {
         RequireNetwork();

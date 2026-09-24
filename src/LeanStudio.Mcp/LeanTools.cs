@@ -757,7 +757,7 @@ public static class LeanTools
                 }
                 catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
                 {
-                    throw new ToolException("could not reach LeanSearch: " + e.Message);
+                    throw new ToolException(LeanSearch.Explain(e));
                 }
                 if (hits.Count == 0)
                 {

@@ -14,6 +14,7 @@
 - A long task's closing note counts the warnings it printed at the very end.
 - Local history keeps every version when two saves land in the same millisecond.
 - Prove It's counterexamples from Plausible (in Mathlib projects, for lists, reals and more) are reported again, as `xs = [1, 0]`: Plausible's message starts with a rule of `=` signs, which hid it.
+- When LeanSearch's service has trouble, the Library says so ("LeanSearch is having trouble right now (it answered HTTP 500)"), instead of saying it could not be reached.
 - Move to Trash on macOS uses the system's Trash directly, so it no longer asks for permission to control Finder, and Put Back still works.
 
 ## 0.8.0
