@@ -194,6 +194,80 @@ public sealed record ProblemItem(DocumentViewModel? Document, string Path, Diagn
 }
 
 /// <summary>
+/// A row of the Problems panel: one problem, or a group of problems with the same message (a deprecation used 205
+/// times), which opens to list them.
+/// </summary>
+/// <param name="Item">The problem, for a problem's row; for a group's row, the first of them.</param>
+/// <param name="Count">How many problems the group holds; 0 for a problem's own row.</param>
+/// <param name="Files">How many files the group's problems are in.</param>
+/// <param name="IsExpanded">The group is open.</param>
+/// <param name="InGroup">A problem listed under its open group.</param>
+public sealed record ProblemRow(ProblemItem Item, int Count, int Files, bool IsExpanded, bool InGroup)
+{
+    /// <summary>It is a group's row.</summary>
+    public bool IsGroup => Count > 0;
+
+    /// <summary>What the row says first: the file, or the group's count.</summary>
+    public string Lead => IsGroup ? $"{(IsExpanded ? "▾" : "▸")} {Count} ×" : Item.File;
+
+    /// <summary>Where: the line and column, or how many files a group spans.</summary>
+    public string Where => IsGroup ? (Files == 1 ? "in " + Item.File : $"in {Files} files") : Item.Location;
+
+    /// <summary>The message's first line.</summary>
+    public string Message => Item.Message;
+
+    /// <summary>The whole message, for the tooltip.</summary>
+    public string FullMessage => IsGroup ? $"{Count} problems say this. Click to {(IsExpanded ? "fold them" : "list them")}.\n\n{Item.FullMessage}" : Item.FullMessage;
+
+    /// <summary>The problem's icon.</summary>
+    public string Icon => Item.Icon;
+
+    /// <summary>It is an error.</summary>
+    public bool IsError => Item.IsError;
+
+    /// <summary>It is a warning.</summary>
+    public bool IsWarning => Item.IsWarning;
+
+    /// <summary>The indent of a problem inside an open group.</summary>
+    public Avalonia.Thickness Indent => InGroup ? new Avalonia.Thickness(26, 0, 0, 0) : default;
+
+    /// <summary>
+    /// The rows for <paramref name="items"/> (in the order they are listed): problems whose first line and severity
+    /// are shared by at least <paramref name="minimum"/> of them become one group, at the place of the first, open
+    /// when its key is in <paramref name="expanded"/>.
+    /// </summary>
+    public static IReadOnlyList<ProblemRow> Group(IReadOnlyList<ProblemItem> items, ISet<string> expanded, int minimum = 3)
+    {
+        var groups = items.GroupBy(KeyOf).Where(g => g.Count() >= minimum).ToDictionary(g => g.Key, g => g.ToList());
+        var rows = new List<ProblemRow>(items.Count);
+        var done = new HashSet<string>();
+        foreach (ProblemItem p in items)
+        {
+            string key = KeyOf(p);
+            if (!groups.TryGetValue(key, out List<ProblemItem>? members))
+            {
+                rows.Add(new ProblemRow(p, 0, 0, false, false));
+                continue;
+            }
+            if (!done.Add(key))
+            {
+                continue;
+            }
+            bool open = expanded.Contains(key);
+            rows.Add(new ProblemRow(p, members.Count, members.Select(m => m.Path).Distinct().Count(), open, false));
+            if (open)
+            {
+                rows.AddRange(members.Select(m => new ProblemRow(m, 0, 0, false, true)));
+            }
+        }
+        return rows;
+    }
+
+    /// <summary>What groups problems: their severity and first line.</summary>
+    public static string KeyOf(ProblemItem p) => $"{(int)p.Severity}|{p.Message}";
+}
+
+/// <summary>
 /// A collection bound to a list in the UI, which can have all its items replaced with one change notification.
 /// </summary>
 /// <typeparam name="T">The items' type.</typeparam>

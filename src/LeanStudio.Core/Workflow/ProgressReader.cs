@@ -36,6 +36,11 @@ public sealed class TaskProgress
     /// <summary>The slowest things so far (modules and how long each took), slowest first, at most five.</summary>
     public IReadOnlyList<(string Name, TimeSpan Took)> Slowest { get; internal set; } = [];
 
+    /// <summary>The latest warnings and errors the task printed (their first lines, at most eight), oldest first.</summary>
+    public IReadOnlyList<string> RecentMessages => RecentList;
+
+    internal readonly List<string> RecentList = [];
+
     /// <summary>Every module the build compiled, with how long it took, in the order they finished.</summary>
     public IReadOnlyList<(string Name, TimeSpan Took)> Timings => TimingList;
 
@@ -170,6 +175,11 @@ public sealed class ProgressReader
         if (m.Success)
         {
             p.Warnings++;
+            p.RecentList.Add(l);
+            if (p.RecentList.Count > 8)
+            {
+                p.RecentList.RemoveAt(0);
+            }
             if (m.Groups["sev"].Value == "error")
             {
                 p.Errors++;

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Following a long build**:
+- A build dashboard: while a build, the Mathlib cache or Tenet runs with no file open (or from *Details* on the progress banner), the editor area shows the whole task: the stage (toolchain, cache, build, verify), the bar and the time left, the modules compiling now, the slowest so far, and warnings and errors as they come.
+- The progress shows on the app's icon: the percentage as a badge on the Dock icon on macOS, and the taskbar button's progress bar on Windows. When a long task ends while Lean Studio is in the background, the Dock icon bounces once, or the taskbar button flashes.
+- Problems groups repeated messages: 205 uses of one deprecated lemma are one row, "205 × … in 12 files", which opens to list them.
+- The progress banner no longer misses the last lines of a burst (a warning printed right after a module).
+
 ## 0.8.0
 
 **For Mathlib contributors and everyone who writes a lot of Lean**:

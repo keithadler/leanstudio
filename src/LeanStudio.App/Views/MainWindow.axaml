@@ -376,13 +376,16 @@
 
         <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*">
           <!-- A long task (build, cache, verification): how far it has got, over the editor -->
-          <Border Grid.Row="2" IsVisible="{Binding HasBusyFraction}" Background="{DynamicResource CurrentStepBackground}" Padding="12,8">
+          <Border Grid.Row="2" IsVisible="{Binding ShowProgressBanner}" Background="{DynamicResource CurrentStepBackground}" Padding="12,8">
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
               <StackPanel Orientation="Horizontal" Spacing="10">
                 <TextBlock Text="{Binding BusyText}" FontWeight="SemiBold" />
                 <TextBlock Text="{Binding BusyPercent}" Classes="dim" />
               </StackPanel>
-              <Button Grid.Column="1" Grid.RowSpan="3" Content="Cancel" Command="{Binding CancelTaskCommand}" VerticalAlignment="Center" Margin="12,0,0,0" />
+              <StackPanel Grid.Column="1" Grid.RowSpan="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
+                <Button Content="Details" Command="{Binding ToggleDashboardCommand}" ToolTip.Tip="Show the whole task: stages, what's compiling, the slowest modules, warnings" />
+                <Button Content="Cancel" Command="{Binding CancelTaskCommand}" />
+              </StackPanel>
               <ProgressBar Grid.Row="1" Value="{Binding BusyFraction}" Maximum="1" Height="6" MinHeight="6" Margin="0,6,0,4" />
               <StackPanel Grid.Row="2" Spacing="2">
                 <TextBlock Text="{Binding BusyDetail}" Classes="dim" FontSize="12" TextTrimming="CharacterEllipsis" />
@@ -428,6 +431,7 @@
             </DockPanel>
           </Grid>
           <v:WelcomeView Grid.Row="3" IsVisible="{Binding !HasDocument}" />
+          <v:BuildDashboard Grid.Row="3" IsVisible="{Binding ShowDashboard}" />
         </Grid>
 
         <GridSplitter Grid.Row="2" ResizeDirection="Rows" Background="Transparent" />
@@ -435,14 +439,14 @@
         <TabControl Grid.Row="3" Classes="panel" SelectedIndex="{Binding BottomTab}" Padding="0">
           <TabItem Header="{Binding ProblemSummary, StringFormat='Problems  {0}'}">
             <Panel>
-            <ListBox ItemsSource="{Binding Problems}" DoubleTapped="OnProblemDoubleTapped" x:Name="ProblemList" Background="Transparent">
+            <ListBox ItemsSource="{Binding ProblemRows}" DoubleTapped="OnProblemDoubleTapped" Tapped="OnProblemTapped" x:Name="ProblemList" Background="Transparent">
               <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:ProblemItem">
-                  <StackPanel Orientation="Horizontal" Spacing="8" ToolTip.Tip="{Binding FullMessage}">
+                <DataTemplate x:DataType="vm:ProblemRow">
+                  <StackPanel Orientation="Horizontal" Spacing="8" ToolTip.Tip="{Binding FullMessage}" Margin="{Binding Indent}">
                     <TextBlock Text="{Binding Icon}" Width="18" FontSize="11" VerticalAlignment="Center" TextAlignment="Center"
                                Classes.bad="{Binding IsError}" Classes.warn="{Binding IsWarning}" />
-                    <TextBlock Text="{Binding File}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Location}" Classes="dim" />
+                    <TextBlock Text="{Binding Lead}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Where}" Classes="dim" />
                     <TextBlock Text="{Binding Message}" />
                   </StackPanel>
                 </DataTemplate>

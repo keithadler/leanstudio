@@ -90,6 +90,26 @@ public sealed partial class MainWindow : Window, IDialogs
         Closing += OnClosing;
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         _vm.PluginHost.Load();
+        Taskbar = new TaskbarProgress(() => TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+        _vm.PropertyChanged += (_, e) =>
+        {
+            // The long task's progress on the Dock or taskbar icon too, and a nudge when a long one ends.
+            if (e.PropertyName is nameof(MainViewModel.BusyFraction) or nameof(MainViewModel.HasBusyFraction))
+            {
+                if (_vm.HasBusyFraction)
+                {
+                    Taskbar.Set(_vm.BusyFraction);
+                }
+                else
+                {
+                    Taskbar.Clear();
+                }
+            }
+            else if (e.PropertyName == nameof(MainViewModel.DoneNotice) && _vm.DoneNotice.Length > 0)
+            {
+                Taskbar.RequestAttention();
+            }
+        };
         WatchUserKeys();
         Deactivated += async (_, _) => await _vm.SaveAllIfAutoSaveAsync();
         AddHandler(DragDrop.DropEvent, OnDrop);
@@ -1160,6 +1180,9 @@ public sealed partial class MainWindow : Window, IDialogs
         }
     }
 
+    /// <summary>The long task's progress on the app's Dock or taskbar icon.</summary>
+    public TaskbarProgress Taskbar { get; private set; } = null!;
+
     private async Task OpenPluginsFolderAsync()
     {
         Directory.CreateDirectory(PluginHost.Folder);
@@ -1267,9 +1290,19 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private void OnProblemDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is ListBox { SelectedItem: ProblemItem p })
+        if (sender is ListBox { SelectedItem: ProblemRow { IsGroup: false } p })
         {
-            _vm.OpenProblemCommand.Execute(p);
+            _vm.OpenProblemCommand.Execute(p.Item);
+        }
+    }
+
+    // A group of repeated problems opens and folds with one click.
+    private void OnProblemTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: ProblemRow { IsGroup: true } g } list)
+        {
+            _vm.ToggleProblemGroup(g);
+            list.SelectedItem = null;
         }
     }
 

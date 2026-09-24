@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             x:Class="LeanStudio.App.Views.BuildDashboard"
+             x:DataType="vm:MainViewModel"
+             Background="{DynamicResource EditorBackground}">
+  <UserControl.Styles>
+    <Style Selector="Border.stage">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,3" />
+      <Setter Property="Background" Value="{DynamicResource CardBackground}" />
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Border.stage.current">
+      <Setter Property="Background" Value="{DynamicResource CurrentStepBackground}" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+  </UserControl.Styles>
+  <ScrollViewer>
+    <StackPanel MaxWidth="760" Margin="40,36" Spacing="14">
+      <!-- What is running, and the way out -->
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="2">
+          <TextBlock Text="{Binding BusyText}" FontSize="24" FontWeight="Light" />
+          <TextBlock Text="{Binding ProjectName}" Classes="dim" FontSize="12" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Content="Back to the editor" Command="{Binding ToggleDashboardCommand}" IsVisible="{Binding HasDocument}" />
+          <Button Content="Cancel" Command="{Binding CancelTaskCommand}" />
+        </StackPanel>
+      </Grid>
+
+      <!-- The stages of getting a project ready -->
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Border Classes="stage" Classes.current="{Binding IsStageToolchain}"><TextBlock Text="1  Toolchain" FontSize="12" /></Border>
+        <Border Classes="stage" Classes.current="{Binding IsStageCache}"><TextBlock Text="2  Mathlib cache" FontSize="12" /></Border>
+        <Border Classes="stage" Classes.current="{Binding IsStageBuild}"><TextBlock Text="3  Build" FontSize="12" /></Border>
+        <Border Classes="stage" Classes.current="{Binding IsStageVerify}"><TextBlock Text="4  Verify with Tenet" FontSize="12" /></Border>
+      </StackPanel>
+
+      <!-- How far, and how long -->
+      <Border Classes="card" Padding="16,14">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Text="{Binding BusyPercent}" FontSize="40" FontWeight="Light" VerticalAlignment="Center" MinWidth="90" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" Margin="12,0,0,0">
+              <TextBlock Text="{Binding BusyShort}" FontSize="14" />
+              <TextBlock Text="{Binding BusyElapsed}" Classes="dim" FontSize="12" />
+            </StackPanel>
+          </Grid>
+          <ProgressBar Value="{Binding BusyFraction}" Maximum="1" Height="8" MinHeight="8" />
+          <TextBlock Text="{Binding BusyDetail}" Classes="dim" FontSize="12" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- What it is doing, and what took longest -->
+      <Grid ColumnDefinitions="*,16,*">
+        <Border Classes="card" Padding="14,10">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Compiling now" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding CompilingNow}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DashboardLine">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="dim" FontSize="12" Margin="8,0,0,0" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Nothing is compiling right now (Lake may be replaying modules it built before)." Classes="dim" FontSize="12" TextWrapping="Wrap"
+                       IsVisible="{Binding CompilingNow.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+          </StackPanel>
+        </Border>
+        <Border Grid.Column="2" Classes="card" Padding="14,10">
+          <StackPanel Spacing="4">
+            <TextBlock Text="Slowest so far" FontWeight="SemiBold" />
+            <ItemsControl ItemsSource="{Binding SlowestSoFar}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DashboardLine">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="dim" FontSize="12" Margin="8,0,0,0" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="Modules appear here as they finish." Classes="dim" FontSize="12"
+                       IsVisible="{Binding SlowestSoFar.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Warnings and errors as they come -->
+      <Border Classes="card" Padding="14,10">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding MessageCounts}" FontWeight="SemiBold" />
+          <ItemsControl ItemsSource="{Binding RecentMessages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="x:String">
+                <TextBlock Text="{Binding}" Classes="mono" FontSize="11" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock Text="The full log is in the Output panel, and every problem in Problems." Classes="dim" FontSize="11" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

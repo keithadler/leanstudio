@@ -186,7 +186,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// The file in the editor, or null when none is open. Changing it refreshes the Tactic State and the outline.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasDocument))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasDocument), nameof(ShowDashboard), nameof(ShowProgressBanner))]
     private DocumentViewModel? _activeDocument;
 
     /// <summary>The Lean server's state for the status bar, such as <c>Lean: ready</c>.</summary>
@@ -717,6 +717,22 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>The Problems panel's rows: <see cref="Problems"/>, with repeated messages grouped.</summary>
+    public ObservableList<ProblemRow> ProblemRows { get; } = new();
+
+    private readonly HashSet<string> _openProblemGroups = new(StringComparer.Ordinal);
+
+    /// <summary>Open or fold a group of problems with the same message.</summary>
+    public void ToggleProblemGroup(ProblemRow row)
+    {
+        string key = ProblemRow.KeyOf(row.Item);
+        if (!_openProblemGroups.Remove(key))
+        {
+            _openProblemGroups.Add(key);
+        }
+        ProblemRows.Reset(ProblemRow.Group(Problems, _openProblemGroups));
+    }
+
     private void UpdateProblems()
     {
         var items = Documents.SelectMany(d => d.Diagnostics.Where(x => x.Severity <= DiagnosticSeverity.Warning).Select(x => new ProblemItem(d, x)))
@@ -726,6 +742,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             .OrderBy(p => p.Severity).ThenBy(p => p.File, StringComparer.Ordinal).ThenBy(p => p.Diagnostic.Range.Start)
             .ToList();
         Problems.Reset(items);
+        ProblemRows.Reset(ProblemRow.Group(items, _openProblemGroups));
         int errors = items.Count(p => p.Severity == DiagnosticSeverity.Error);
         int warnings = items.Count - errors;
         ProblemSummary = items.Count == 0 ? "No problems" : $"✕ {errors}   ▲ {warnings}";
@@ -1394,6 +1411,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             BusyPercent = $"{Math.Floor(overall * 100):0}%";
             BusyShort = $"module {p.ModuleIndex + 1} of {p.ModuleCount}{left}";
             BusyDetail = $"module {p.ModuleIndex + 1} of {p.ModuleCount} · {p.Module}{left}";
+            BusyElapsed = "Running for " + Core.Workflow.TaskProgress.Format(elapsed);
         });
         try
         {

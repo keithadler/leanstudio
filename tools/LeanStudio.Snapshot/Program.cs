@@ -137,6 +137,7 @@ internal static class Scenario
     {
         var settings = new Settings();
         var window = new MainWindow(settings) { Width = 1440, Height = 900 };
+        window.Taskbar.UseNative = false; // headless: the snapshot reads what the icon would show
         window.OpenOnStartup = Path.Combine(repo, "samples", "Proofs");
         window.Show();
         MainViewModel vm = window.ViewModel;
@@ -1077,7 +1078,7 @@ internal static class Scenario
             Console.WriteLine("progress of a long task");
             // What a big build prints, a line a second: the status bar and the banner read it as it comes.
             var fake = new LeanStudio.Core.Workflow.ProjectTask("Build (fake)", "", "/bin/sh",
-                ["-c", "echo '✔ [8700/8712] Replayed Mathlib'; for i in 1 2 3 4 5 6; do sleep 1; echo \"✔ [$((8700+i))/8712] Built Apery.M$i ($((i*20))s)\"; done; echo 'warning: Challenge.lean:33:8: declaration uses sorry'; sleep 4"]);
+                ["-c", "echo '✔ [8700/8712] Replayed Mathlib'; for i in 1 2 3 4 5 6; do sleep 1; echo \"✔ [$((8700+i))/8712] Built Apery.M$i ($((i*20))s)\"; done; echo 'warning: Challenge.lean:33:8: declaration uses sorry'; sleep 8"]);
             Task running = vm.RunTaskAsync(fake);
             Check(await WaitFor(() => vm.HasBusyFraction && vm.BusyDetail.Contains("8,705 / 8,712", StringComparison.Ordinal), 20),
                 $"the status bar shows how far a build has got, from Lake's own counts ({vm.BusyDetail})");
@@ -1085,8 +1086,53 @@ internal static class Scenario
                 "and what came from the cache, and the slowest modules");
             Check(vm.BusyPercent == "99%" && vm.BusyShort == "8,705 / 8,712", $"the percentage rounds down, so a build isn't called done early ({vm.BusyPercent}, {vm.BusyShort})");
             Snap(window, outDir, "34-build-progress");
+            Check(window.Taskbar.Shown == "99%", $"the Dock or taskbar icon shows it too ({window.Taskbar.Shown})");
+            Check(vm.ShowProgressBanner && !vm.ShowDashboard, "with a file open, a slim banner shows it");
+            vm.ToggleDashboardCommand.Execute(null);
+            Check(vm.ShowDashboard && !vm.ShowProgressBanner && vm.IsStageBuild, "Details opens the dashboard, at the build stage");
+            Check(await WaitFor(() => vm.RecentMessages.Any(m => m.Contains("declaration uses sorry", StringComparison.Ordinal)), 10)
+                && vm.SlowestSoFar.Count == 5 && vm.SlowestSoFar[0].Name == "Apery.M6" && vm.MessageCounts == "0 errors, 1 warning so far",
+                $"the dashboard lists the slowest modules and the warnings as they come ({vm.MessageCounts})");
+            await WaitFor(() => false, 0.5);
+            Snap(window, outDir, "37-dashboard");
+            vm.ToggleDashboardCommand.Execute(null);
             await running;
-            Check(!vm.HasBusyFraction && !vm.IsBusy, "the banner goes when the task ends");
+            Check(!vm.HasBusyFraction && !vm.IsBusy && !vm.ShowDashboard, "the banner goes when the task ends");
+            Check(window.Taskbar.Shown.Length == 0, "and so does the icon's progress");
+            if (OperatingSystem.IsMacOS())
+            {
+                TaskbarProgress.MacDock.SetBadge("42%");
+                string? badge = TaskbarProgress.MacDock.Badge();
+                TaskbarProgress.MacDock.SetBadge(null);
+                Check(badge == "42%" && TaskbarProgress.MacDock.Badge() is null, $"on a Mac the badge really reaches the Dock tile ({badge})");
+            }
+        }
+
+        Console.WriteLine("repeated problems, grouped");
+        {
+            string grouped = Path.Combine(repo, "samples", "Proofs", "Proofs", "Grouped.lean");
+            await File.WriteAllTextAsync(grouped, "theorem g1 : 1 = 1 := by sorry\ntheorem g2 : 2 = 2 := by sorry\ntheorem g3 : 3 = 3 := by sorry\ntheorem g4 : 4 = 4 := by sorry\n");
+            try
+            {
+                DocumentViewModel? g = await vm.OpenFileAsync(grouped);
+                Check(await WaitFor(() => vm.ProblemRows.Any(r => r.IsGroup && r.Count >= 4 && r.Message.Contains("sorry", StringComparison.Ordinal)), 60),
+                    "four problems with the same message are one row in Problems");
+                ProblemRow group = vm.ProblemRows.First(r => r.IsGroup && r.Message.Contains("sorry", StringComparison.Ordinal));
+                int before = vm.ProblemRows.Count;
+                vm.ToggleProblemGroup(group);
+                Check(vm.ProblemRows.Count == before + group.Count && vm.ProblemRows.Count(r => r.InGroup) == group.Count, "which opens to list them");
+                vm.BottomTab = 0;
+                await WaitFor(() => false, 0.5);
+                Snap(window, outDir, "38-problems-grouped");
+                vm.ToggleProblemGroup(group);
+                Check(vm.ProblemRows.Count == before, "and folds again");
+                await vm.CloseDocumentCommand.ExecuteAsync(g);
+            }
+            finally
+            {
+                File.Delete(grouped);
+            }
+            vm.ActiveDocument = doc;
         }
 
         Console.WriteLine("a compiled plugin");

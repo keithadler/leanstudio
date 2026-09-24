@@ -112,6 +112,7 @@ public sealed partial class MainViewModel
         _compileWatch?.Stop();
         _compileWatch = null;
         BusyNow = "";
+        CompilingNow.Clear();
     }
 
     private bool _watching;
@@ -139,6 +140,7 @@ public sealed partial class MainViewModel
             {
                 _buildMarks.TryAdd(w.File, "⋯");
             }
+            CompilingNow.Reset(now.Select(w => new DashboardLine(project.ModuleNameOf(w.File) ?? Path.GetFileName(w.File), TaskProgress.Format(w.Running))));
             BusyNow = now.Count == 0 ? "" : "Compiling now: " + string.Join(", ", now.Take(4).Select(w =>
                 $"{project.ModuleNameOf(w.File) ?? Path.GetFileName(w.File)} ({TaskProgress.Format(w.Running)})"))
                 + (now.Count > 4 ? $" and {now.Count - 4} more" : "");
