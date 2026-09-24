@@ -2,7 +2,7 @@
 # Lean Studio, by Keith Adler (@keithadler). MIT License. See docs/packaging/winget.md.
 
 PackageIdentifier: KeithAdler.LeanStudio
-PackageVersion: 0.6.0
+PackageVersion: 0.7.0
 DefaultLocale: en-US
 ManifestType: version
 ManifestVersion: 1.9.0
