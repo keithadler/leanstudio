@@ -29,12 +29,14 @@ public sealed class ProjectMapView : Control
     /// <summary>A declaration was clicked.</summary>
     public event Action<MapNode>? NodeClicked;
 
+    /// <summary>Create an empty map; set <see cref="Map"/> to draw one.</summary>
     public ProjectMapView()
     {
         ClipToBounds = true;
         Focusable = true;
     }
 
+    /// <summary>The map drawn. Setting it lays the map out afresh, clears the selection and fits it to the view.</summary>
     public ProjectMap? Map
     {
         get => _map;
@@ -133,6 +135,7 @@ public sealed class ProjectMapView : Control
         _offset = new Vector((Bounds.Width - _extent.Width * _scale) / 2, Math.Max(0, (Bounds.Height - _extent.Height * _scale) / 2));
     }
 
+    /// <inheritdoc/>
     protected override Size ArrangeOverride(Size finalSize)
     {
         bool first = Bounds.Width <= 0;
@@ -159,6 +162,7 @@ public sealed class ProjectMapView : Control
         _ => Color.FromRgb(0xB4, 0x8E, 0xAD),
     };
 
+    /// <inheritdoc/>
     public override void Render(DrawingContext context)
     {
         IBrush background = this.TryFindResource("PanelBackground", ActualThemeVariant, out object? bg) && bg is IBrush b ? b : Brushes.Black;
@@ -238,6 +242,7 @@ public sealed class ProjectMapView : Control
         return -1;
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -251,6 +256,7 @@ public sealed class ProjectMapView : Control
         e.Handled = true;
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -259,6 +265,7 @@ public sealed class ProjectMapView : Control
         e.Pointer.Capture(this);
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -295,6 +302,7 @@ public sealed class ProjectMapView : Control
         }
     }
 
+    /// <summary>A declaration's status in a few words, with its badge (✓ or ◐), for tooltips.</summary>
     public static string Describe(MapNode n) => n.Status switch
     {
         MapStatus.Proved => "✓ fully proved",
@@ -303,6 +311,7 @@ public sealed class ProjectMapView : Control
         _ => "◐ rests on an axiom the project introduces",
     };
 
+    /// <inheritdoc/>
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
@@ -321,6 +330,7 @@ public sealed class ProjectMapView : Control
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);

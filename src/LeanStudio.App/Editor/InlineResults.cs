@@ -17,12 +17,19 @@ public sealed class InlineResults : IBackgroundRenderer
     private IReadOnlyList<Diagnostic> _diagnostics = [];
     private static readonly IBrush Brush = new SolidColorBrush(Color.FromArgb(0xA0, 0x8F, 0xB8, 0x8F));
 
+    /// <summary>Whether results are drawn; the caller redraws the text view after changing it.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <inheritdoc/>
     public KnownLayer Layer => KnownLayer.Selection;
 
+    /// <summary>
+    /// Replace the diagnostics results are taken from (the file's current ones). Only information messages on lines
+    /// starting with <c>#</c> are shown. Does not redraw.
+    /// </summary>
     public void Update(IReadOnlyList<Diagnostic> diagnostics) => _diagnostics = diagnostics;
 
+    /// <inheritdoc/>
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         if (!Enabled || _diagnostics.Count == 0 || !textView.VisualLinesValid || textView.Document is null)

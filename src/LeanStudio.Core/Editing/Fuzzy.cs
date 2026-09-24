@@ -6,7 +6,10 @@ namespace LeanStudio.Core.Editing;
 /// </summary>
 public static class Fuzzy
 {
-    /// <summary>A score, higher is better, or null when the query does not match.</summary>
+    /// <summary>
+    /// A score, higher is better, or null when the query does not match. Matching ignores case and spaces in the
+    /// query; an empty query scores 0. Scores are normalized by the candidate's length, so shorter candidates win ties.
+    /// </summary>
     public static int? Score(string query, string candidate)
     {
         if (query.Length == 0)
@@ -42,6 +45,12 @@ public static class Fuzzy
         return score * 100 / (10 + candidate.Length);
     }
 
+    /// <summary>
+    /// The items whose text matches <paramref name="query"/>, best score first, then shortest text first.
+    /// </summary>
+    /// <param name="items">The items to filter.</param>
+    /// <param name="query">What the user typed.</param>
+    /// <param name="text">The text of an item to match against, such as its path or title.</param>
     public static IEnumerable<T> Filter<T>(IEnumerable<T> items, string query, Func<T, string> text) =>
         items.Select(i => (Item: i, Score: Score(query, text(i))))
              .Where(x => x.Score is not null)

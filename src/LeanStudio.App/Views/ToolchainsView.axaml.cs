@@ -3,8 +3,10 @@ using Avalonia.Markup.Xaml;
 
 namespace LeanStudio.App.Views;
 
+/// <summary>The Toolchains panel: the Lean toolchains elan has installed, and installing Lean. Its data context is a <see cref="ViewModels.ToolchainsViewModel"/>.</summary>
 public sealed partial class ToolchainsView : UserControl
 {
+    /// <summary>Create the view and load its XAML.</summary>
     public ToolchainsView() => AvaloniaXamlLoader.Load(this);
 
     private void OnInstallLean(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

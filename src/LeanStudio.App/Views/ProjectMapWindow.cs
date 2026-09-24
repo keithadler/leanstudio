@@ -12,6 +12,10 @@ namespace LeanStudio.App.Views;
 /// </summary>
 public sealed class ProjectMapWindow : Window
 {
+    /// <summary>Build the window for <paramref name="map"/>.</summary>
+    /// <param name="map">The map to show, from the last build.</param>
+    /// <param name="projectName">The project's name, for the title.</param>
+    /// <param name="open">Called when a declaration is clicked on the map or in the list, to open it in the editor.</param>
     public ProjectMapWindow(ProjectMap map, string projectName, Action<MapNode> open)
     {
         Title = $"Project Map — {projectName}";
@@ -85,6 +89,7 @@ public sealed class ProjectMapWindow : Window
         Content = grid;
     }
 
+    /// <summary>The map view on the left of the window.</summary>
     public ProjectMapView View { get; }
 
     private static TextBlock Dim(string text) => new() { Text = text, Classes = { "dim" }, FontSize = 12, TextWrapping = TextWrapping.Wrap };

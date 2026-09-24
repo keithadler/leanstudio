@@ -7,8 +7,13 @@ using LeanStudio.App.Views;
 
 namespace LeanStudio.App;
 
+/// <summary>
+/// The Avalonia application: loads the theme from the settings, opens the main window with the file named on the
+/// command line, and logs unhandled exceptions to <see cref="CrashLog"/> instead of letting them end the session.
+/// </summary>
 public sealed partial class App : Application
 {
+    /// <inheritdoc/>
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
     /// <summary>Where crashes are written: the settings folder, crash.log.</summary>
@@ -26,6 +31,7 @@ public sealed partial class App : Application
         }
     }
 
+    /// <inheritdoc/>
     public override void OnFrameworkInitializationCompleted()
     {
         // A bug should cost the operation that hit it, not the session: log it, say so, keep going.

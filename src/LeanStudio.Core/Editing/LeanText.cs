@@ -11,8 +11,10 @@ public static class LeanText
 
     private static readonly Dictionary<char, char> Closers = Pairs.ToDictionary(kv => kv.Value, kv => kv.Key);
 
+    /// <summary>Whether <paramref name="c"/> is one of the opening brackets in <see cref="Pairs"/>.</summary>
     public static bool IsOpener(char c) => Pairs.ContainsKey(c);
 
+    /// <summary>Whether <paramref name="c"/> is one of the closing brackets in <see cref="Pairs"/>.</summary>
     public static bool IsCloser(char c) => Closers.ContainsKey(c);
 
     /// <summary>
@@ -67,7 +69,10 @@ public static class LeanText
         return -1;
     }
 
-    /// <summary>For each character, whether it is code (not inside a string or comment).</summary>
+    /// <summary>
+    /// For each character, whether it is code (not inside a string or comment). Handles <c>--</c> line comments, nested
+    /// <c>/- -/</c> block comments and escapes in string literals; the delimiters themselves count as not code.
+    /// </summary>
     public static bool[] CodeMask(string text)
     {
         var mask = new bool[text.Length];

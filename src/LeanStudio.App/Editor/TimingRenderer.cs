@@ -12,6 +12,10 @@ namespace LeanStudio.App.Editor;
 /// time at the end of its first line, and the slow ones a tinted line, warmer the slower, so the expensive parts of
 /// a file stand out while scrolling through it.
 /// </summary>
+/// <param name="labels">
+/// True for the renderer that draws the time labels (over the text), false for the one that draws the tinted lines
+/// (under it); the editor installs one of each.
+/// </param>
 public sealed class TimingRenderer(bool labels) : IBackgroundRenderer
 {
     private Dictionary<int, DeclarationTiming> _byLine = [];
@@ -35,8 +39,10 @@ public sealed class TimingRenderer(bool labels) : IBackgroundRenderer
     /// <summary>The tint goes under the text; the labels over it, so a label pinned over a long line stays readable.</summary>
     public KnownLayer Layer => labels ? KnownLayer.Caret : KnownLayer.Background;
 
+    /// <summary>Replace the timings shown (from <see cref="Profiler"/>); an empty list clears the heat map. Does not redraw.</summary>
     public void Update(IReadOnlyList<DeclarationTiming> timings) => _byLine = timings.GroupBy(t => t.Line).ToDictionary(g => g.Key, g => g.First());
 
+    /// <inheritdoc/>
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         if (_byLine.Count == 0 || !textView.VisualLinesValid || textView.Document is null)

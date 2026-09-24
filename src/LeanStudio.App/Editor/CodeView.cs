@@ -23,6 +23,7 @@ public sealed class CodeView : UserControl
     };
     private MainViewModel? _vm;
 
+    /// <summary>Create the view; it shows <see cref="MainViewModel.CCode"/> of the view model it is given as its data context.</summary>
     public CodeView()
     {
         TextMate.Installation tm = _editor.InstallTextMate(new LeanRegistryOptions(ThemeName.DarkPlus));
@@ -38,6 +39,7 @@ public sealed class CodeView : UserControl
         Content = _editor;
     }
 
+    /// <inheritdoc/>
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);

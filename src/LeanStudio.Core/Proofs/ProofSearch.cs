@@ -7,14 +7,27 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>A <c>sorry</c> (or <c>admit</c>) in a file, 0-based.</summary>
+/// <param name="Line">The 0-based line the keyword is on.</param>
+/// <param name="Column">The 0-based column of its first character, in UTF-16 code units.</param>
+/// <param name="Offset">The 0-based character offset of the keyword in the file text.</param>
+/// <param name="Length">The keyword's length in characters (5 for both <c>sorry</c> and <c>admit</c>).</param>
+/// <param name="Declaration">
+/// The name of the nearest declaration at or above it (<c>example</c> for an anonymous one), or null if there is none.
+/// </param>
 public sealed record SorrySite(int Line, int Column, int Offset, int Length, string? Declaration)
 {
+    /// <summary>The location for people, such as <c>line 12</c> (1-based).</summary>
     public string Where => $"line {Line + 1}";
 }
 
 /// <summary>How one tactic fared against one goal.</summary>
+/// <param name="Tactic">The tactic as tried, from <see cref="ProofSearch.Portfolio"/>.</param>
+/// <param name="Outcome">Whether it closed the goal, failed, or was not available.</param>
+/// <param name="Milliseconds">How long it ran, in milliseconds (0 when unavailable).</param>
+/// <param name="Term">For a search tactic such as <c>exact?</c> that succeeded, the proof term it found; otherwise null.</param>
 public sealed record TacticTrial(string Tactic, TrialOutcome Outcome, int Milliseconds, string? Term)
 {
+    /// <summary>Whether the tactic closed the goal with no <c>sorry</c> left in the proof.</summary>
     public bool Closes => Outcome == TrialOutcome.Closes;
 
     /// <summary>
@@ -23,6 +36,7 @@ public sealed record TacticTrial(string Tactic, TrialOutcome Outcome, int Millis
     /// </summary>
     public string Replacement => Tactic.EndsWith('?') && Term is { Length: > 0 } t ? "exact " + t : Tactic;
 
+    /// <summary>A one-line label for a list: a tick and the replacement, or a cross or dash and the tactic.</summary>
     public string Label => Outcome switch
     {
         TrialOutcome.Closes => $"✓ {Replacement}",
@@ -30,19 +44,28 @@ public sealed record TacticTrial(string Tactic, TrialOutcome Outcome, int Millis
         _ => $"– {Tactic}",
     };
 
+    /// <summary>The time taken for display (<c>840 ms</c>, <c>2.3 s</c>), or a note that the tactic was not available.</summary>
     public string Time => Outcome == TrialOutcome.Unavailable ? "not available here"
         : Milliseconds < 1000 ? $"{Milliseconds} ms" : $"{Milliseconds / 1000.0:F1} s";
 }
 
+/// <summary>The result of one <see cref="TacticTrial"/>.</summary>
 public enum TrialOutcome
 {
+    /// <summary>The tactic closed the goal completely.</summary>
     Closes,
+    /// <summary>The tactic raised an error, ran out of heartbeats, or left goals or a <c>sorry</c> behind.</summary>
     Fails,
     /// <summary>The tactic does not exist with this file's imports (Mathlib's, in a file without Mathlib).</summary>
     Unavailable,
 }
 
 /// <summary>What proof search found for one <c>sorry</c>.</summary>
+/// <param name="Site">The sorry searched.</param>
+/// <param name="TermMode">
+/// True when the sorry stood where a term was expected, so a tactic must be wrapped in <c>by</c> (see <see cref="SearchResult.Fill"/>).
+/// </param>
+/// <param name="Trials">One trial per portfolio tactic, in portfolio order; empty if Lean never reached the sorry.</param>
 public sealed record SearchResult(SorrySite Site, bool TermMode, IReadOnlyList<TacticTrial> Trials)
 {
     /// <summary>
@@ -54,8 +77,10 @@ public sealed record SearchResult(SorrySite Site, bool TermMode, IReadOnlyList<T
     /// <summary>Lean reached this sorry (an earlier error can stop it from getting there).</summary>
     public bool Reached => Trials.Count > 0;
 
+    /// <summary>The first trial that closed the goal (the cheapest, by portfolio order), or null if none did.</summary>
     public TacticTrial? Best => Trials.FirstOrDefault(t => t.Closes);
 
+    /// <summary>Every trial that closed the goal, in portfolio order.</summary>
     public IEnumerable<TacticTrial> Successes => Trials.Where(t => t.Closes);
 
     /// <summary>The text that replaces the sorry: a tactic, or <c>by</c> and the tactic where a term was expected.</summary>
@@ -84,6 +109,7 @@ public static partial class ProofSearch
     /// <summary>The heartbeat budget for each tactic, in Lean's thousands (the default for a whole declaration is 200000).</summary>
     public const int HeartbeatsPerTactic = 50000;
 
+    /// <summary>The prefix of the info messages the instrumented file logs, which <see cref="Parse"/> looks for.</summary>
     public const string Marker = "⟪leanstudio⟫";
 
     [GeneratedRegex(@"(?<![\w.'])(sorry|admit)(?![\w'!?])")]
@@ -396,12 +422,26 @@ public static partial class ProofSearch
 /// </summary>
 public static class Scratch
 {
+    /// <summary>
+    /// The URI of the scratch document for <paramref name="sourcePath"/>: <c>LeanStudio{purpose}_{name}</c> in the same
+    /// directory. The file is never created.
+    /// </summary>
     public static string UriFor(string sourcePath, string purpose)
     {
         string full = Path.GetFullPath(sourcePath);
         return LeanServer.UriOf(Path.Combine(Path.GetDirectoryName(full)!, $"LeanStudio{purpose}_{Path.GetFileName(full)}"));
     }
 
+    /// <summary>
+    /// Open <paramref name="text"/> as the scratch document for <paramref name="sourcePath"/> (closing any stale one
+    /// first), wait until Lean has elaborated it and its diagnostics have settled, and return them. The document is
+    /// closed afterwards if the server is still running.
+    /// </summary>
+    /// <param name="server">A running Lean server for the project.</param>
+    /// <param name="sourcePath">The real file the text stands in for.</param>
+    /// <param name="purpose">A short word naming the scratch document, such as <c>Prove</c>.</param>
+    /// <param name="text">The text to check.</param>
+    /// <param name="ct">Cancels the wait; the document is still closed.</param>
     public static async Task<IReadOnlyList<Diagnostic>> CheckAsync(LeanServer server, string sourcePath, string purpose, string text, CancellationToken ct = default)
     {
         string uri = UriFor(sourcePath, purpose);

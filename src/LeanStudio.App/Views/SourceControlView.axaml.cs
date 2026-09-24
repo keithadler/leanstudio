@@ -6,10 +6,12 @@ using LeanStudio.App.ViewModels;
 
 namespace LeanStudio.App.Views;
 
+/// <summary>The Source Control panel: the Git branch, changed files and commit box. Its data context is a <see cref="ViewModels.SourceControlViewModel"/>.</summary>
 public sealed partial class SourceControlView : UserControl
 {
     private bool _loading;
 
+    /// <summary>Create the view and load its XAML.</summary>
     public SourceControlView() => AvaloniaXamlLoader.Load(this);
 
     private SourceControlViewModel? Vm => DataContext as SourceControlViewModel;
@@ -46,6 +48,7 @@ public sealed partial class SourceControlView : UserControl
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnDataContextChanged(EventArgs e)
     {
         _loading = true;

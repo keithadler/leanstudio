@@ -26,9 +26,11 @@ namespace LeanStudio.App.Editor;
 /// </summary>
 public sealed class LeanEditor : UserControl
 {
+    /// <summary>Defines the <see cref="Document"/> property.</summary>
     public static readonly StyledProperty<DocumentViewModel?> DocumentProperty =
         AvaloniaProperty.Register<LeanEditor, DocumentViewModel?>(nameof(Document));
 
+    /// <summary>Defines the <see cref="Main"/> property.</summary>
     public static readonly StyledProperty<MainViewModel?> MainProperty =
         AvaloniaProperty.Register<LeanEditor, MainViewModel?>(nameof(Main));
 
@@ -49,6 +51,7 @@ public sealed class LeanEditor : UserControl
     private CancellationTokenSource? _hoverCts;
     private bool _dark = true;
 
+    /// <summary>Create the editor, disabled until a <see cref="Document"/> is set.</summary>
     public LeanEditor()
     {
         _editor = new TextEditor
@@ -89,18 +92,24 @@ public sealed class LeanEditor : UserControl
         Content = _editor;
     }
 
+    /// <summary>
+    /// The document shown. Setting it swaps the editor's text document, restoring that document's caret and scroll
+    /// position and choosing its highlighting; null shows an empty, disabled editor.
+    /// </summary>
     public DocumentViewModel? Document
     {
         get => GetValue(DocumentProperty);
         set => SetValue(DocumentProperty, value);
     }
 
+    /// <summary>The main view model, told when the caret moves and asked for hovers, completion and definitions.</summary>
     public MainViewModel? Main
     {
         get => GetValue(MainProperty);
         set => SetValue(MainProperty, value);
     }
 
+    /// <summary>The AvaloniaEdit editor inside, for commands that act on it directly (find, undo, selection).</summary>
     public TextEditor TextEditor => _editor;
 
     /// <summary>The lightbulb was clicked: show Lean's fixes for this (0-based) line.</summary>
@@ -114,6 +123,7 @@ public sealed class LeanEditor : UserControl
                 .Select(x => x.Range.Start.Line + 1)
             : []);
 
+    /// <summary>Apply the editor settings (font, line numbers, word wrap, inline results, theme) from <paramref name="s"/>.</summary>
     public void ApplySettings(Settings s)
     {
         _editor.FontSize = s.EditorFontSize;
@@ -158,12 +168,14 @@ public sealed class LeanEditor : UserControl
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         ApplyThemeColors();
     }
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -290,6 +302,7 @@ public sealed class LeanEditor : UserControl
         return l.Offset + Math.Clamp(column, 0, l.Length);
     }
 
+    /// <summary>Move the caret to a 0-based line and column (clamped to the document), scroll it into view and focus the editor.</summary>
     public void Reveal(int line, int column)
     {
         if (_current is null)
@@ -819,7 +832,10 @@ public sealed class LeanEditor : UserControl
         return e > s ? doc.GetText(s, e - s) : null;
     }
 
-    /// <summary>Insert text at the caret (a symbol from the palette).</summary>
+    /// <summary>
+    /// Insert text at the caret (a symbol from the palette), leaving the caret after it; an opening bracket also gets
+    /// its closer. Does nothing for a read-only document.
+    /// </summary>
     public void InsertAtCaret(string text)
     {
         if (_current is null || _current.IsVirtual)
@@ -836,7 +852,10 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.Focus();
     }
 
-    /// <summary>Insert a snippet at the caret, indented like the current line, with the caret at its $0.</summary>
+    /// <summary>
+    /// Insert a snippet at the caret, indented like the current line, with the caret at its $0. Does nothing for a
+    /// read-only document.
+    /// </summary>
     public void InsertSnippet(Core.Learn.Snippet snippet)
     {
         if (_current is null || _current.IsVirtual)

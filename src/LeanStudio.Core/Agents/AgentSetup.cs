@@ -6,6 +6,11 @@ using LeanStudio.Core.Processes;
 namespace LeanStudio.Core.Agents;
 
 /// <summary>An AI assistant Lean Studio knows how to connect to, and what connecting takes.</summary>
+/// <param name="Name">The assistant's name; also the key <see cref="AgentSetup.InstallAsync"/> takes.</param>
+/// <param name="Description">One sentence on what setting it up does.</param>
+/// <param name="Snippet">The command or configuration to paste to set it up by hand.</param>
+/// <param name="SnippetLanguage">The snippet's language, for highlighting: <c>shell</c>, <c>json</c> or <c>toml</c>.</param>
+/// <param name="CanInstall">Whether <see cref="AgentSetup.InstallAsync"/> can set it up in one click.</param>
 public sealed record AgentClient(string Name, string Description, string Snippet, string SnippetLanguage, bool CanInstall);
 
 /// <summary>
@@ -15,8 +20,12 @@ public sealed record AgentClient(string Name, string Description, string Snippet
 /// </summary>
 public sealed class AgentSetup
 {
+    /// <summary>The name the server is registered under in every assistant's configuration.</summary>
     public const string ServerName = "leanstudio";
 
+    /// <summary>Describe how to start the MCP server.</summary>
+    /// <param name="command">The program to run.</param>
+    /// <param name="arguments">Its arguments, ending in <c>--mcp</c>.</param>
     public AgentSetup(string command, IReadOnlyList<string> arguments)
     {
         Command = command;
@@ -25,9 +34,13 @@ public sealed class AgentSetup
 
     /// <summary>The program an assistant runs to start the server, and its arguments (ending in --mcp).</summary>
     public string Command { get; }
+    /// <summary>The arguments to <see cref="Command"/>, ending in <c>--mcp</c>.</summary>
     public IReadOnlyList<string> Arguments { get; }
 
-    /// <summary>How this process was started, turned into the command that starts it as an MCP server.</summary>
+    /// <summary>
+    /// How this process was started, turned into the command that starts it as an MCP server: the executable and
+    /// <c>--mcp</c>, or <c>dotnet LeanStudio.dll --mcp</c> when running from source.
+    /// </summary>
     public static AgentSetup ForCurrentProcess()
     {
         string exe = Environment.ProcessPath ?? "LeanStudio";
@@ -39,10 +52,13 @@ public sealed class AgentSetup
 
     private static string Quote(string s) => s.Contains(' ', StringComparison.Ordinal) || s.Contains('\\', StringComparison.Ordinal) ? "\"" + s + "\"" : s;
 
+    /// <summary>The command and arguments as one shell line, with arguments containing spaces or backslashes quoted.</summary>
     public string CommandLine => string.Join(' ', new[] { Command }.Concat(Arguments).Select(Quote));
 
+    /// <summary>The <c>claude mcp add</c> command that registers the server with Claude Code for every project.</summary>
     public string ClaudeCommand => $"claude mcp add --scope user {ServerName} -- {CommandLine}";
 
+    /// <summary>The server as a <c>{"mcpServers": {...}}</c> JSON object, indented, in the form most MCP clients take.</summary>
     public string McpServersJson()
     {
         var o = new JsonObject
@@ -59,12 +75,14 @@ public sealed class AgentSetup
         return o.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
     }
 
+    /// <summary>The server as a <c>[mcp_servers.leanstudio]</c> table for Codex's <c>config.toml</c>.</summary>
     public string CodexToml()
     {
         static string T(string s) => "\"" + s.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\"";
         return $"[mcp_servers.{ServerName}]\ncommand = {T(Command)}\nargs = [{string.Join(", ", Arguments.Select(T))}]\n";
     }
 
+    /// <summary>The assistants to offer, with their snippets, in display order.</summary>
     public IReadOnlyList<AgentClient> Clients() =>
     [
         new("Claude Code", "Adds Lean Studio for every project with `claude mcp add --scope user`.", ClaudeCommand, "shell", true),
@@ -75,11 +93,18 @@ public sealed class AgentSetup
             McpServersJson(), "json", false),
     ];
 
+    /// <summary>The user's home folder.</summary>
     public static string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    /// <summary>Gemini CLI's user settings file, <c>~/.gemini/settings.json</c>.</summary>
     public static string GeminiSettingsPath => Path.Combine(Home, ".gemini", "settings.json");
+    /// <summary>Codex CLI's configuration file, <c>~/.codex/config.toml</c>.</summary>
     public static string CodexConfigPath => Path.Combine(Home, ".codex", "config.toml");
 
-    /// <summary>Set the assistant up; returns what happened, in a sentence.</summary>
+    /// <summary>
+    /// Set the assistant named <paramref name="client"/> (an <see cref="AgentClient.Name"/>) up; returns what happened,
+    /// in a sentence. For Claude Code this runs the <c>claude</c> command; for Gemini and Codex it edits their
+    /// configuration file in the home folder. Failures are reported in the sentence rather than thrown.
+    /// </summary>
     public async Task<string> InstallAsync(string client, CancellationToken ct = default) => client switch
     {
         "Claude Code" => await InstallClaudeAsync(ct).ConfigureAwait(false),
@@ -103,7 +128,10 @@ public sealed class AgentSetup
             : "claude mcp add failed: " + r.Output.Trim();
     }
 
-    /// <summary>Merge the server into a Gemini CLI settings file, keeping everything else in it.</summary>
+    /// <summary>
+    /// Merge the server into a Gemini CLI settings file, keeping everything else in it. An existing file is backed up
+    /// to <c>.bak</c> first and left alone if it is not valid JSON. Returns what happened, in a sentence.
+    /// </summary>
     public string InstallGemini(string settingsPath)
     {
         JsonObject root = new();
@@ -134,7 +162,10 @@ public sealed class AgentSetup
         return $"Added to Gemini CLI ({settingsPath}). Start `gemini` in a Lean project.";
     }
 
-    /// <summary>Add (or replace) the server's table in a Codex config.toml, keeping everything else.</summary>
+    /// <summary>
+    /// Add (or replace) the server's table in a Codex config.toml, keeping everything else. An existing file is backed
+    /// up to <c>.bak</c> first. Returns what happened, in a sentence.
+    /// </summary>
     public string InstallCodex(string configPath)
     {
         string text = File.Exists(configPath) ? File.ReadAllText(configPath) : "";

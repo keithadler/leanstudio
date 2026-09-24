@@ -13,17 +13,25 @@ using LeanStudio.App.ViewModels;
 
 namespace LeanStudio.App.Views;
 
+/// <summary>
+/// The IDE window: menus, sidebar, editor, infoview and bottom panel around one <see cref="MainViewModel"/>, for
+/// which it also provides the dialogs (<see cref="IDialogs"/>). On opening it serves the <see cref="StudioBridge"/>
+/// pipe if no other window does, and restores the last session or opens <see cref="OpenOnStartup"/>.
+/// </summary>
 public sealed partial class MainWindow : Window, IDialogs
 {
     private readonly MainViewModel _vm;
     private readonly CancellationTokenSource _bridgeCts = new();
     private bool _closing;
 
+    /// <summary>Create the window with the settings saved on disk.</summary>
     public MainWindow()
         : this(Settings.Load())
     {
     }
 
+    /// <summary>Create the window and its view model.</summary>
+    /// <param name="settings">The settings to start with; the window changes and saves them.</param>
     public MainWindow(Settings settings)
     {
         InitializeComponent(); // also fills in the fields for named controls (MainGrid, CenterGrid…)
@@ -75,6 +83,7 @@ public sealed partial class MainWindow : Window, IDialogs
     /// <summary>A folder or file given on the command line, opened instead of the last session.</summary>
     public string? OpenOnStartup { get; set; }
 
+    /// <summary>The view model the window is bound to.</summary>
     public MainViewModel ViewModel => _vm;
 
     private LeanEditor EditorControl => this.FindControl<LeanEditor>("Editor")!;
@@ -258,10 +267,13 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private static bool Hidden(GridLength g) => g.IsAbsolute && g.Value == 0;
 
+    /// <summary>Hide the sidebar, or show it again at the width it had.</summary>
     public void ToggleSidebar() => Toggle(MainGrid.ColumnDefinitions[0], MainGrid.ColumnDefinitions[1], ref _sidebarWidth);
 
+    /// <summary>Hide the infoview on the right, or show it again at the width it had.</summary>
     public void ToggleInfo() => Toggle(MainGrid.ColumnDefinitions[4], MainGrid.ColumnDefinitions[3], ref _infoWidth);
 
+    /// <summary>Hide the bottom panel (problems, output), or show it again at the height it had.</summary>
     public void TogglePanel()
     {
         RowDefinition row = CenterGrid.RowDefinitions[3], splitter = CenterGrid.RowDefinitions[2];
@@ -716,12 +728,14 @@ public sealed partial class MainWindow : Window, IDialogs
 
     // ---- IDialogs ----
 
+    /// <inheritdoc/>
     public async Task<string?> PickFolderAsync(string title)
     {
         IReadOnlyList<IStorageFolder> r = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = title, AllowMultiple = false });
         return r.FirstOrDefault()?.TryGetLocalPath();
     }
 
+    /// <inheritdoc/>
     public async Task<string?> PickFileAsync(string title)
     {
         IReadOnlyList<IStorageFile> r = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
@@ -737,6 +751,7 @@ public sealed partial class MainWindow : Window, IDialogs
         return r.FirstOrDefault()?.TryGetLocalPath();
     }
 
+    /// <inheritdoc/>
     public async Task<string?> SaveFileAsync(string title, string suggestedName, string? folder)
     {
         IStorageFolder? start = folder is null ? null : await StorageProvider.TryGetFolderFromPathAsync(folder);
@@ -751,6 +766,7 @@ public sealed partial class MainWindow : Window, IDialogs
         return f?.TryGetLocalPath();
     }
 
+    /// <inheritdoc/>
     public async Task<string?> SaveWebPageAsync(string title, string suggestedName, string? folder)
     {
         IStorageFolder? start = folder is null ? null : await StorageProvider.TryGetFolderFromPathAsync(folder);
@@ -765,6 +781,7 @@ public sealed partial class MainWindow : Window, IDialogs
         return f?.TryGetLocalPath();
     }
 
+    /// <inheritdoc/>
     public async Task CopyTextAsync(string text)
     {
         if (Clipboard is { } cb)
@@ -773,13 +790,16 @@ public sealed partial class MainWindow : Window, IDialogs
         }
     }
 
+    /// <inheritdoc/>
     public Task<bool> ConfirmAsync(string title, string message) => Dialogs.ConfirmAsync(this, title, message);
 
+    /// <inheritdoc/>
     public Task<string?> PromptAsync(string title, string message, string initial) => Dialogs.PromptAsync(this, title, message, initial);
 
+    /// <inheritdoc/>
     public async Task LaunchAsync(Uri uri) => await Launcher.LaunchUriAsync(uri);
 
-    /// <summary>Show a file selected in Finder or Explorer; elsewhere open its folder.</summary>
+    /// <summary>Show a file selected in Finder or Explorer (by starting <c>open -R</c> or <c>explorer.exe</c>); elsewhere open its folder.</summary>
     public async Task RevealAsync(string path)
     {
         try
@@ -801,6 +821,7 @@ public sealed partial class MainWindow : Window, IDialogs
         await Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(Path.GetDirectoryName(path)!));
     }
 
+    /// <inheritdoc/>
     public Task<NewProjectRequest?> NewProjectAsync(IReadOnlyList<string> toolchains, string defaultParent) =>
         Dialogs.NewProjectAsync(this, toolchains, defaultParent, () => PickFolderAsync("Where to create the project"));
 
@@ -824,6 +845,7 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private void OnLightTheme(object? sender, RoutedEventArgs e) => SetTheme("Light");
 
+    /// <summary>Switch to the <c>Dark</c> or <c>Light</c> theme, apply it to the editor and save the settings.</summary>
     public void SetTheme(string theme)
     {
         _vm.Settings.Theme = theme;
@@ -903,9 +925,12 @@ public sealed partial class MainWindow : Window, IDialogs
 
     private async void OnAbout(object? sender, RoutedEventArgs e) => await ShowAboutAsync();
 
+    /// <summary>Show the About box.</summary>
     public Task ShowAboutAsync() => Dialogs.AboutAsync(this, _vm.Server?.Command.ToString() ?? "not running");
 
+    /// <summary>Show how to connect AI assistants to Lean Studio's MCP server, with one-click setup where possible.</summary>
     public Task ShowConnectAssistantAsync() => Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);
 
+    /// <summary>Show the Preferences dialog; the settings are saved if OK is pressed.</summary>
     public Task ShowPreferencesAsync() => Dialogs.PreferencesAsync(this, _vm.Settings);
 }

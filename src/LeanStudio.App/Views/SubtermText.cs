@@ -17,6 +17,7 @@ namespace LeanStudio.App.Views;
 /// </summary>
 public sealed class SubtermText : SelectableTextBlock
 {
+    /// <summary>Defines the <see cref="Tagged"/> property.</summary>
     public static readonly StyledProperty<TaggedString?> TaggedProperty =
         AvaloniaProperty.Register<SubtermText, TaggedString?>(nameof(Tagged));
 
@@ -24,14 +25,20 @@ public sealed class SubtermText : SelectableTextBlock
     private TaggedSpan? _hovered;
     private CancellationTokenSource? _cts;
 
+    /// <summary>
+    /// The goal text with Lean's subterm spans. Setting it replaces the text shown. Hovering only works inside an
+    /// <see cref="InfoView"/>, whose <see cref="InfoViewModel"/> answers the questions about a subterm.
+    /// </summary>
     public TaggedString? Tagged
     {
         get => GetValue(TaggedProperty);
         set => SetValue(TaggedProperty, value);
     }
 
+    /// <summary>Styled as a plain <see cref="SelectableTextBlock"/>.</summary>
     protected override Type StyleKeyOverride => typeof(SelectableTextBlock);
 
+    /// <inheritdoc/>
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -43,6 +50,7 @@ public sealed class SubtermText : SelectableTextBlock
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
@@ -71,6 +79,7 @@ public sealed class SubtermText : SelectableTextBlock
         }
     }
 
+    /// <inheritdoc/>
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);

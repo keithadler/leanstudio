@@ -7,8 +7,10 @@ namespace LeanStudio.Core.Editing;
 /// </summary>
 public static class Abbreviations
 {
+    /// <summary>The character that starts an abbreviation: a backslash.</summary>
     public const char Leader = '\\';
 
+    /// <summary>Every abbreviation (without the leading backslash) and the symbol it stands for. Case-sensitive.</summary>
     public static IReadOnlyDictionary<string, string> Table { get; } = Build();
 
     private static readonly HashSet<string> Prefixes = Table.Keys
@@ -22,8 +24,10 @@ public static class Abbreviations
     /// <summary>How to type a symbol: its abbreviations, shortest first (⊢ → ["|-", "vdash", "entails"]).</summary>
     public static IReadOnlyList<string> NamesFor(string symbol) => BySymbol.TryGetValue(symbol, out List<string>? names) ? names : [];
 
+    /// <summary>Whether <paramref name="s"/> is an abbreviation or the start of one (without the backslash).</summary>
     public static bool IsPrefix(string s) => Prefixes.Contains(s);
 
+    /// <summary>The symbol <paramref name="s"/> abbreviates exactly, or null if it is not a complete abbreviation.</summary>
     public static string? Lookup(string s) => Table.TryGetValue(s, out string? v) ? v : null;
 
     /// <summary>Is there an abbreviation strictly longer than <paramref name="s"/> that starts with it?</summary>
@@ -44,7 +48,10 @@ public static class Abbreviations
         return Lookup(pending);
     }
 
-    /// <summary>The best candidates for a partial abbreviation, for a completion hint.</summary>
+    /// <summary>
+    /// The best candidates for a partial abbreviation, for a completion hint: every abbreviation starting with
+    /// <paramref name="pending"/>, as (abbreviation, symbol) pairs, shortest first.
+    /// </summary>
     public static IEnumerable<KeyValuePair<string, string>> Candidates(string pending) =>
         Table.Where(kv => kv.Key.StartsWith(pending, StringComparison.Ordinal))
              .OrderBy(kv => kv.Key.Length)

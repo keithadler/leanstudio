@@ -6,17 +6,25 @@ namespace LeanStudio.App.Services;
 /// <summary>What Lean Studio remembers between runs, kept as JSON in the user's application data folder.</summary>
 public sealed class Settings
 {
+    /// <summary><c>Dark</c> or <c>Light</c>; anything else is treated as dark.</summary>
     public string Theme { get; set; } = "Dark";
+    /// <summary>The editor's font size, in device-independent pixels.</summary>
     public double EditorFontSize { get; set; } = 14;
+    /// <summary>The editor font, as a comma-separated list of families to try in order.</summary>
     public string EditorFontFamily { get; set; } = "JuliaMono, Cascadia Code, SF Mono, Menlo, Consolas, DejaVu Sans Mono, Noto Sans Mono, monospace";
+    /// <summary>Whether the editor shows line numbers.</summary>
     public bool ShowLineNumbers { get; set; } = true;
+    /// <summary>Whether typing <c>\alpha</c> and the like in the editor inserts the Unicode symbol.</summary>
     public bool UnicodeInput { get; set; } = true;
     /// <summary>After a successful build, re-check what was built with Tenet.</summary>
     public bool VerifyAfterBuild { get; set; } = true;
     /// <summary>Toolchain for files outside any project, when elan has no default.</summary>
     public string? FallbackToolchain { get; set; }
+    /// <summary>Root folders of recently opened projects, most recent first (at most 12; see <see cref="RememberProject"/>).</summary>
     public List<string> RecentProjects { get; set; } = [];
+    /// <summary>The root folder of the project open when Lean Studio last closed, reopened on start.</summary>
     public string? LastProject { get; set; }
+    /// <summary>Full paths of the files open when Lean Studio last closed, reopened on start if they still exist.</summary>
     public List<string> LastOpenFiles { get; set; } = [];
     /// <summary>Tutorial lessons solved, by file name.</summary>
     public HashSet<string> CompletedLessons { get; set; } = [];
@@ -26,6 +34,7 @@ public sealed class Settings
     public bool InlineResults { get; set; } = true;
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
+    /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Save a file a moment after you stop typing, and everything when the window loses focus.</summary>
     public bool AutoSave { get; set; }
@@ -33,25 +42,36 @@ public sealed class Settings
     public bool ShowBlame { get; set; } = true;
     /// <summary>When exact?, simp? and the like find exactly one answer, put it in the proof.</summary>
     public bool AutoApplyFixes { get; set; }
+    /// <summary>Whether the editor wraps long lines.</summary>
     public bool WordWrap { get; set; }
+    /// <summary>The full path of the file that was active when Lean Studio last closed.</summary>
     public string? LastActiveFile { get; set; }
+    /// <summary>The last command run with Run a shell command, offered again next time.</summary>
     public string? LastShellCommand { get; set; }
-    /// <summary>Where the cursor was in each file, restored when it is opened again.</summary>
+    /// <summary>Where the cursor was in each file, restored when it is opened again: full path to 0-based [line, column].</summary>
     public Dictionary<string, int[]> CaretPositions { get; set; } = [];
+    /// <summary>When updates were last checked for, in UTC; null if never.</summary>
     public DateTime? LastUpdateCheck { get; set; }
+    /// <summary>The release tag the user chose to skip; that version is not offered again automatically.</summary>
     public string? SkippedVersion { get; set; }
 
+    /// <summary>
+    /// The folder settings (and the crash log) are kept in: <c>LeanStudio</c> in the application data folder, or
+    /// <c>$LEANSTUDIO_SETTINGS_DIR</c> when set (for tests).
+    /// </summary>
     [JsonIgnore]
     public static string Directory =>
         Environment.GetEnvironmentVariable("LEANSTUDIO_SETTINGS_DIR") is { Length: > 0 } d
             ? d
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LeanStudio");
 
+    /// <summary>The settings file, <c>settings.json</c> in <see cref="Directory"/>.</summary>
     [JsonIgnore]
     public static string FilePath => Path.Combine(Directory, "settings.json");
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>Read the settings file, or return defaults when it is missing, unreadable or not valid JSON.</summary>
     public static Settings Load()
     {
         try
@@ -67,6 +87,7 @@ public sealed class Settings
         return new Settings();
     }
 
+    /// <summary>Write the settings to <see cref="FilePath"/>, creating the folder. Errors writing the file are ignored.</summary>
     public void Save()
     {
         try
@@ -79,6 +100,10 @@ public sealed class Settings
         }
     }
 
+    /// <summary>
+    /// Put <paramref name="root"/> at the top of <see cref="RecentProjects"/> (keeping 12) and make it
+    /// <see cref="LastProject"/>. Does not save.
+    /// </summary>
     public void RememberProject(string root)
     {
         RecentProjects.RemoveAll(p => string.Equals(p, root, StringComparison.Ordinal));

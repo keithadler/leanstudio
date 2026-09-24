@@ -20,6 +20,7 @@ public sealed class OutputView : UserControl
     };
     private MainViewModel? _vm;
 
+    /// <summary>Create the view; it shows the output of the <see cref="MainViewModel"/> it is given as its data context.</summary>
     public OutputView()
     {
         // Follow the app's theme: the editor's own default is black text, unreadable on the dark theme.
@@ -29,6 +30,7 @@ public sealed class OutputView : UserControl
         Content = _editor;
     }
 
+    /// <inheritdoc/>
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);

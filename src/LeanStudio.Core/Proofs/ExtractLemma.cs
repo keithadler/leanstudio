@@ -4,6 +4,13 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>A goal turned into a lemma of its own: its text, where it goes, and what replaces the sorry.</summary>
+/// <param name="Name">The lemma's name, as the user gave it.</param>
+/// <param name="Text">The <c>theorem</c> with Lean's signature and a <c>sorry</c> proof, ending in a blank line.</param>
+/// <param name="InsertLine">The 0-based line to insert <c>Text</c> before (see <see cref="ExtractLemma.InsertionLine"/>).</param>
+/// <param name="Call">
+/// What replaces the sorry: <c>exact name (by assumption)…</c> in tactic mode, or the application alone
+/// (parenthesized when it has arguments) where a term was expected.
+/// </param>
 public sealed record ExtractedLemma(string Name, string Text, int InsertLine, string Call);
 
 /// <summary>
@@ -18,6 +25,7 @@ public sealed record ExtractedLemma(string Name, string Text, int InsertLine, st
 /// </summary>
 public static partial class ExtractLemma
 {
+    /// <summary>The prefix of the info message the instrumented file logs, which <see cref="Parse"/> looks for.</summary>
     public const string Marker = "⟪extract⟫";
 
     [GeneratedRegex(@"^(@\[[^\]]*\]\s*)*((private|protected|noncomputable|partial|unsafe|nonrec|scoped|local)\s+)*(theorem|lemma|example|def|instance|abbrev|opaque)\b")]
@@ -26,7 +34,10 @@ public static partial class ExtractLemma
     /// <summary>Whether a name can be written as is: letters, digits, _, ' and dots between parts.</summary>
     public static bool IsValidName(string name) => Regex.IsMatch(name, @"^[\p{L}_][\p{L}\p{N}_'!?]*(\.[\p{L}_][\p{L}\p{N}_'!?]*)*$");
 
-    /// <summary>The line to insert a lemma before: the declaration containing <paramref name="line"/>, above its doc comment and attributes.</summary>
+    /// <summary>
+    /// The line to insert a lemma before: the declaration containing <paramref name="line"/>, above its doc comment and
+    /// attributes. Both lines are 0-based.
+    /// </summary>
     public static int InsertionLine(IReadOnlyList<string> lines, int line)
     {
         int i = Math.Min(line, lines.Count - 1);
@@ -125,7 +136,10 @@ public static partial class ExtractLemma
 
         """;
 
-    /// <summary>Read Lean's answer: the use and the signature.</summary>
+    /// <summary>
+    /// Read Lean's answer (the use and the signature) from the messages of the instrumented file; null when none of
+    /// them carries <see cref="Marker"/>, as when Lean never reached the sorry.
+    /// </summary>
     public static ExtractedLemma? Parse(IEnumerable<string> messages, int insertLine)
     {
         foreach (string m in messages)
@@ -157,7 +171,10 @@ public static partial class ExtractLemma
         return string.Join('\n', lines);
     }
 
-    /// <summary>Ask Lean for the lemma, through a scratch document beside the file.</summary>
+    /// <summary>
+    /// Ask Lean for the lemma, through a scratch document beside the file (see <see cref="Scratch.CheckAsync"/>); null
+    /// if Lean did not produce one. Nothing is written to disk: pass the result to <see cref="Apply"/>.
+    /// </summary>
     public static async Task<ExtractedLemma?> RunAsync(LeanServer server, string sourcePath, string text, SorrySite site, string name, CancellationToken ct = default)
     {
         IReadOnlyList<Diagnostic> diags = await Scratch.CheckAsync(server, sourcePath, "Extract", Instrument(text, site, name), ct).ConfigureAwait(false);

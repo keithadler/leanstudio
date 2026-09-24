@@ -4,8 +4,12 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>One input to the REPL and what Lean said about it.</summary>
+/// <param name="Input">The input as typed, trimmed.</param>
+/// <param name="Command">The command actually run: the input, or <c>#eval</c> of it (see <see cref="LeanRepl.AsCommand"/>).</param>
+/// <param name="Messages">Lean's diagnostics on the command's lines.</param>
 public sealed record ReplResult(string Input, string Command, IReadOnlyList<Diagnostic> Messages)
 {
+    /// <summary>Whether any of the messages is an error.</summary>
     public bool IsError => Messages.Any(m => m.Severity == DiagnosticSeverity.Error);
 
     /// <summary>Lean's messages, the result of an #eval first; "✓" for a command Lean accepted silently.</summary>
@@ -68,7 +72,11 @@ public sealed partial class LeanRepl
         return CommandStart().IsMatch(t) ? t : "#eval " + t;
     }
 
-    /// <summary>Check <paramref name="input"/> after <paramref name="context"/>, in a scratch document beside the file.</summary>
+    /// <summary>
+    /// Check <paramref name="input"/> after <paramref name="context"/> (from <see cref="Context"/>), in a scratch
+    /// document beside the file that stays open between calls, and wait until Lean has elaborated it. Only messages on
+    /// the input's lines are returned. Not safe to call concurrently on one instance.
+    /// </summary>
     public async Task<ReplResult> EvalAsync(LeanServer server, string sourcePath, string context, string input, CancellationToken ct = default)
     {
         string command = AsCommand(input);

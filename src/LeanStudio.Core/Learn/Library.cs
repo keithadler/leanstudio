@@ -5,9 +5,15 @@ using LeanStudio.Core.Toolchains;
 namespace LeanStudio.Core.Learn;
 
 /// <summary>A piece of code to insert: a name, what it is for, and the text (with $0 where the cursor goes).</summary>
+/// <param name="Name">The snippet's name, for the picker.</param>
+/// <param name="Description">What it is for, in a few words.</param>
+/// <param name="Body">The code, with <c>\n</c> line breaks and <c>$0</c> where the cursor goes.</param>
 public sealed record Snippet(string Name, string Description, string Body)
 {
-    /// <summary>The body with every line after the first indented to match the line it is inserted into.</summary>
+    /// <summary>
+    /// The body with every line after the first indented to match the line it is inserted into, and the offset in
+    /// that text where the cursor goes (<c>$0</c>, removed; the end when there is none).
+    /// </summary>
     public (string Text, int CursorOffset) Expand(string indent)
     {
         string text = Body.Replace("\n", "\n" + indent, StringComparison.Ordinal);
@@ -17,8 +23,10 @@ public sealed record Snippet(string Name, string Description, string Body)
     }
 }
 
+/// <summary>The built-in code snippets for the Insert menu, for people new to Lean's syntax.</summary>
 public static class Snippets
 {
+    /// <summary>Every snippet, in menu order.</summary>
     public static IReadOnlyList<Snippet> All { get; } =
     [
         new("Function", "A function with typed inputs", "def name (x : Nat) : Nat :=\n  $0"),
@@ -40,6 +48,11 @@ public static class Snippets
 }
 
 /// <summary>A famous or pleasing theorem: what it says in English, and its name in Lean.</summary>
+/// <param name="Title">A short title.</param>
+/// <param name="English">The statement in plain English.</param>
+/// <param name="LeanName">The fully qualified name of the theorem in Lean or Mathlib.</param>
+/// <param name="NeedsMathlib">Whether it is in Mathlib rather than core Lean.</param>
+/// <param name="Story">An optional sentence on how it is proved or why it is interesting.</param>
 public sealed record FamousTheorem(string Title, string English, string LeanName, bool NeedsMathlib, string? Story = null)
 {
     /// <summary>What to put in the playground to meet it: its statement, and what it rests on.</summary>
@@ -53,6 +66,7 @@ public sealed record FamousTheorem(string Title, string English, string LeanName
 /// </summary>
 public static class TheoremGallery
 {
+    /// <summary>The theorems, core Lean ones first.</summary>
     public static IReadOnlyList<FamousTheorem> All { get; } =
     [
         new("Addition is commutative", "For all natural numbers a and b, a + b = b + a.", "Nat.add_comm", false, "Proved by induction, from the definition of addition."),
@@ -79,9 +93,18 @@ public static class TheoremGallery
 /// </summary>
 public static class ProgramRunner
 {
+    /// <summary>Whether the text defines a <c>main</c> (possibly <c>unsafe</c> or <c>partial</c>) at the start of a line.</summary>
     public static bool HasMain(string text) =>
         System.Text.RegularExpressions.Regex.IsMatch(text, @"(^|\n)\s*(unsafe\s+|partial\s+)*def\s+main\b");
 
+    /// <summary>
+    /// Run <paramref name="file"/>'s <c>main</c> in a new <c>lean --run</c> process, from the project's root, and
+    /// return when it exits. The file is run as it is on disk, so save it first.
+    /// </summary>
+    /// <param name="project">The project the file belongs to; decides whether it runs through <c>lake env</c>.</param>
+    /// <param name="file">The file to run.</param>
+    /// <param name="onLine">Called with each line of output (standard output and error) as it arrives, on a background thread.</param>
+    /// <param name="ct">Kills the program and its child processes; the task then throws <see cref="OperationCanceledException"/>.</param>
     public static Task<ProcessResult> RunAsync(LeanProject project, string file, Action<string>? onLine = null, CancellationToken ct = default)
     {
         string lean = Elan.FindExecutable("lean") ?? "lean";

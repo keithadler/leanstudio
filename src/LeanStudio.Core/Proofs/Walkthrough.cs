@@ -6,9 +6,23 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>One tactic of a walkthrough: what it says, what it does in words, and the goals it leaves.</summary>
+/// <param name="Line">The 0-based line of the tactic.</param>
+/// <param name="Tactic">The tactic's text.</param>
+/// <param name="Explanation">What the tactic does in plain words, from the tactic guide, or null for a tactic it does not know.</param>
+/// <param name="Change">
+/// The <see cref="StepChange.Summary"/> of the step, or <c>continues below</c> for a tactic whose block carries on in
+/// the lines after it.
+/// </param>
+/// <param name="GoalsAfter">The goals left after the tactic, rendered as text; empty when it continues below or closed the goal.</param>
 public sealed record WalkStep(int Line, string Tactic, string? Explanation, string Change, IReadOnlyList<string> GoalsAfter);
 
 /// <summary>One tactic proof, from the statement and its opening goal to the last step.</summary>
+/// <param name="Declaration">The declaration's name, or <c>example</c>.</param>
+/// <param name="Line">The 0-based line of the declaration keyword.</param>
+/// <param name="Statement">The source from the declaration line down to the line with <c>by</c>.</param>
+/// <param name="InWords">The opening goal read in plain English, or null when it could not be.</param>
+/// <param name="GoalsBefore">The goals before the first tactic, rendered as text.</param>
+/// <param name="Steps">Each tactic line in order.</param>
 public sealed record WalkProof(string Declaration, int Line, string Statement, string? InWords, IReadOnlyList<string> GoalsBefore, IReadOnlyList<WalkStep> Steps);
 
 /// <summary>
@@ -20,6 +34,7 @@ public sealed record WalkProof(string Declaration, int Line, string Statement, s
 /// </summary>
 public static class Walkthrough
 {
+    /// <summary>The Lean 4 web editor's address.</summary>
     public const string WebEditor = "https://live.lean-lang.org/";
 
     /// <summary>A link that opens <paramref name="code"/> in the Lean 4 web editor (which has Mathlib).</summary>
@@ -36,7 +51,7 @@ public static class Walkthrough
             .Where(m => !WebEditorLibraries.Contains(m.Split('.')[0]))
             .ToList();
 
-    /// <summary>Every tactic proof in the file, in order.</summary>
+    /// <summary>Every tactic proof in the file (declarations with at least one tactic line), in order.</summary>
     public static IReadOnlyList<TacticProof> Proofs(IReadOnlyList<string> lines)
     {
         var list = new List<TacticProof>();
@@ -56,7 +71,14 @@ public static class Walkthrough
         return list;
     }
 
-    /// <summary>Ask Lean for the state around every step of every tactic proof in an elaborated document.</summary>
+    /// <summary>
+    /// Ask Lean for the state around every step of every tactic proof in an elaborated document. Makes two or three
+    /// goal requests per step, so it takes a while on a long file; <paramref name="ct"/> is checked between proofs.
+    /// </summary>
+    /// <param name="server">The Lean server that has <paramref name="uri"/> open.</param>
+    /// <param name="uri">The document's URI.</param>
+    /// <param name="lines">The document's text, split into lines, as the server has it.</param>
+    /// <param name="ct">Cancels the walk.</param>
     public static async Task<IReadOnlyList<WalkProof>> BuildAsync(LeanServer server, string uri, IReadOnlyList<string> lines, CancellationToken ct = default)
     {
         var result = new List<WalkProof>();
@@ -85,7 +107,10 @@ public static class Walkthrough
 
     private static string E(string s) => WebUtility.HtmlEncode(s);
 
-    /// <summary>The walkthrough as one web page, with no outside resources, readable in light and dark.</summary>
+    /// <summary>
+    /// The walkthrough as one web page, with no outside resources, readable in light and dark. All text is
+    /// HTML-encoded; <paramref name="source"/> is the whole file, shown at the end and used for the web editor link.
+    /// </summary>
     public static string Html(string title, IReadOnlyList<WalkProof> proofs, string source)
     {
         var sb = new StringBuilder();

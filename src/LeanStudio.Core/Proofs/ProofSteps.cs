@@ -4,6 +4,9 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>One line of a tactic proof, and where to ask Lean for the state after it.</summary>
+/// <param name="Line">The 0-based line in the file.</param>
+/// <param name="Text">The tactic text on that line, trimmed and with comments removed.</param>
+/// <param name="Indent">The 0-based column where the tactic starts.</param>
 public sealed record ProofStep(int Line, string Text, int Indent)
 {
     /// <summary>The start of the tactic: Lean reports the state before it there.</summary>
@@ -14,6 +17,10 @@ public sealed record ProofStep(int Line, string Text, int Indent)
 }
 
 /// <summary>The tactic proof around a line: the declaration it belongs to and each tactic line in order.</summary>
+/// <param name="Declaration">The declaration's name, or <c>example</c>.</param>
+/// <param name="DeclarationLine">The 0-based line of the declaration keyword.</param>
+/// <param name="Start">The position just after the <c>by</c> that opens the tactic block.</param>
+/// <param name="Steps">Each non-blank tactic line after <c>by</c>, to the end of the declaration.</param>
 public sealed record TacticProof(string Declaration, int DeclarationLine, Position Start, IReadOnlyList<ProofStep> Steps);
 
 /// <summary>
@@ -31,6 +38,11 @@ public static partial class ProofSteps
     [GeneratedRegex(@"(^|[\s(:=])by(\s*$|\s+)")]
     private static partial Regex By();
 
+    /// <summary>
+    /// The tactic proof of the declaration containing <paramref name="cursorLine"/> (0-based), or null when the line is
+    /// outside any declaration or the declaration has no <c>by</c> block. A declaration runs from its keyword to the next
+    /// line that starts in column 0 and is not a comment.
+    /// </summary>
     public static TacticProof? Find(IReadOnlyList<string> lines, int cursorLine)
     {
         if (cursorLine < 0 || cursorLine >= lines.Count)
@@ -202,6 +214,12 @@ public static partial class ProofSteps
 }
 
 /// <summary>What one tactic changed: hypotheses added, removed or retyped, and the goals it opened or closed.</summary>
+/// <param name="Added">Names of hypotheses in the main goal after the tactic that were not there before.</param>
+/// <param name="Removed">Names of hypotheses that disappeared from the main goal (empty when either side has no goal).</param>
+/// <param name="Changed">Names of hypotheses whose type changed.</param>
+/// <param name="GoalsBefore">The number of goals before the tactic.</param>
+/// <param name="GoalsAfter">The number of goals after it.</param>
+/// <param name="TargetChanged">Whether the main goal's target (the type after <c>⊢</c>) changed.</param>
 public sealed record StepChange(
     IReadOnlyList<string> Added,
     IReadOnlyList<string> Removed,
@@ -210,8 +228,13 @@ public sealed record StepChange(
     int GoalsAfter,
     bool TargetChanged)
 {
+    /// <summary>Whether no goals remain after the tactic.</summary>
     public bool ClosedAll => GoalsAfter == 0;
 
+    /// <summary>
+    /// A compact description for a step list, such as <c>+1 goal  +h  ~n</c> (<c>+</c> added, <c>−</c> removed,
+    /// <c>~</c> retyped), <c>goals accomplished</c> or <c>no change</c>.
+    /// </summary>
     public string Summary
     {
         get

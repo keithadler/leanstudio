@@ -12,7 +12,10 @@ namespace LeanStudio.Core.Agents;
 /// </summary>
 public static class StudioBridge
 {
-    /// <summary>One name per user, so two people on a machine never reach each other's window.</summary>
+    /// <summary>
+    /// One name per user, so two people on a machine never reach each other's window: <c>leanstudio-</c> and the user
+    /// name, or the value of the <c>LEANSTUDIO_PIPE</c> environment variable when it is set.
+    /// </summary>
     public static string PipeName
     {
         get
@@ -27,7 +30,10 @@ public static class StudioBridge
         }
     }
 
-    /// <summary>Send one request to the running window. Null when no window is running (or it did not answer in time).</summary>
+    /// <summary>
+    /// Send one request to the running window and return its answer. Null when no window is running, it did not
+    /// answer within <paramref name="timeout"/> (5 seconds by default), or the answer was not a JSON object.
+    /// </summary>
     public static async Task<JsonObject?> RequestAsync(JsonObject request, TimeSpan? timeout = null, CancellationToken ct = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -50,7 +56,9 @@ public static class StudioBridge
 
     /// <summary>
     /// Serve requests until cancelled. Returns immediately with false if another window already owns the pipe:
-    /// the first window opened is the one assistants talk to.
+    /// the first window opened is the one assistants talk to. Requests are handled one at a time on a thread-pool
+    /// thread, so <paramref name="handle"/> must marshal to the UI thread itself; an exception it throws is sent back
+    /// as <c>{"error": message}</c>.
     /// </summary>
     public static bool TryServe(Func<JsonObject, Task<JsonObject>> handle, CancellationToken ct)
     {

@@ -8,6 +8,9 @@ using Avalonia.Threading;
 namespace LeanStudio.App.Views;
 
 /// <summary>An entry in a picker: what it says, a hint to its right, and what choosing it does.</summary>
+/// <param name="Title">The entry's text.</param>
+/// <param name="Detail">A dimmed hint shown to its right (a path, a shortcut), or null.</param>
+/// <param name="Run">What choosing it does; run on the UI thread after the picker has closed.</param>
 public sealed record PickerItem(string Title, string? Detail, Func<Task> Run);
 
 /// <summary>
@@ -17,6 +20,11 @@ public sealed record PickerItem(string Title, string? Detail, Func<Task> Run);
 /// </summary>
 internal static class Picker
 {
+    /// <summary>
+    /// Show a picker over <paramref name="owner"/> and wait until it closes, then run the chosen item, if any.
+    /// <paramref name="source"/> is called with the query each time it changes (and once on opening); a call still
+    /// running when the query changes again is cancelled and its result ignored.
+    /// </summary>
     public static async Task ShowAsync(Window owner, string placeholder, Func<string, CancellationToken, Task<IReadOnlyList<PickerItem>>> source, string initial = "")
     {
         var box = new TextBox { PlaceholderText = placeholder, Text = initial, FontSize = 14, Margin = new Thickness(8) };

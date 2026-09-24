@@ -7,15 +7,23 @@ using LeanStudio.Core.Workflow;
 namespace LeanStudio.Core.Proofs;
 
 /// <summary>How long Lean spent on one declaration, and the part of it that took longest.</summary>
+/// <param name="Line">The 0-based line of the top-level command the time belongs to.</param>
+/// <param name="Declaration">That line's text, trimmed and cut to 70 characters.</param>
+/// <param name="Seconds">The total time Lean reported for it, in seconds.</param>
+/// <param name="HotSpot">The innermost step that took at least 40% of the time, as Lean describes it, or null.</param>
+/// <param name="HotSpotSeconds">The time of <c>HotSpot</c>, in seconds (0 when there is none).</param>
 public sealed record DeclarationTiming(int Line, string Declaration, double Seconds, string? HotSpot, double HotSpotSeconds)
 {
+    /// <summary>The total time for display, in <c>ms</c> under a second and <c>s</c> above.</summary>
     public string Time => Format(Seconds);
 
+    /// <summary>A time in seconds for display: <c>42 ms</c> under a second, <c>1.25 s</c> from one up.</summary>
     public static string Format(double s) => s < 1 ? $"{s * 1000:F0} ms" : $"{s:F2} s";
 
     /// <summary>0 cool, 1 warm, 2 hot: under 100 ms, under a second, or more.</summary>
     public int Heat => Seconds >= 1 ? 2 : Seconds >= 0.1 ? 1 : 0;
 
+    /// <summary>The time and, when there is one, the slowest part and its time, for a tooltip.</summary>
     public string Detail => HotSpot is null ? Time : $"{Time}   slowest part: {HotSpot} ({Format(HotSpotSeconds)})";
 }
 
@@ -146,6 +154,8 @@ public static partial class Profiler
     /// <summary>
     /// Profile a file's text with the <c>lean</c> command line (a copy in the project's mirror, so unsaved text is
     /// what is measured). Proofs are elaborated one after another there, so each time is that declaration's own.
+    /// Writes the mirror copy and runs a <c>lean</c> process. Returns the timings, slowest first, or no timings and an
+    /// error message when Lean produced none and failed (typically because the file's imports are not built).
     /// </summary>
     public static async Task<(IReadOnlyList<DeclarationTiming> Timings, string? Error)> RunAsync(LeanProject project, string sourcePath, string text, CancellationToken ct = default)
     {

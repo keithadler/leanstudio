@@ -2,6 +2,12 @@ using System.Text.RegularExpressions;
 
 namespace LeanStudio.Core.Editing;
 
+/// <summary>One match found by <see cref="ProjectSearch.Search"/>.</summary>
+/// <param name="Path">The file's full path.</param>
+/// <param name="Line">The 0-based line of the match.</param>
+/// <param name="Column">The 0-based column where the match starts.</param>
+/// <param name="Length">The match's length in characters.</param>
+/// <param name="LineText">The whole line the match is on.</param>
 public sealed record SearchHit(string Path, int Line, int Column, int Length, string LineText);
 
 /// <summary>Find in files: every match of a text or regular expression in a project's sources.</summary>
@@ -10,6 +16,19 @@ public static class ProjectSearch
     private static readonly HashSet<string> Skip = new(StringComparer.Ordinal) { ".git", ".lake", "build", "bin", "obj", "node_modules" };
     private static readonly HashSet<string> Extensions = new(StringComparer.OrdinalIgnoreCase) { ".lean", ".md", ".toml", ".json", ".txt", ".yml", ".yaml" };
 
+    /// <summary>
+    /// Search every file <see cref="Files"/> finds under <paramref name="root"/>, line by line. Runs synchronously and
+    /// reads from disk, so call it off the UI thread. Files that cannot be read are skipped.
+    /// </summary>
+    /// <param name="root">The folder to search.</param>
+    /// <param name="query">The text or pattern; an empty query finds nothing.</param>
+    /// <param name="caseSensitive">Whether case must match.</param>
+    /// <param name="regex">
+    /// Whether <paramref name="query"/> is a .NET regular expression; an invalid one finds nothing, and each match is
+    /// limited to one second.
+    /// </param>
+    /// <param name="limit">Stop once this many hits are found (checked after each line, so it can be slightly exceeded).</param>
+    /// <param name="ct">Checked before each file.</param>
     public static IReadOnlyList<SearchHit> Search(string root, string query, bool caseSensitive = false, bool regex = false, int limit = 2000, CancellationToken ct = default)
     {
         var hits = new List<SearchHit>();
@@ -68,7 +87,11 @@ public static class ProjectSearch
         return hits;
     }
 
-    /// <summary>Source files under a folder, skipping build output, dependencies and hidden folders.</summary>
+    /// <summary>
+    /// Source files under a folder, skipping build output, dependencies and hidden folders: Lean, Markdown, TOML,
+    /// JSON, YAML and text files and <c>lean-toolchain</c>, or only <c>.lean</c> files when <paramref name="leanOnly"/>.
+    /// Enumerated lazily, depth first, in ordinal order; unreadable folders are skipped.
+    /// </summary>
     public static IEnumerable<string> Files(string root, bool leanOnly = false)
     {
         var pending = new Stack<string>();

@@ -3,6 +3,10 @@ using System.Text.RegularExpressions;
 namespace LeanStudio.Core.Learn;
 
 /// <summary>What a tactic or keyword does, in plain words, with a small example.</summary>
+/// <param name="Name">The tactic or keyword, as written in Lean.</param>
+/// <param name="Kind"><c>tactic</c> or <c>keyword</c>.</param>
+/// <param name="Explanation">What it does, for a beginner.</param>
+/// <param name="Example">A short example of its use; may span lines.</param>
 public sealed record GuideEntry(string Name, string Kind, string Explanation, string Example);
 
 /// <summary>
@@ -11,6 +15,7 @@ public sealed record GuideEntry(string Name, string Kind, string Explanation, st
 /// </summary>
 public static class TacticGuide
 {
+    /// <summary>The entry for a tactic or keyword (exact, case-sensitive), or null when there is none.</summary>
     public static GuideEntry? Explain(string word) => Entries.TryGetValue(word, out GuideEntry? e) ? e : null;
 
     /// <summary>The first word of a tactic line (after bullets, case arms and <c>&lt;;&gt;</c>), which names the tactic.</summary>
@@ -29,6 +34,7 @@ public static class TacticGuide
     private static GuideEntry T(string name, string explanation, string example) => new(name, "tactic", explanation, example);
     private static GuideEntry K(string name, string explanation, string example) => new(name, "keyword", explanation, example);
 
+    /// <summary>Every entry, keyed by <see cref="GuideEntry.Name"/> (case-sensitive).</summary>
     public static IReadOnlyDictionary<string, GuideEntry> Entries { get; } = new[]
     {
         T("intro", "Proves \"if … then …\" or \"for all …\" by assuming the premise: moves it from the goal into your hypotheses, under the name you give.", "theorem t (p : Prop) : p → p := by\n  intro hp\n  exact hp"),
@@ -154,7 +160,10 @@ public static partial class ErrorGuide
 
     private static Regex R(string pattern) => new(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(200));
 
-    /// <summary>A beginner's explanation of an error or warning, or null when there is none for it.</summary>
+    /// <summary>
+    /// A beginner's explanation of an error or warning, or null when there is none for it. The first rule whose
+    /// pattern matches the message (ignoring case) wins.
+    /// </summary>
     public static string? Explain(string message)
     {
         string first = message.TrimStart();
@@ -182,6 +191,10 @@ public static partial class ErrorGuide
 /// </summary>
 public static partial class PlainEnglish
 {
+    /// <summary>
+    /// The statement read in English, starting with a capital letter. Whitespace is collapsed first; parts it does
+    /// not recognize are left as Lean wrote them.
+    /// </summary>
     public static string Read(string statement)
     {
         string s = Regex.Replace(statement.Trim(), @"\s+", " ");

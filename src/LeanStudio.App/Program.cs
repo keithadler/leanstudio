@@ -4,8 +4,16 @@ using LeanStudio.Mcp;
 
 namespace LeanStudio.App;
 
+/// <summary>
+/// The entry point: opens the IDE window, or with <c>--mcp</c> runs as an MCP server over standard input and output.
+/// </summary>
 internal static class Program
 {
+    /// <summary>
+    /// Start Lean Studio. With <c>--mcp</c> (and optionally <c>--project DIR</c>) it serves MCP on stdio until
+    /// standard input closes or Ctrl+C, logging to standard error; otherwise it opens the window, and the first
+    /// argument not starting with <c>--</c> is a file or folder to open. Returns the process exit code.
+    /// </summary>
     [STAThread]
     public static int Main(string[] args)
     {
@@ -18,6 +26,7 @@ internal static class Program
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
+    /// <summary>The Avalonia app configuration; also used by the XAML designer.</summary>
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()

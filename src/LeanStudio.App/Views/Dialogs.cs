@@ -11,6 +11,7 @@ namespace LeanStudio.App.Views;
 /// <summary>Lets a test harness see each dialog as it opens (to capture it, and close it).</summary>
 public static class DialogHooks
 {
+    /// <summary>Raised on the UI thread when any of the <c>Dialogs</c> windows opens, with that window.</summary>
     public static event Action<Window>? Opened;
 
     internal static void Raise(Window w) => Opened?.Invoke(w);
@@ -57,6 +58,7 @@ internal static class Dialogs
         return p;
     }
 
+    /// <summary>Ask a yes-or-no question; true only if OK was pressed.</summary>
     public static async Task<bool> ConfirmAsync(Window owner, string title, string message)
     {
         bool result = false;
@@ -73,6 +75,7 @@ internal static class Dialogs
         return result;
     }
 
+    /// <summary>Show a message (selectable, so it can be copied) with an OK button, and wait until it is closed.</summary>
     public static async Task InfoAsync(Window owner, string title, string message, double width = 460)
     {
         var ok = new Button { Content = "OK", IsDefault = true, IsCancel = true, Classes = { "accent" } };
@@ -330,6 +333,7 @@ internal static class Dialogs
         await w.ShowDialog(owner);
     }
 
+    /// <summary>Ask for one line of text, starting from <paramref name="initial"/>; null if cancelled.</summary>
     public static async Task<string?> PromptAsync(Window owner, string title, string message, string initial)
     {
         string? result = null;
@@ -345,6 +349,10 @@ internal static class Dialogs
         return result;
     }
 
+    /// <summary>
+    /// The New Project form: name, location, template and toolchain, checked before it closes. Returns what to create,
+    /// or null if cancelled; nothing is created here.
+    /// </summary>
     public static async Task<NewProjectRequest?> NewProjectAsync(Window owner, IReadOnlyList<string> toolchains, string defaultParent, Func<Task<string?>> pickFolder)
     {
         NewProjectRequest? result = null;

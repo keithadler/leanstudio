@@ -7,10 +7,17 @@ using LeanStudio.Lsp;
 namespace LeanStudio.Core.Agents;
 
 /// <summary>What Lean said about a file once it finished elaborating it.</summary>
+/// <param name="Path">The file's full path.</param>
+/// <param name="Uri">The <c>file://</c> URI Lean knows it by.</param>
+/// <param name="Diagnostics">Every diagnostic Lean published for the text (partial if elaboration timed out).</param>
+/// <param name="Text">The exact text that was checked.</param>
 public sealed record FileReport(string Path, string Uri, IReadOnlyList<Diagnostic> Diagnostics, string Text)
 {
+    /// <summary>The number of error diagnostics.</summary>
     public int Errors => Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error);
+    /// <summary>The number of warning diagnostics.</summary>
     public int Warnings => Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Warning);
+    /// <summary>Whether any diagnostic mentions <c>sorry</c> (as Lean's "declaration uses 'sorry'" warning does).</summary>
     public bool UsesSorry => Diagnostics.Any(d => d.Message.Contains("sorry", StringComparison.Ordinal));
 }
 
@@ -24,11 +31,17 @@ public sealed class Workbench : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ProjectSession> _sessions = new(StringComparer.Ordinal);
     private readonly string? _defaultRoot;
 
+    /// <summary>Create a workbench. No server starts until a file is checked.</summary>
+    /// <param name="defaultRoot">
+    /// The folder relative paths are resolved against and the project used when no path is given; null for the
+    /// current directory.
+    /// </param>
     public Workbench(string? defaultRoot = null)
     {
         _defaultRoot = defaultRoot is null ? null : Path.GetFullPath(defaultRoot);
     }
 
+    /// <summary>Progress and server output from every session, one line at a time, raised on whatever thread produced it.</summary>
     public event Action<string>? Log;
 
     /// <summary>Resolve a path the caller gave (absolute, or relative to the default project) to a full path.</summary>
@@ -41,7 +54,10 @@ public sealed class Workbench : IAsyncDisposable
         return Path.GetFullPath(Path.Combine(_defaultRoot ?? Directory.GetCurrentDirectory(), path));
     }
 
-    /// <summary>The project a file belongs to, or the default project when no path is given.</summary>
+    /// <summary>
+    /// The project a file belongs to (the nearest enclosing Lake project), or the default project when no path is
+    /// given. A path outside any project gets a project rooted at its folder.
+    /// </summary>
     public LeanProject ProjectFor(string? path)
     {
         if (path is null)
@@ -53,12 +69,14 @@ public sealed class Workbench : IAsyncDisposable
         return LeanProject.FindEnclosing(full) ?? new LeanProject(Directory.Exists(full) ? full : Path.GetDirectoryName(full)!);
     }
 
+    /// <summary>The session for the project <paramref name="path"/> belongs to (see <see cref="ProjectFor"/>), created on first use.</summary>
     public ProjectSession Session(string? path)
     {
         LeanProject p = ProjectFor(path);
         return _sessions.GetOrAdd(p.Root, _ => new ProjectSession(p, s => Log?.Invoke(s)));
     }
 
+    /// <summary>Dispose every session, stopping their Lean servers.</summary>
     public async ValueTask DisposeAsync()
     {
         foreach (ProjectSession s in _sessions.Values)
@@ -84,11 +102,17 @@ public sealed class ProjectSession : IAsyncDisposable
         _log = log;
     }
 
+    /// <summary>The project this session serves.</summary>
     public LeanProject Project { get; }
 
     /// <summary>How long to wait for Lean to finish a file before giving up and reporting what it has so far.</summary>
     public static TimeSpan ElaborationTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// The project's Lean server, started (or restarted, if it stopped) when needed. Starting one spawns
+    /// <c>lake serve</c> with the project's toolchain, or the newest installed toolchain when the project names none.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">elan is not installed.</exception>
     public async Task<LeanServer> ServerAsync(CancellationToken ct = default)
     {
         if (_server is { State: LeanServerState.Running } s)
@@ -118,6 +142,7 @@ public sealed class ProjectSession : IAsyncDisposable
     /// <summary>
     /// Make Lean elaborate a file and wait for it. The text is <paramref name="content"/> when given (checked
     /// without being written anywhere), else what is on disk now, so edits made by another program are seen.
+    /// After <see cref="ElaborationTimeout"/> it stops waiting and reports the diagnostics so far.
     /// </summary>
     public async Task<FileReport> CheckAsync(string path, string? content = null, CancellationToken ct = default)
     {
@@ -174,6 +199,7 @@ public sealed class ProjectSession : IAsyncDisposable
         _tenet = null;
     }
 
+    /// <summary>Close the Tenet workspace and stop the Lean server.</summary>
     public async ValueTask DisposeAsync()
     {
         _tenet?.Dispose();

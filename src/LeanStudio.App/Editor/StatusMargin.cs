@@ -20,8 +20,11 @@ public sealed class StatusMargin : AbstractMargin
 
     private static readonly IBrush ProcessingBrush = new SolidColorBrush(Color.FromArgb(0xD0, 0xE5, 0x9E, 0x2C));
     private static readonly IBrush FatalBrush = new SolidColorBrush(Color.FromArgb(0xD0, 0xE0, 0x40, 0x40));
+    /// <summary>The green of a verified declaration, shared with other views that show verdicts.</summary>
     public static readonly IBrush VerifiedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
+    /// <summary>The amber of a declaration that rests on <c>sorry</c> or a project axiom.</summary>
     public static readonly IBrush ConditionalBrush = new SolidColorBrush(Color.FromRgb(0xE5, 0x9E, 0x2C));
+    /// <summary>The red of a declaration Tenet rejected.</summary>
     public static readonly IBrush RejectedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
 
     private IReadOnlyList<Core.Git.LineChange> _changes = [];
@@ -36,11 +39,16 @@ public sealed class StatusMargin : AbstractMargin
         InvalidateVisual();
     }
 
+    /// <summary>Whether a lightbulb is drawn on the line (1-based).</summary>
     public bool HasBulb(int oneBasedLine) => _bulbs.Contains(oneBasedLine);
     private static readonly IBrush AddedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xB9, 0x50));
     private static readonly IBrush ModifiedBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x8E, 0xEA));
     private static readonly IBrush DeletedBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
 
+    /// <summary>Replace what the margin shows and redraw it.</summary>
+    /// <param name="processing">The ranges Lean is still elaborating (LSP ranges, 0-based lines).</param>
+    /// <param name="verdicts">Tenet's verdict for each declaration, keyed by the 1-based line of the declaration.</param>
+    /// <param name="changes">Lines changed since the last commit (1-based start lines).</param>
     public void Update(IReadOnlyList<LeanFileProgressRange> processing, IReadOnlyDictionary<int, DeclarationVerdict> verdicts, IReadOnlyList<Core.Git.LineChange> changes)
     {
         _processing = processing;
@@ -49,10 +57,13 @@ public sealed class StatusMargin : AbstractMargin
         InvalidateVisual();
     }
 
+    /// <summary>Tenet's verdict for the declaration on the line (1-based), or null when there is none.</summary>
     public DeclarationVerdict? VerdictAtLine(int oneBasedLine) => _verdicts.TryGetValue(oneBasedLine, out DeclarationVerdict? v) ? v : null;
 
+    /// <inheritdoc/>
     protected override Size MeasureOverride(Size availableSize) => new(20, 0);
 
+    /// <inheritdoc/>
     protected override void OnTextViewChanged(TextView? oldTextView, TextView? newTextView)
     {
         if (oldTextView is not null)
@@ -68,6 +79,7 @@ public sealed class StatusMargin : AbstractMargin
 
     private void OnVisualLinesChanged(object? sender, EventArgs e) => InvalidateVisual();
 
+    /// <inheritdoc/>
     public override void Render(DrawingContext context)
     {
         TextView? view = TextView;

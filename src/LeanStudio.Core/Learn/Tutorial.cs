@@ -7,8 +7,14 @@ namespace LeanStudio.Core.Learn;
 /// <see cref="Solutions"/> holds a model answer for each <c>sorry</c> in order; the tests use them to prove every
 /// exercise can be done in plain Lean, so a newcomer is never stuck on one that cannot.
 /// </summary>
+/// <param name="FileName">The lesson's file name, such as <c>01_Hello.lean</c>, which also orders the lessons.</param>
+/// <param name="Title">The lesson's title, for lists.</param>
+/// <param name="Summary">One sentence on what the lesson covers.</param>
+/// <param name="Content">The lesson file's full starting text.</param>
+/// <param name="Solutions">A model answer for each <c>sorry</c> in the code, in order.</param>
 public sealed record Lesson(string FileName, string Title, string Summary, string Content, IReadOnlyList<string> Solutions)
 {
+    /// <summary>The number of exercises (<c>sorry</c>s to replace) in the lesson.</summary>
     public int Exercises => Solutions.Count;
 }
 
@@ -25,11 +31,13 @@ public static class Tutorial
             ? h
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Lean Studio");
 
+    /// <summary>Where the tutorial is written unless a folder is given: <c>Tutorial</c> under <see cref="Home"/>.</summary>
     public static string DefaultFolder => Path.Combine(Home, "Tutorial");
 
     /// <summary>
     /// Write the lessons into <paramref name="folder"/>, keeping any lesson already there (it holds the person's
-    /// work). Pins a toolchain so Lean knows which version to run.
+    /// work). Pins a toolchain so Lean knows which version to run, unless a <c>lean-toolchain</c> file is already
+    /// there or none is installed. Returns the folder (<see cref="DefaultFolder"/> when none is given).
     /// </summary>
     public static async Task<string> CreateAsync(string? folder = null, CancellationToken ct = default)
     {
@@ -51,9 +59,10 @@ public static class Tutorial
         return folder;
     }
 
-    /// <summary>Put a lesson back the way it started.</summary>
+    /// <summary>Put a lesson back the way it started, overwriting the person's work in its file.</summary>
     public static void Reset(string folder, Lesson lesson) => File.WriteAllText(Path.Combine(folder, lesson.FileName), lesson.Content);
 
+    /// <summary>The lesson whose file name matches <paramref name="path"/>'s (in any folder), or null.</summary>
     public static Lesson? LessonFor(string path) =>
         Lessons.FirstOrDefault(l => string.Equals(Path.GetFileName(path), l.FileName, StringComparison.Ordinal));
 
@@ -73,7 +82,7 @@ public static class Tutorial
         return text;
     }
 
-    /// <summary>The offset of the first <c>sorry</c> outside comments, or -1.</summary>
+    /// <summary>The offset of the first <c>sorry</c> outside comments, or -1. Assumes <c>\n</c> line endings.</summary>
     public static int FirstCodeSorry(string text)
     {
         bool inBlock = false;
@@ -91,6 +100,7 @@ public static class Tutorial
         return -1;
     }
 
+    /// <summary>The lessons, in order.</summary>
     public static IReadOnlyList<Lesson> Lessons { get; } =
     [
         new("01_Hello.lean", "Hello, Lean", "Run code with #eval, ask for types with #check, name things with def.", """
@@ -529,8 +539,10 @@ public static class Tutorial
 /// <summary>The playground: one Lean file to try things in, with no project to set up.</summary>
 public static class Playground
 {
+    /// <summary>Where the playground is created unless a folder is given: <c>Playground</c> under <see cref="Tutorial.Home"/>.</summary>
     public static string DefaultFolder => Path.Combine(Tutorial.Home, "Playground");
 
+    /// <summary>The text a new <c>Playground.lean</c> starts with.</summary>
     public const string Starter = """
         /-!
         # Playground
@@ -560,7 +572,10 @@ public static class Playground
 
         """;
 
-    /// <summary>The newest stable toolchain installed, or the newest of any kind, or null when there is none.</summary>
+    /// <summary>
+    /// The toolchain to pin a new folder to: elan's default, else the newest stable toolchain installed, else the
+    /// newest of any kind, or null when there is none. Runs <c>elan</c> to list them.
+    /// </summary>
     public static async Task<string?> PreferredToolchainAsync(CancellationToken ct = default)
     {
         IReadOnlyList<Toolchain> list = await Elan.ListAsync(ct).ConfigureAwait(false);
@@ -579,7 +594,10 @@ public static class Playground
                ?? list.OrderByDescending(V).Select(t => t.Name).FirstOrDefault();
     }
 
-    /// <summary>Create the playground (once) and return its file. Adds <paramref name="append"/> at the end if given.</summary>
+    /// <summary>
+    /// Create the playground (once) and return the full path of its <c>Playground.lean</c>. Adds
+    /// <paramref name="append"/> at the end of the file if given, so it is written to disk.
+    /// </summary>
     public static async Task<string> CreateAsync(string? append = null, string? folder = null, CancellationToken ct = default)
     {
         folder ??= DefaultFolder;

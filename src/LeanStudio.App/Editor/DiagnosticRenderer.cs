@@ -11,14 +11,20 @@ public sealed class DiagnosticRenderer : IBackgroundRenderer
 {
     private IReadOnlyList<Diagnostic> _diagnostics = [];
 
+    /// <inheritdoc/>
     public KnownLayer Layer => KnownLayer.Selection;
 
+    /// <summary>The color of errors, also used for their markers elsewhere.</summary>
     public static readonly IBrush ErrorBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0x4C, 0x4C));
+    /// <summary>The color of warnings.</summary>
     public static readonly IBrush WarningBrush = new SolidColorBrush(Color.FromRgb(0xCC, 0xA7, 0x00));
+    /// <summary>The color of information messages and hints, which are underlined with dots rather than a squiggle.</summary>
     public static readonly IBrush InfoBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x9C, 0xFF));
 
+    /// <summary>Replace the diagnostics underlined (the file's current ones, with LSP positions). Does not redraw.</summary>
     public void Update(IReadOnlyList<Diagnostic> diagnostics) => _diagnostics = diagnostics;
 
+    /// <inheritdoc/>
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         TextDocument? doc = textView.Document;

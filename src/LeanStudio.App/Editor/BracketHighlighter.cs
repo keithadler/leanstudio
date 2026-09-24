@@ -12,14 +12,20 @@ public sealed class BracketHighlighter : IBackgroundRenderer
     private static readonly IPen Pen = new Pen(new SolidColorBrush(Color.FromArgb(0xB0, 0x88, 0x88, 0x88)), 1);
     private static readonly IBrush Fill = new SolidColorBrush(Color.FromArgb(0x30, 0x88, 0x88, 0x88));
 
+    /// <inheritdoc/>
     public KnownLayer Layer => KnownLayer.Selection;
 
+    /// <summary>
+    /// Set the two bracket offsets (0-based document offsets) to outline; -1 for either hides both. Does not redraw:
+    /// the caller invalidates the text view's layer.
+    /// </summary>
     public void Update(int a, int b)
     {
         _a = a;
         _b = b;
     }
 
+    /// <inheritdoc/>
     public void Draw(TextView textView, DrawingContext drawingContext)
     {
         if (_a < 0 || _b < 0 || textView.Document is not TextDocument doc)
