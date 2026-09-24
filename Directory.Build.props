@@ -11,7 +11,7 @@
     <Product>Lean Studio</Product>
     <Copyright>Copyright (c) 2026 Keith Adler (@keithadler)</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <VersionPrefix>0.6.0</VersionPrefix>
+    <VersionPrefix>0.7.0</VersionPrefix>
   </PropertyGroup>
   <PropertyGroup>
     <AvaloniaVersion>12.1.3</AvaloniaVersion>

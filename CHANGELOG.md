@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 **Lean's infoview, widgets and all, inside the window**:
 - The Infoview tab, next to Goals and Compiled C, is the infoview VS Code uses. It renders ProofWidgets and every other user widget.
@@ -8,6 +8,8 @@
 - When Lean shows a widget at the cursor, the Tactic State has a Widget button that opens the tab.
 - The infoview follows the app's light or dark theme as it changes, in the window and in the browser.
 - Links in the infoview open in the browser.
+
+**Installing**: the Homebrew tap is live, so `brew install --cask keithadler/tap/lean-studio` installs Lean Studio on a Mac.
 
 ## 0.6.0
 
