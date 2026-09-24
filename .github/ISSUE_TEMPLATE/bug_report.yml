@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Lean Studio doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. If the problem is in Lean itself (the same thing happens in VS Code
+        with the lean4 extension), the [Lean Zulip](https://leanprover.zulipchat.com) is the better place to ask.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      description: The smallest steps or Lean file that show it. Paste Lean code in a code block.
+      placeholder: |
+        1. Open a project made with `lake new demo math`
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Lean Studio version
+      description: Shown in Help ▸ About Lean Studio.
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple silicon)
+        - macOS (Intel)
+        - Windows x64
+        - Windows ARM64
+        - Linux x64
+        - Linux ARM64
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: Lean toolchain
+      description: The contents of the project's `lean-toolchain` file, and whether it uses Mathlib.
+      placeholder: "leanprover/lean4:v4.34.0, with Mathlib"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, error messages, or what the Output panel showed.

@@ -1,0 +1,16 @@
+name: Feature request
+description: Something Lean Studio could do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do
+      description: The task or proof you were working on, and where Lean Studio got in the way or fell short.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it working. If another editor does it well, say which and how.
