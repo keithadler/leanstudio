@@ -92,6 +92,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? _buildCts;
     private TenetWorkspace? _tenet;
 
+    private bool _disposed;
+
     /// <summary>The Lean server's process id while it runs, or null (for checks).</summary>
     public int? ServerProcessId => _server?.ProcessId;
 
@@ -1567,6 +1569,12 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Once: closing the window after the view model was put away (or twice) must not stop things twice.
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
         _watcher?.Dispose();
         RememberOpenFiles();
         await StopServerAsync();

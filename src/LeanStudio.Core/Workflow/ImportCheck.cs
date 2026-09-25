@@ -150,7 +150,20 @@ public static class ImportCheck
     }
 
     /// <summary>Read the check's JSON report.</summary>
+    /// <exception cref="InvalidOperationException">The report isn't one the check writes.</exception>
     public static ImportReport Parse(string json)
+    {
+        try
+        {
+            return ParseReport(json);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or FormatException or InvalidOperationException)
+        {
+            throw new InvalidOperationException("Lean's import report could not be read: " + e.Message, e);
+        }
+    }
+
+    private static ImportReport ParseReport(string json)
     {
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;

@@ -408,7 +408,10 @@ public sealed class VimEngine(IVimHost host)
                 }
                 return Record(p, ReplaceChars(rest == "<CR>" ? "\n" : rest, count));
             case '.':
-                if (_lastChange is string last)
+                // Not while repeating already: a recorded change whose first command can't apply here (say `cw` at
+                // the end of the text) leaves the text it typed to run as commands, and a `.` in it would repeat
+                // the repeat forever, until the stack overflows and the app with it.
+                if (_lastChange is string last && !_replaying)
                 {
                     _pending.Clear(); // the replayed keys start a command of their own
                     _replaying = true;
@@ -567,29 +570,40 @@ public sealed class VimEngine(IVimHost host)
             }
             case "}":
             {
-                int line = LineOf(pos);
+                // Line by line from the cursor (not by line numbers, which are counted from the top each time:
+                // that made } take seconds in a large file).
+                int ls = LineStart(pos);
                 for (int k = 0; k < count; k++)
                 {
-                    line++;
-                    while (line < LineCount - 1 && !IsBlankLine(line))
+                    int next = T.IndexOf('\n', ls);
+                    if (next < 0)
                     {
-                        line++;
+                        return Exclusive(T.Length);
+                    }
+                    ls = next + 1;
+                    while (T.IndexOf('\n', ls) >= 0 && !IsBlankAt(ls))
+                    {
+                        ls = T.IndexOf('\n', ls) + 1;
+                    }
+                    if (T.IndexOf('\n', ls) < 0)
+                    {
+                        return Exclusive(T.Length); // the last line: the end of the text
                     }
                 }
-                return Exclusive(line >= LineCount - 1 ? T.Length : OffsetOfLine(line));
+                return Exclusive(ls);
             }
             case "{":
             {
-                int line = LineOf(pos);
-                for (int k = 0; k < count; k++)
+                int ls = LineStart(pos);
+                for (int k = 0; k < count && ls > 0; k++)
                 {
-                    line--;
-                    while (line > 0 && !IsBlankLine(line))
+                    ls = LineStart(ls - 1);
+                    while (ls > 0 && !IsBlankAt(ls))
                     {
-                        line--;
+                        ls = LineStart(ls - 1);
                     }
                 }
-                return Exclusive(OffsetOfLine(Math.Max(0, line)));
+                return Exclusive(ls);
             }
             case ";" or ",":
                 if (_lastFind is (char kind, char target))
@@ -761,7 +775,8 @@ public sealed class VimEngine(IVimHost host)
         }
         // The innermost pair around the caret.
         int depth = 0, openAt = -1;
-        for (int q = CharAt(pos) == c ? pos - 1 : pos; q >= 0; q--)
+        // (At the very end of the text, on the empty last line, the search starts at the last character.)
+        for (int q = CharAt(pos) == c ? pos - 1 : Math.Min(pos, T.Length - 1); q >= 0; q--)
         {
             if (T[q] == c && q != pos)
             {
@@ -1174,6 +1189,9 @@ public sealed class VimEngine(IVimHost host)
         }
         return T[lineStart..i];
     }
+
+    /// <summary>Whether the line starting at <paramref name="lineStart"/> is empty or only blanks.</summary>
+    private bool IsBlankAt(int lineStart) => T.AsSpan(lineStart, LineEnd(lineStart) - lineStart).IsWhiteSpace();
 
     private bool IsBlankLine(int line)
     {

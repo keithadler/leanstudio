@@ -97,7 +97,7 @@ public static partial class DependencyBump
                 continue;
             }
             string line = lines[onLine.Key];
-            foreach (DeprecatedUse u in onLine.OrderByDescending(u => u.Column))
+            foreach (DeprecatedUse u in onLine.OrderByDescending(u => u.Column).Where(u => u.Column >= 0 && u.Column <= line.Length))
             {
                 (string written, string replacement)? pick = Candidates(u).FirstOrDefault(c =>
                     u.Column + c.Written.Length <= line.Length && string.CompareOrdinal(line, u.Column, c.Written, 0, c.Written.Length) == 0

@@ -68,6 +68,35 @@ public sealed class InfoviewBridgeTests
     }
 
     [Fact]
+    public async Task ServesManyRequestsAtOnceAndTurnsStrangersAway()
+    {
+        // The infoview's local web server under load: hundreds of page loads at once, strangers without the token,
+        // and requests for files that aren't there. Each gets its own right answer, and the server keeps serving.
+        var ct = TestContext.Current.CancellationToken;
+        await using var bridge = new InfoviewBridge(() => null, new Editor(),
+            path => path == "index.html" ? (Encoding.UTF8.GetBytes("<html>infoview</html>"), "text/html") : null);
+        Uri page = bridge.Start();
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        Uri bare = new(page.GetLeftPart(UriPartial.Path));
+        Uri missing = new(page.GetLeftPart(UriPartial.Authority) + "/no/such/file.js");
+        HttpStatusCode[] codes = await Task.WhenAll(Enumerable.Range(0, 300).Select(async i =>
+        {
+            using HttpResponseMessage r = await http.GetAsync((i % 3) switch { 0 => page, 1 => bare, _ => missing }, ct);
+            return r.StatusCode;
+        }));
+        for (int i = 0; i < codes.Length; i++)
+        {
+            Assert.Equal((i % 3) switch { 0 => HttpStatusCode.OK, 1 => HttpStatusCode.Forbidden, _ => HttpStatusCode.NotFound }, codes[i]);
+        }
+        await Task.WhenAll(Enumerable.Range(0, 20).Select(async _ =>
+        {
+            using var stranger = new ClientWebSocket();
+            await Assert.ThrowsAsync<WebSocketException>(() => stranger.ConnectAsync(new Uri($"ws://127.0.0.1:{page.Port}/ws?t=wrong"), ct));
+        }));
+        Assert.Equal("<html>infoview</html>", await http.GetStringAsync(page, ct));
+    }
+
+    [Fact]
     public async Task ServesTheInfoviewAndRelaysItToLean()
     {
         Lean.RequireLean();

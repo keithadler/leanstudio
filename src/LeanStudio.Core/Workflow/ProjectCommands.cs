@@ -67,8 +67,26 @@ public static partial class ProjectCommands
                     problems.Add($"command {i} needs a \"title\" and a \"program\"");
                     continue;
                 }
-                IReadOnlyList<string> args = e.TryGetProperty("args", out JsonElement a) && a.ValueKind == JsonValueKind.Array
-                    ? a.EnumerateArray().Select(x => x.GetString() ?? "").ToList() : [];
+                // Hand-written: a number or true/false is taken as its text; anything else is reported, not crashed on.
+                var args = new List<string>();
+                if (e.TryGetProperty("args", out JsonElement a) && a.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (JsonElement x in a.EnumerateArray())
+                    {
+                        if (x.ValueKind == JsonValueKind.String)
+                        {
+                            args.Add(x.GetString()!);
+                        }
+                        else if (x.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+                        {
+                            args.Add(x.GetRawText());
+                        }
+                        else
+                        {
+                            problems.Add($"command {i} ({title.Trim()}): an argument isn't text ({x.GetRawText()}); it is left out");
+                        }
+                    }
+                }
                 bool save = !e.TryGetProperty("save", out JsonElement s) || s.ValueKind != JsonValueKind.False;
                 commands.Add(new ProjectCommand(title.Trim(), program.Trim(), args, Str(e, "detail") ?? "", save));
             }

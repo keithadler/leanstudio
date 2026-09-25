@@ -8,6 +8,16 @@
 - Problems groups repeated messages: 205 uses of one deprecated lemma are one row, "205 × … in 12 files", which opens to list them.
 - The progress banner no longer misses the last lines of a burst (a warning printed right after a module).
 
+**Fixes, found by stress and fuzz testing** (new: thousands of random inputs through every parser and editing engine, and concurrency, crashes, floods and garbage thrown at the Lean connection, the MCP server and the app):
+- One unexpected message from Lean's server (not a JSON object, or one a handler choked on) stopped all reading from it, so everything after it hung. Such a message is now skipped and logged.
+- Assistants checking the same file at the same moment could get each other's messages, and two `run_lean` snippets each other's results; Prove It and the other checks that use a scratch copy could cross the same way. Checks of one file now take turns.
+- Requests and edits still on their way when Lean restarted failed in a way nothing caught; they now fail as a closed connection does.
+- Vim: repeating (`.`) in visual mode a change that had typed a `.` repeated forever until the stack overflowed, which would close the app. `i(` on the empty last line crashed, and `{` and `}` took seconds in a large file.
+- Emacs keys: after a kill, the mark could point past the end of the text, and the next move crashed.
+- Several cursors: Backspace or Delete where a selection meets another cursor crashed.
+- A number where text belongs in commands.json or keybindings.json broke the command palette or the keys; it is now taken as text, or reported.
+- A Loogle answer of an unexpected shape crashed the search, and closing a window after its project was put away logged an error.
+
 **Fixes, found by checking every feature against what it says**:
 - Uses of deprecated names are struck through again. Lean sends no semantic token for most names, so the strike-through now comes from Lean's "has been deprecated" warning.
 - Cancel stops every long task: a task from the Tasks menu or a project command, and Tenet's verification, not only builds and cache fetches.

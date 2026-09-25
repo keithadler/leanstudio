@@ -62,6 +62,12 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     public Action<bool, string>? Traffic { get; set; }
 
     /// <summary>
+    /// A message that could not be handled (malformed, or a handler threw); reading goes on with the next one.
+    /// Raised on the reading thread.
+    /// </summary>
+    public event Action<Exception>? DispatchFailed;
+
+    /// <summary>
     /// Rewrites each message's JSON text before it is sent (a remote server's paths, say), or null. Set before
     /// <see cref="Start"/>.
     /// </summary>
@@ -106,7 +112,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
             if (_pending.TryRemove(id, out TaskCompletionSource<JsonElement>? t))
             {
                 t.TrySetCanceled(ct);
-                _ = NotifyAsync("$/cancelRequest", new { id });
+                Forget(NotifyAsync("$/cancelRequest", new { id }));
             }
         });
         try
@@ -155,18 +161,46 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         Traffic?.Invoke(true, json);
         byte[] body = Encoding.UTF8.GetBytes(json);
         byte[] header = Encoding.ASCII.GetBytes($"Content-Length: {body.Length}\r\n\r\n");
-        await _writeLock.WaitAsync(_cts.Token).ConfigureAwait(false);
+        // Once the connection is closed (Lean restarted, say), a late write fails the way callers expect of a closed
+        // connection, with IOException, not with whatever the disposed parts throw.
+        if (_disposed)
+        {
+            throw new IOException("the connection is closed");
+        }
+        try
+        {
+            await _writeLock.WaitAsync(_cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is ObjectDisposedException || (e is OperationCanceledException && _disposed))
+        {
+            throw new IOException("the connection is closed", e);
+        }
         try
         {
             await _output.WriteAsync(header, _cts.Token).ConfigureAwait(false);
             await _output.WriteAsync(body, _cts.Token).ConfigureAwait(false);
             await _output.FlushAsync(_cts.Token).ConfigureAwait(false);
         }
+        catch (Exception e) when (e is ObjectDisposedException || (e is OperationCanceledException && _disposed))
+        {
+            throw new IOException("the connection is closed", e);
+        }
         finally
         {
-            _writeLock.Release();
+            try
+            {
+                _writeLock.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
     }
+
+    private volatile bool _disposed;
+
+    /// <summary>Let a message go without waiting for it; if it fails (the connection closed), that is not an error.</summary>
+    private static void Forget(Task t) => t.ContinueWith(static x => _ = x.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
 
     private async Task ReadLoopAsync()
     {
@@ -180,7 +214,16 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 {
                     break;
                 }
-                Dispatch(body);
+                try
+                {
+                    Dispatch(body);
+                }
+                catch (Exception e) when (e is not (OutOfMemoryException or StackOverflowException))
+                {
+                    // One odd message (a field of the wrong type, a handler that threw) must not stop the reading:
+                    // everything after it, and every answer still to come, would be lost.
+                    DispatchFailed?.Invoke(e);
+                }
             }
         }
         catch (Exception e) when (e is IOException or ObjectDisposedException or OperationCanceledException or FormatException)
@@ -212,6 +255,10 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         catch (JsonException)
         {
             return;
+        }
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return; // not a JSON-RPC message
         }
         bool hasMethod = root.TryGetProperty("method", out JsonElement methodEl);
         bool hasId = root.TryGetProperty("id", out JsonElement idEl);
@@ -259,7 +306,14 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 ["id"] = JsonNode.Parse(id.GetRawText()),
                 ["error"] = new JsonObject { ["code"] = -32603, ["message"] = e.Message },
             };
-            await WriteAsync(err).ConfigureAwait(false);
+            try
+            {
+                await WriteAsync(err).ConfigureAwait(false);
+            }
+            catch (Exception closed) when (closed is IOException or OperationCanceledException)
+            {
+                // the other side has gone: no one to tell
+            }
             return;
         }
         var msg = new JsonObject
@@ -339,6 +393,11 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     /// <summary>Stop the read loop (waiting up to two seconds for it) and release the connection's resources. The streams are not closed.</summary>
     public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+        _disposed = true;
         await _cts.CancelAsync().ConfigureAwait(false);
         if (_readLoop is not null)
         {

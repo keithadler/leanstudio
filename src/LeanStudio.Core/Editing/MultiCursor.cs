@@ -82,10 +82,18 @@ public static class MultiCursor
     {
         var edits = new List<Replacement>();
         var after = new List<Cursor>();
-        int shift = 0;
+        int shift = 0, lastEnd = 0;
         foreach (Cursor c in cursors)
         {
             Replacement r = edit(c);
+            // A Backspace or Delete can reach into what the cursor before it removes (a selection that ends where an
+            // empty cursor sits, or the two halves of a surrogate pair): take only what is left.
+            if (r.Offset < lastEnd)
+            {
+                int reach = Math.Max(lastEnd, r.Offset + r.Length);
+                r = r with { Offset = lastEnd, Length = reach - lastEnd };
+            }
+            lastEnd = r.Offset + r.Length;
             edits.Add(r);
             int end = r.Offset + shift + r.Text.Length;
             after.Add(Cursor.At(end));

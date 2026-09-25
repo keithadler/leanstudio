@@ -147,8 +147,26 @@ public sealed class ProjectSession : IAsyncDisposable
     public async Task<FileReport> CheckAsync(string path, string? content = null, CancellationToken ct = default)
     {
         string full = Path.GetFullPath(path);
-        string text = content ?? await File.ReadAllTextAsync(full, ct).ConfigureAwait(false);
         string uri = LeanServer.UriOf(full);
+        // One check of a file at a time: two at once (assistants calling in parallel, or run_lean's scratch file)
+        // would otherwise each read the messages of whichever text Lean had last.
+        SemaphoreSlim fileLock = _fileLocks.GetOrAdd(uri, _ => new SemaphoreSlim(1, 1));
+        await fileLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await CheckOneAsync(full, uri, content, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            fileLock.Release();
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new(StringComparer.Ordinal);
+
+    private async Task<FileReport> CheckOneAsync(string full, string uri, string? content, CancellationToken ct)
+    {
+        string text = content ?? await File.ReadAllTextAsync(full, ct).ConfigureAwait(false);
         LeanServer server;
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try

@@ -298,20 +298,23 @@ public sealed class Loogle(HttpClient? http = null)
     /// </summary>
     public static (IReadOnlyList<LoogleHit> Hits, string? Error, int Count) Parse(JsonElement root)
     {
+        // Loogle is a web service: read only what has the shape expected, and say so when nothing does.
+        static string? Str(JsonElement e, string name) =>
+            e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            return ([], "Loogle answered with something Lean Studio couldn't read.", 0);
+        }
         if (root.TryGetProperty("error", out JsonElement err))
         {
-            return ([], err.GetString(), 0);
+            return ([], err.ValueKind == JsonValueKind.String ? err.GetString() : err.ToString(), 0);
         }
         var hits = new List<LoogleHit>();
         if (root.TryGetProperty("hits", out JsonElement arr) && arr.ValueKind == JsonValueKind.Array)
         {
-            foreach (JsonElement h in arr.EnumerateArray())
+            foreach (JsonElement h in arr.EnumerateArray().Where(h => h.ValueKind == JsonValueKind.Object))
             {
-                hits.Add(new LoogleHit(
-                    h.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "",
-                    h.TryGetProperty("type", out JsonElement t) ? (t.GetString() ?? "").Trim() : "",
-                    h.TryGetProperty("module", out JsonElement m) ? m.GetString() ?? "" : "",
-                    h.TryGetProperty("doc", out JsonElement d) ? d.GetString() : null));
+                hits.Add(new LoogleHit(Str(h, "name") ?? "", (Str(h, "type") ?? "").Trim(), Str(h, "module") ?? "", Str(h, "doc")));
             }
         }
         int count = root.TryGetProperty("count", out JsonElement c) && c.ValueKind == JsonValueKind.Number ? c.GetInt32() : hits.Count;

@@ -587,6 +587,9 @@ public sealed partial class InfoViewModel : ObservableObject
         {
             Task<InteractiveGoals> goalsTask = server.InteractiveGoalsAsync(doc.Uri, pos, cts.Token, keepReferences: true);
             Task<InteractiveGoals> termTask = server.InteractiveTermGoalAsync(doc.Uri, pos, cts.Token);
+            // Awaited below only when the goals arrive; if they don't (Lean restarted, the cursor moved on), its own
+            // failure must still be looked at, or it surfaces later as an unobserved error.
+            _ = termTask.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
             InteractiveGoals goals = await goalsTask;
             if (cts.IsCancellationRequested)
             {

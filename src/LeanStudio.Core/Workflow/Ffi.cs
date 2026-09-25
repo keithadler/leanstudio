@@ -418,6 +418,10 @@ public static partial class Ffi
     /// <summary>The C name an <c>@[extern]</c> attribute or declaration on a line binds, for go to definition.</summary>
     public static string? CNameAt(IReadOnlyList<string> lines, int line)
     {
+        if (line < 0 || line >= lines.Count)
+        {
+            return null;
+        }
         for (int i = line; i >= 0 && i >= line - 3; i--)
         {
             Match a = ExternAttribute().Match(lines[i]);

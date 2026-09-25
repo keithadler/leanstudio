@@ -339,4 +339,14 @@ public sealed class VimTests
         Press(b, v, ":q<CR>:wq<CR>:x<CR>");
         Assert.Equal(["q", "wq", "x"], b.Ex);
     }
+
+    [Fact]
+    public void RepeatingAChangeThatTypedADotDoesNotRepeatForever()
+    {
+        // Found by the fuzz tests (seed 1331): a change that typed `.`, repeated in visual mode, where its `i` starts
+        // a text object instead of insert mode, so the recorded `.` ran as a repeat, inside the repeat, forever.
+        var (b, v) = Vim("exactrfl[h");
+        Press(b, v, "iw.?a⟨n%iF<Esc>v*Aa⟨h^.");
+        Assert.InRange(b.Caret, 0, b.Text.Length);
+    }
 }

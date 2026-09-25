@@ -2,6 +2,7 @@ name: Mathlib
 
 # Lean Studio against a real Mathlib project, weekly and on demand: Prove It with Mathlib's tactics, counterexamples,
 # the profiler, and Tenet reading Mathlib's compiled library. Too heavy (a Mathlib cache is several GB) for every push.
+# Also a deep fuzz run: the fuzz tests with 20,000 seeds instead of every push's 2,000.
 on:
   schedule:
     - cron: "17 6 * * 1"
@@ -32,3 +33,7 @@ jobs:
         run: dotnet build tests/LeanStudio.Tests -c Release
       - name: Mathlib tests
         run: dotnet test --project tests/LeanStudio.Tests -c Release --no-build -- --filter-class LeanStudio.Tests.MathlibTests
+      - name: Deep fuzz (20,000 random inputs per parser and editing engine)
+        env:
+          LEANSTUDIO_FUZZ_SEEDS: "20000"
+        run: dotnet test --project tests/LeanStudio.Tests -c Release --no-build -- --filter-class LeanStudio.Tests.FuzzTests

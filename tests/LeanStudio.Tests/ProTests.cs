@@ -374,6 +374,8 @@ public sealed class ProTests
             var report = await ws.VerifyAsync(ct: TestContext.Current.CancellationToken);
             var verdicts = report.Declarations.ToDictionary(d => d.Name);
             Assert.Equal(Core.Verification.VerificationStatus.Rejected, verdicts["Bad.oops"].Status);
+            ws.Dispose();
+            ws.Dispose(); // twice, as a window closing after its workspace was put away does
             Assert.False(string.IsNullOrWhiteSpace(verdicts["Bad.oops"].Message));
             Assert.Equal(Core.Verification.VerificationStatus.Verified, verdicts["Bad.fine"].Status);
             Assert.Equal(1, report.Rejected);

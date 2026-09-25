@@ -14,7 +14,15 @@ namespace LeanStudio.Core.Editing;
 /// </summary>
 public sealed class EmacsEngine(IVimHost host)
 {
-    private int? _mark;
+    private int? _markAt;
+
+    /// <summary>The mark, kept inside the text: a kill or an undo can leave the saved offset past its end.</summary>
+    private int? Mark
+    {
+        get => _markAt is int m ? Math.Clamp(m, 0, host.Text.Length) : null;
+        set => _markAt = value;
+    }
+
     private string _prefix = "";
     private string _kill = "";
     private bool _lastWasKill;
@@ -26,7 +34,7 @@ public sealed class EmacsEngine(IVimHost host)
     public event Action<string>? KilledText;
 
     /// <summary>What the status bar shows: a pending <c>C-x</c>, or that the mark is set.</summary>
-    public string Status => _prefix.Length > 0 ? _prefix + "-" : _mark is not null ? "Mark set" : "";
+    public string Status => _prefix.Length > 0 ? _prefix + "-" : Mark is not null ? "Mark set" : "";
 
     /// <summary>Raised after each key that changed <see cref="Status"/>.</summary>
     public event Action? Changed;
@@ -57,10 +65,10 @@ public sealed class EmacsEngine(IVimHost host)
                 host.Ex("open");
                 return true;
             case "C-x":
-                if (_mark is int m)
+                if (Mark is int m)
                 {
                     int caret = host.Caret;
-                    _mark = caret;
+                    Mark = caret;
                     host.Caret = m;
                     Region();
                 }
@@ -69,7 +77,7 @@ public sealed class EmacsEngine(IVimHost host)
                 host.Undo();
                 return true;
             case "h":
-                _mark = 0;
+                Mark = 0;
                 host.Caret = host.Text.Length;
                 Region();
                 return true;
@@ -93,11 +101,11 @@ public sealed class EmacsEngine(IVimHost host)
                 _prefix = "C-x";
                 return true;
             case "C-g":
-                _mark = null;
+                Mark = null;
                 host.Select(c, c);
                 return true;
             case "C-SPC" or "C-@":
-                _mark = c;
+                Mark = c;
                 host.Select(c, c);
                 return true;
             case "C-f":
@@ -143,18 +151,18 @@ public sealed class EmacsEngine(IVimHost host)
                 return true;
             }
             case "C-w":
-                if (_mark is int m)
+                if (Mark is int m)
                 {
                     Kill(Math.Min(m, c), Math.Max(m, c), afterKill: false, append: true);
-                    _mark = null;
+                    Mark = null;
                 }
                 return true;
             case "M-w":
-                if (_mark is int from)
+                if (Mark is int from)
                 {
                     _kill = t[Math.Min(from, c)..Math.Max(from, c)];
                     KilledText?.Invoke(_kill);
-                    _mark = null;
+                    Mark = null;
                     host.Select(c, c);
                 }
                 return true;
@@ -204,7 +212,7 @@ public sealed class EmacsEngine(IVimHost host)
     /// <summary>With the mark set, the region runs from it to the cursor.</summary>
     private void Region()
     {
-        if (_mark is int m)
+        if (Mark is int m)
         {
             host.Select(Math.Min(m, host.Caret), Math.Max(m, host.Caret));
         }

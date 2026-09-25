@@ -124,8 +124,9 @@ public static class KeyBindingsFile
             foreach (JsonElement e in doc.RootElement.EnumerateArray())
             {
                 i++;
-                string? key = e.ValueKind == JsonValueKind.Object && e.TryGetProperty("key", out JsonElement k) ? k.GetString() : null;
-                string? command = e.ValueKind == JsonValueKind.Object && e.TryGetProperty("command", out JsonElement c) ? c.GetString() : null;
+                // Hand-written: a key or command that isn't text is reported below, not crashed on.
+                string? key = e.ValueKind == JsonValueKind.Object && e.TryGetProperty("key", out JsonElement k) && k.ValueKind == JsonValueKind.String ? k.GetString() : null;
+                string? command = e.ValueKind == JsonValueKind.Object && e.TryGetProperty("command", out JsonElement c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
                 if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(command))
                 {
                     problems.Add($"entry {i} needs a \"key\" and a \"command\"");

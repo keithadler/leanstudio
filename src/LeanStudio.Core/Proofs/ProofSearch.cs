@@ -464,6 +464,24 @@ public static class Scratch
     public static async Task<IReadOnlyList<Diagnostic>> CheckAsync(LeanServer server, string sourcePath, string purpose, string text, CancellationToken ct = default)
     {
         string uri = UriFor(sourcePath, purpose);
+        // One check of a scratch document at a time: two at once (Prove It twice, or assistants in parallel) would
+        // close each other's document and read each other's messages.
+        SemaphoreSlim gate = Gates.GetOrAdd(uri, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await CheckOneAsync(server, uri, text, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
+
+    private static async Task<IReadOnlyList<Diagnostic>> CheckOneAsync(LeanServer server, string uri, string text, CancellationToken ct)
+    {
         if (server.IsOpen(uri))
         {
             await server.CloseAsync(uri).ConfigureAwait(false);

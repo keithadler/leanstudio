@@ -1752,6 +1752,84 @@ internal static class Scenario
             vm.ActiveDocument = doc;
         }
 
+        Console.WriteLine("under duress");
+        {
+            string sourceDir = Path.Combine(repo, "samples", "Proofs", "Proofs");
+            // Typing faster than Lean can keep up: a whole file, one character at a time, without pausing.
+            string fast = Path.Combine(sourceDir, "Fast.lean");
+            await File.WriteAllTextAsync(fast, "");
+            var many = Enumerable.Range(0, 25).Select(i => Path.Combine(sourceDir, $"Many{i}.lean")).ToList();
+            try
+            {
+                DocumentViewModel typed = (await vm.OpenFileAsync(fast))!;
+                var area = window.MainEditorControl.TextEditor.TextArea;
+                const string text = "theorem one : 1 + 1 = 2 := by decide\n\ntheorem two (n : Nat) : n + 0 = n := by\n  simp\n\ntheorem three : 2 + 2 = 5 := by decide\n";
+                foreach (char ch in text)
+                {
+                    area.PerformTextInput(ch.ToString());
+                }
+                Check(await WaitFor(() => !typed.IsProcessing && typed.Diagnostics.Count(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error) == 1
+                    && typed.Diagnostics.Single(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error).Range.Start.Line == 5, 90),
+                    $"typing a whole file without a pause ends with Lean's messages for the final text ({typed.Diagnostics.Count} messages)");
+
+                // Switching tabs as fast as possible: the goals shown are the last file's.
+                await vm.SaveAllCommand.ExecuteAsync(null);
+                for (int i = 0; i < 200; i++)
+                {
+                    vm.ActiveDocument = i % 2 == 0 ? doc : typed;
+                }
+                vm.ActiveDocument = doc;
+                doc.Reveal(16, 14);
+                Check(await WaitFor(() => vm.Info.Goals.Any(g => g.Hypotheses.Any(h => h.Names == "hp")), 30), "after 200 quick tab switches the Tactic State shows the file you ended on");
+
+                // Opening and closing 25 files as fast as possible.
+                foreach (string f in many)
+                {
+                    await File.WriteAllTextAsync(f, $"theorem m{Path.GetFileNameWithoutExtension(f)} : True := trivial\n");
+                }
+                foreach (string f in many)
+                {
+                    await vm.OpenFileAsync(f);
+                }
+                foreach (DocumentViewModel d in vm.Documents.Where(d => many.Contains(d.Path)).ToList())
+                {
+                    await vm.CloseDocumentCommand.ExecuteAsync(d);
+                }
+                Check(!vm.Documents.Any(d => many.Contains(d.Path)) && vm.ServerStatus == "Lean: ready", "opening and closing 25 files at once leaves nothing behind, and Lean ready");
+                Check(await WaitFor(() => LeanStudio.Core.Toolchains.LeanProcesses.ListAsync(vm.Project!.Root).Result.All(w => !many.Contains(w.File)), 30),
+                    "and Lean stops the workers of the files closed");
+
+                // Restarting Lean while it is checking a file: the file is checked again by the new one.
+                vm.ActiveDocument = typed;
+                typed.Document.Insert(0, "theorem again : 3 + 3 = 6 := by decide\n");
+                await vm.RestartServerCommand.ExecuteAsync(null);
+                Check(await WaitFor(() => vm.ServerStatus == "Lean: ready" && !typed.IsProcessing
+                    && typed.Diagnostics.Count(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error) == 1
+                    && typed.Diagnostics.Single(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error).Range.Start.Line == 6, 90),
+                    "restarting Lean in the middle of a check ends with the file checked again, as it is now");
+                await vm.SaveCommand.ExecuteAsync(null);
+
+                // A build cancelled the moment it starts, then a build that finishes.
+                bool verifyAfter = vm.Settings.VerifyAfterBuild;
+                vm.Settings.VerifyAfterBuild = false;
+                Task building = vm.BuildCommand.ExecuteAsync(null);
+                vm.CancelTaskCommand.Execute(null);
+                await building.WaitAsync(TimeSpan.FromSeconds(60));
+                Check(!vm.IsBusy, "a build cancelled as it starts stops");
+                await vm.BuildCommand.ExecuteAsync(null);
+                Check(!vm.IsBusy && vm.Output.Text.Contains("Build succeeded.", StringComparison.Ordinal) || vm.Output.Text.Contains("Build failed", StringComparison.Ordinal),
+                    "and the next build runs to the end");
+                vm.Settings.VerifyAfterBuild = verifyAfter;
+                await vm.CloseDocumentCommand.ExecuteAsync(typed);
+            }
+            finally
+            {
+                File.Delete(fast);
+                many.ForEach(File.Delete);
+            }
+            vm.ActiveDocument = doc;
+        }
+
         Console.WriteLine("dialogs");
         string? dialogName = null;
         var unnamedInDialogs = new List<string>();
@@ -1847,6 +1925,11 @@ internal static class Scenario
                 }
             }
         }
+
+        // Whatever went wrong behind the scenes (an exception the app caught and kept running after) is in the crash
+        // log: after everything above, it must be empty.
+        string crashes = File.Exists(App.CrashLog) ? await File.ReadAllTextAsync(App.CrashLog) : "";
+        Check(crashes.Length == 0, "no error was caught and logged behind the scenes during the whole run" + (crashes.Length == 0 ? "" : ":\n" + crashes[..Math.Min(4000, crashes.Length)]));
 
         await vm.DisposeAsync();
         return _failures;

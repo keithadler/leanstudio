@@ -172,6 +172,7 @@ public sealed partial class LeanServer : IAsyncDisposable
         };
 
         _rpc = new JsonRpcConnection(p.StandardOutput.BaseStream, p.StandardInput.BaseStream);
+        _rpc.DispatchFailed += e => Log?.Invoke("skipped a message from the Lean server that could not be handled: " + e.Message);
         if (remote is not null)
         {
             _rpc.Outgoing = remote.ToRemote;

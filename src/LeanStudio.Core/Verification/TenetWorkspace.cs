@@ -1085,11 +1085,19 @@ public sealed class TenetWorkspace : IDisposable
         return new VerificationReport(result.LeanVersion, targets.Count, result.ModulesLoaded, sw.Elapsed, verdicts);
     }
 
+    private bool _disposed;
+
     /// <inheritdoc/>
+    /// <remarks>Safe to call more than once (a window closing after its workspace was already put away).</remarks>
     public void Dispose()
     {
         lock (_lock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+            _disposed = true;
             _checker.Dispose();
         }
     }
