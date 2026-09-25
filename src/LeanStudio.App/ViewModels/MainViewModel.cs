@@ -148,6 +148,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         InitFeatures();
         InitLearn();
         InitAssist();
+        InitAi();
     }
 
     /// <summary>What Lean Studio remembers between runs; changed and saved as the person works.</summary>
@@ -1592,6 +1593,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await StopServerAsync();
         await StopClangdAsync();
         await StopInfoviewAsync();
+        // The on-device model's server, if Lean Studio started one.
+        Core.Ai.AppleIntelligence.Shutdown();
         _tenet?.Dispose();
     }
 }

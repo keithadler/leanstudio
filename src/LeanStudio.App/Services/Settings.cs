@@ -100,6 +100,35 @@ public sealed class Settings
     /// <summary>The release tag the user chose to skip; that version is not offered again automatically.</summary>
     public string? SkippedVersion { get; set; }
 
+    /// <summary>The AI provider (see <see cref="Core.Ai.AiProviders"/>): <c>auto</c> uses the best local model running.</summary>
+    public string AiProvider { get; set; } = Core.Ai.AiProviders.Auto;
+    /// <summary>The model to use with <see cref="AiProvider"/>; empty picks the best one it has for Lean.</summary>
+    public string AiModel { get; set; } = "";
+    /// <summary>The address of a custom OpenAI-compatible API (its key is kept in the system's keychain, not here).</summary>
+    public string AiCustomUrl { get; set; } = "";
+    /// <summary>Let the automatic choice use a cloud model when no local one is running. Off: code stays on this computer.</summary>
+    public bool AiAllowCloud { get; set; }
+    /// <summary>When no tactic in Prove It's portfolio closes a goal, ask the AI for proofs (which Lean then checks).</summary>
+    public bool AiAskWhenStuck { get; set; } = true;
+    /// <summary>Ollama's address.</summary>
+    public string AiOllamaUrl { get; set; } = "http://127.0.0.1:11434";
+    /// <summary>LM Studio's API address.</summary>
+    public string AiLmStudioUrl { get; set; } = "http://127.0.0.1:1234/v1";
+    /// <summary>The API address of llama.cpp's llama-server or MLX's mlx_lm.server.</summary>
+    public string AiLlamaCppUrl { get; set; } = "http://127.0.0.1:8080/v1";
+
+    /// <summary>The AI settings, as the AI features take them.</summary>
+    public Core.Ai.AiConfig ToAiConfig() => new()
+    {
+        Provider = string.IsNullOrWhiteSpace(AiProvider) ? Core.Ai.AiProviders.Auto : AiProvider,
+        Model = AiModel ?? "",
+        CustomUrl = AiCustomUrl ?? "",
+        AllowCloud = AiAllowCloud,
+        OllamaUrl = string.IsNullOrWhiteSpace(AiOllamaUrl) ? "http://127.0.0.1:11434" : AiOllamaUrl,
+        LmStudioUrl = string.IsNullOrWhiteSpace(AiLmStudioUrl) ? "http://127.0.0.1:1234/v1" : AiLmStudioUrl,
+        LlamaCppUrl = string.IsNullOrWhiteSpace(AiLlamaCppUrl) ? "http://127.0.0.1:8080/v1" : AiLlamaCppUrl,
+    };
+
     /// <summary>
     /// The folder settings (and the crash log) are kept in: <c>LeanStudio</c> in the application data folder, or
     /// <c>$LEANSTUDIO_SETTINGS_DIR</c> when set (for tests).

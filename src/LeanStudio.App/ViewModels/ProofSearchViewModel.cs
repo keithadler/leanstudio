@@ -16,7 +16,8 @@ public sealed record TrialView(TacticTrial Trial, SearchResultView Owner)
     /// <summary>The tactic closes the goal.</summary>
     public bool Closes => Trial.Closes;
     /// <summary>The tooltip: what the sorry would become, or that the tactic does not close the goal.</summary>
-    public string Tip => Trial.Closes ? "Replace the sorry with: " + Owner.Result.Fill(Trial) : Trial.Tactic + " does not close this goal";
+    public string Tip => (Trial.Closes ? "Replace the sorry with:\n" + Owner.Result.Fill(Trial) : (Trial.Display ?? Trial.Tactic) + "\ndoes not close this goal")
+        + (Trial.SuggestedBy is string by ? $"\n\n✦ Suggested by {by}; checked by Lean." : "");
 }
 
 /// <summary>What proof search found for one sorry, and whether its answer has been used.</summary>
@@ -30,8 +31,45 @@ public sealed partial class SearchResultView : ObservableObject
         Offset = result.Site.Offset;
     }
 
-    /// <summary>What proof search found for the sorry.</summary>
-    public SearchResult Result { get; }
+    /// <summary>What proof search found for the sorry, with the AI's suggestions once it has been asked.</summary>
+    public SearchResult Result { get; private set; }
+
+    /// <summary>What the AI said, after it was asked: how many proofs it suggested and how many Lean accepted.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Verdict), nameof(CanAskAi))]
+    private string? _aiNote;
+
+    /// <summary>The AI is being asked about this sorry.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAskAi))]
+    private bool _isAskingAi;
+
+    /// <summary>
+    /// Add the AI's checked suggestions to the portfolio's trials, and say what it found.
+    /// </summary>
+    /// <param name="ai">What the AI suggested, as Lean checked it.</param>
+    /// <param name="failures">Also list the trials that fail.</param>
+    public void AddAi(Core.Ai.AiProofResult ai, bool failures)
+    {
+        Result = Result with
+        {
+            TermMode = Result.Reached ? Result.TermMode : ai.Result.TermMode,
+            Trials = [.. ai.Result.Trials.Where(t => t.Closes), .. Result.Trials, .. ai.Result.Trials.Where(t => !t.Closes)],
+        };
+        AiNote = "✦ " + ai.Summary;
+        OnPropertyChanged(nameof(Result));
+        OnPropertyChanged(nameof(Verdict));
+        OnPropertyChanged(nameof(CanApply));
+        OnPropertyChanged(nameof(CanExtract));
+        OnPropertyChanged(nameof(Counterexample));
+        OnPropertyChanged(nameof(HasCounterexample));
+        Show(failures);
+    }
+
+    /// <summary>
+    /// Nothing in the portfolio closes the goal and it is not false: the AI can be asked for proofs (once).
+    /// </summary>
+    public bool CanAskAi => !IsApplied && !IsAskingAi && AiNote is null && Result.Reached && Result.Best is null && Result.Counterexample is null;
 
     /// <summary>Where the sorry is now: fills applied above it move it.</summary>
     public int Offset { get; set; }
@@ -53,6 +91,8 @@ public sealed partial class SearchResultView : ObservableObject
     /// </summary>
     public string Verdict =>
         IsApplied ? "✓ filled in"
+        : AiNote is string note && Result.Best is TacticTrial ab && ab.SuggestedBy is not null ? note + " The shortest is first."
+        : AiNote is string n2 && Result.Best is null ? n2
         : !Result.Reached ? "not reached: an error earlier in the file stops Lean before it"
         : Result.Best is TacticTrial b ? $"{Result.Successes.Count()} of {Result.Trials.Count(t => t.Outcome is TrialOutcome.Closes or TrialOutcome.Fails)} tactics close it; the simplest is {b.Replacement}"
         : Result.Counterexample is not null ? "no tactic closes it, and it cannot be proved as stated:"
@@ -77,6 +117,7 @@ public sealed partial class SearchResultView : ObservableObject
         OnPropertyChanged(nameof(Counterexample));
         OnPropertyChanged(nameof(HasCounterexample));
         OnPropertyChanged(nameof(CanExtract));
+        OnPropertyChanged(nameof(CanAskAi));
     }
 
     /// <summary>Refill <see cref="Shown"/>. Tactics not available with the file's imports are never listed.</summary>
@@ -113,6 +154,15 @@ public sealed partial class ProofSearchViewModel : ObservableObject
 
     /// <summary>Set by the window's view model: extract a result's goal as a lemma.</summary>
     public Action<SearchResultView>? Extract { get; set; }
+
+    /// <summary>Set by the window's view model: ask the AI for proofs of a result's goal, and check them with Lean.</summary>
+    public Func<SearchResultView, Task>? AskAi { get; set; }
+
+    /// <summary>Ask the AI for proofs of a result's goal; Lean checks each before it is offered.</summary>
+    /// <param name="r">The result; null, or one that something already closes, does nothing.</param>
+    [RelayCommand]
+    private Task AskAiAboutAsync(SearchResultView? r) =>
+        r is { CanAskAi: true } && AskAi is not null ? AskAi(r) : Task.CompletedTask;
 
     /// <summary>Extract a result's goal as a lemma, when nothing closes it and it is not false.</summary>
     /// <param name="r">The result; null does nothing.</param>

@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window, IDialogs
         _vm = new MainViewModel(this, settings);
         DataContext = _vm;
         _vm.ProjectMapReady += map => ShowProjectMap(map);
+        _vm.AiChatRequested += question => _ = ShowAiChatAsync(question);
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         this.FindControl<CodeView>("CView")!.DataContext = _vm;
         foreach (LeanEditor ed in Editors)
@@ -64,6 +65,10 @@ public sealed partial class MainWindow : Window, IDialogs
         Opened += async (_, _) =>
         {
             BuildRecentMenu();
+            if (Core.Platform.MacPlatform.RosettaNotice is string rosetta)
+            {
+                _vm.Log(rosetta);
+            }
             _vm.ScheduleUpdateCheck();
             if (StudioBridge.TryServe(HandleBridgeAsync, _bridgeCts.Token))
             {
@@ -473,6 +478,8 @@ public sealed partial class MainWindow : Window, IDialogs
         {
             (Key.P, true, true) => () => _ = CommandPaletteAsync(),
             (Key.P, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ProveItCommand.Execute(null),
+            (Key.A, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.AskAiToProveCommand.Execute(null),
+            (Key.K, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.AskAiCommand.Execute(null),
             (Key.R, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => OnShowRepl(null, new RoutedEventArgs()),
             (Key.H, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ShowCallersCommand.Execute(null),
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
@@ -995,6 +1002,10 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("GitHub: Create Pull Request…", "", Cmd(_vm.SourceControl.CreatePullRequestCommand));
         yield return ("GitHub: Open on GitHub", "", Cmd(_vm.SourceControl.OpenOnGitHubCommand));
         yield return ("GitHub: Add Lean CI Workflow", "", Cmd(_vm.SourceControl.AddCiWorkflowCommand));
+        yield return ("AI: Ask AI to Prove This Sorry (Lean checks every suggestion)", m + "⌥A", Cmd(_vm.AskAiToProveCommand));
+        yield return ("AI: Explain This (the error or goal at the cursor)", "", Cmd(_vm.ExplainWithAiCommand));
+        yield return ("AI: Ask AI…", m + "⌥K", Cmd(_vm.AskAiCommand));
+        yield return ("AI: Choose a Model (local or cloud)…", "", () => AiDialogs.ChooseModelAsync(this, _vm));
         yield return ("AI: Connect an AI Assistant…", "", Act(() => OnConnectAssistant(null, new RoutedEventArgs())));
         yield return ("View: Dark Theme", "", Act(() => SetTheme("Dark")));
         yield return ("View: Light Theme", "", Act(() => SetTheme("Light")));
@@ -1083,6 +1094,35 @@ public sealed partial class MainWindow : Window, IDialogs
         await Picker.ShowAsync(this, "Apply a suggestion", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
             Core.Editing.Fuzzy.Filter(actions, q, a => a.Title).Select(a => new PickerItem(a.Title, a.Kind, () => _vm.ApplyCodeActionAsync(a))).ToList()));
     }
+
+    private AiChatWindow? _aiWindow;
+
+    /// <summary>The AI window, while one is open.</summary>
+    public AiChatWindow? AiWindow => _aiWindow;
+
+    /// <summary>Show the AI window (one per main window), and ask <paramref name="question"/> in it if there is one.</summary>
+    public async Task<AiChatWindow> ShowAiChatAsync(string? question)
+    {
+        if (_aiWindow is null)
+        {
+            _aiWindow = new AiChatWindow(_vm, () => AiDialogs.ChooseModelAsync(this, _vm));
+            _aiWindow.Closed += (_, _) => _aiWindow = null;
+            _aiWindow.Show(this);
+        }
+        else
+        {
+            _aiWindow.Activate();
+        }
+        if (question is not null)
+        {
+            await _aiWindow.AskAsync(question);
+        }
+        return _aiWindow;
+    }
+
+    private async void OnChooseAiModel(object? sender, RoutedEventArgs e) => await AiDialogs.ChooseModelAsync(this, _vm);
+
+    private void OnSaveSettings(object? sender, RoutedEventArgs e) => _vm.Settings.Save();
 
     private async void OnConnectAssistant(object? sender, RoutedEventArgs e) =>
         await Dialogs.ConnectAssistantAsync(this, AgentSetup.ForCurrentProcess(), _vm.Log);

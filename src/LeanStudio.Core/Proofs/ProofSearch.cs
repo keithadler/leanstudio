@@ -18,6 +18,9 @@ public sealed record SorrySite(int Line, int Column, int Offset, int Length, str
 {
     /// <summary>The location for people, such as <c>line 12</c> (1-based).</summary>
     public string Where => $"line {Line + 1}";
+
+    /// <summary>How many spaces the sorry's line is indented by: a proof of several lines is laid out from it.</summary>
+    public int LineIndent { get; init; }
 }
 
 /// <summary>How one tactic fared against one goal.</summary>
@@ -34,15 +37,31 @@ public sealed record TacticTrial(string Tactic, TrialOutcome Outcome, int Millis
     /// What to write in place of the <c>sorry</c>. A search tactic (<c>exact?</c>) is replaced by what it found,
     /// so the proof does not search again every time the file is checked.
     /// </summary>
-    public string Replacement => Tactic.EndsWith('?') && Term is { Length: > 0 } t ? "exact " + t : Tactic;
+    public string Replacement => Display is { Length: > 0 } d ? d
+        : Tactic.EndsWith('?') && Term is { Length: > 0 } t ? "exact " + t : Tactic;
+
+    /// <summary>
+    /// The proof as it should appear in the file, when that differs from <see cref="Tactic"/>: a suggested proof of
+    /// several lines is tried wrapped in parentheses, but written back as the lines themselves. Null otherwise.
+    /// </summary>
+    public string? Display { get; init; }
+
+    /// <summary>Who suggested the tactic, such as an AI model's name; null for the built-in portfolio.</summary>
+    public string? SuggestedBy { get; init; }
 
     /// <summary>A one-line label for a list: a tick and the replacement, or a cross or dash and the tactic.</summary>
     public string Label => Outcome switch
     {
-        TrialOutcome.Closes => $"✓ {Replacement}",
-        TrialOutcome.Fails => $"✗ {Tactic}",
-        _ => $"– {Tactic}",
-    };
+        TrialOutcome.Closes => $"✓ {OneLine(Replacement)}",
+        TrialOutcome.Fails => $"✗ {OneLine(Display ?? Tactic)}",
+        _ => $"– {OneLine(Display ?? Tactic)}",
+    } + (SuggestedBy is null ? "" : " ✦");
+
+    private static string OneLine(string s)
+    {
+        string one = string.Join(" ⏎ ", s.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0));
+        return one.Length > 80 ? one[..79] + "…" : one;
+    }
 
     /// <summary>The time taken for display (<c>840 ms</c>, <c>2.3 s</c>), or a note that the tactic was not available.</summary>
     public string Time => Outcome == TrialOutcome.Unavailable ? "not available here"
@@ -87,7 +106,23 @@ public sealed record SearchResult(SorrySite Site, bool TermMode, IReadOnlyList<T
     public IEnumerable<TacticTrial> Successes => Trials.Where(t => t.Closes);
 
     /// <summary>The text that replaces the sorry: a tactic, or <c>by</c> and the tactic where a term was expected.</summary>
-    public string Fill(TacticTrial t) => TermMode ? "by " + t.Replacement : t.Replacement;
+    /// <remarks>
+    /// A proof of several lines keeps its shape: in tactic mode its later lines are indented to the sorry's column,
+    /// so they line up under the first; where a term was expected it becomes a <c>by</c> block, indented two spaces
+    /// past the line the sorry is on.
+    /// </remarks>
+    public string Fill(TacticTrial t)
+    {
+        string r = t.Replacement;
+        if (!r.Contains('\n', StringComparison.Ordinal))
+        {
+            return TermMode ? "by " + r : r;
+        }
+        string[] lines = r.Replace("\r", "", StringComparison.Ordinal).Split('\n');
+        string pad = new(' ', TermMode ? Site.LineIndent + 2 : Site.Column);
+        string body = string.Join("\n", lines.Select((l, i) => (i == 0 && !TermMode) || l.Length == 0 ? l : pad + l));
+        return TermMode ? "by\n" + body : body;
+    }
 }
 
 /// <summary>
@@ -143,7 +178,10 @@ public static partial class ProofSearch
             }
             int line = lineStarts.BinarySearch(m.Index);
             line = line >= 0 ? line : ~line - 1;
-            sites.Add(new SorrySite(line, m.Index - lineStarts[line], m.Index, m.Length, DeclarationAbove(lines, line)));
+            sites.Add(new SorrySite(line, m.Index - lineStarts[line], m.Index, m.Length, DeclarationAbove(lines, line))
+            {
+                LineIndent = lines[line].Length - lines[line].TrimStart(' ').Length,
+            });
         }
         return sites;
     }
@@ -228,7 +266,8 @@ public static partial class ProofSearch
 
     private static string Definitions(IReadOnlyList<string> portfolio)
     {
-        string tactics = string.Join(", ", portfolio.Select(t => "\"" + t.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\""));
+        string tactics = string.Join(", ", portfolio.Select(t => "\"" + t.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal)
+            .Replace("\r", "", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal) + "\""));
         return $$"""
             open Lean Meta in
             /-- Small values to try for a variable whose type can be enumerated. -/
@@ -424,14 +463,21 @@ public static partial class ProofSearch
     /// Run the search with a Lean server: the instrumented copy is opened as a document that exists only in the
     /// server (beside the real file, so it sees the same project and imports), checked, and closed again.
     /// </summary>
-    public static async Task<IReadOnlyList<SearchResult>> RunAsync(LeanServer server, string sourcePath, string text, IReadOnlyList<SorrySite> sites, CancellationToken ct = default)
+    /// <param name="server">A running Lean server for the file's project.</param>
+    /// <param name="sourcePath">The file searched.</param>
+    /// <param name="text">The file's text, which may have unsaved changes.</param>
+    /// <param name="sites">The sorries to search.</param>
+    /// <param name="ct">Cancels the search.</param>
+    /// <param name="portfolio">The tactics to try; <see cref="Portfolio"/> when null.</param>
+    public static async Task<IReadOnlyList<SearchResult>> RunAsync(LeanServer server, string sourcePath, string text, IReadOnlyList<SorrySite> sites, CancellationToken ct = default,
+        IReadOnlyList<string>? portfolio = null)
     {
         if (sites.Count == 0)
         {
             return [];
         }
-        IReadOnlyList<Diagnostic> diags = await Scratch.CheckAsync(server, sourcePath, "Prove", Instrument(text, sites), ct).ConfigureAwait(false);
-        return Parse(diags.Where(d => d.Severity == DiagnosticSeverity.Information).Select(d => d.Message), sites);
+        IReadOnlyList<Diagnostic> diags = await Scratch.CheckAsync(server, sourcePath, "Prove", Instrument(text, sites, portfolio), ct).ConfigureAwait(false);
+        return Parse(diags.Where(d => d.Severity == DiagnosticSeverity.Information).Select(d => d.Message), sites, portfolio);
     }
 }
 

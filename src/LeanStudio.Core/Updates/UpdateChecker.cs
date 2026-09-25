@@ -58,6 +58,11 @@ public sealed class UpdateChecker
         get
         {
             string os = OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsWindows() ? "win" : "linux";
+            // The Intel build under Rosetta is offered the Apple silicon build: Rosetta is going away.
+            if (Platform.MacPlatform.IsTranslated)
+            {
+                return "osx-arm64";
+            }
             string arch = RuntimeInformation.OSArchitecture switch
             {
                 Architecture.Arm64 => "arm64",

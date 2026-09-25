@@ -61,7 +61,11 @@ public sealed partial class MainViewModel
     {
         Info.Search.Run = ProveAsync;
         Info.Search.ApplyTrial = ApplyTrial;
-        Info.Search.Cancel = () => _proveCts?.Cancel();
+        Info.Search.Cancel = () =>
+        {
+            _proveCts?.Cancel();
+            _aiProveCts?.Cancel();
+        };
         Info.Search.Extract = r => _ = ExtractFromSearchAsync(r);
         Info.ShowWidgets = ShowInfoview;
         Info.CopyGoalsRequested = () => _ = CopyGoalsAsync();
@@ -115,9 +119,11 @@ public sealed partial class MainViewModel
             return;
         }
         _proveCts?.Cancel();
+        _aiProveCts?.Cancel();
         var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         _proveCts = cts;
         _proveDoc = d;
+        IReadOnlyList<SearchResult>? found = null;
         ps.IsRunning = true;
         ps.Results.Reset([]);
         ps.Status = sites.Count == 1
@@ -131,6 +137,7 @@ public sealed partial class MainViewModel
                 return;
             }
             ps.Show(results);
+            found = results;
             if (d.Document.Text != text)
             {
                 ps.Status += " (The file changed while searching; each fill checks its sorry is still there.)";
@@ -154,6 +161,11 @@ public sealed partial class MainViewModel
             {
                 ps.IsRunning = false;
             }
+        }
+        // Nothing in the portfolio closes it: the AI may have an idea, which Lean then checks.
+        if (found is not null && _proveCts == cts && d.Document.Text == text)
+        {
+            await AskAiWhenStuckAsync(found);
         }
     }
 

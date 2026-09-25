@@ -522,6 +522,8 @@ public static class Tutorial
             * **Mathlib**, Lean's mathematics library: File ▸ New Project, template "Library using Mathlib".
             * **Tenet**: build a project (⌘B / Ctrl+B) and a second, independent checker confirms every
               proof, and tells you which ones still rest on `sorry`.
+            * **AI**: AI ▸ Ask AI to Prove This Sorry asks a model (one on your computer when there is
+              one) for proofs, and Lean checks each; AI ▸ Explain This explains an error or a goal.
             * **AI assistants**: AI ▸ Connect an AI Assistant lets Claude, Gemini and others use Lean too.
 
             ## Final challenge

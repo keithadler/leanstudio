@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+**AI in the editor, on your own computer**:
+- Lean Studio has its own AI, and prefers a model that runs locally: Apple's on-device model on macOS 27 (through the `fm` command, started and stopped by Lean Studio), or Ollama, LM Studio, llama.cpp or MLX when one is running. Claude (with your Anthropic key) or any OpenAI-compatible service can be chosen instead; the automatic choice never uses the cloud unless you allow it. Keys are kept in the Keychain. *AI ▸ Choose a Model…* shows what was found.
+- *AI ▸ Ask AI to Prove This Sorry* (⌘⌥A): the model suggests several proofs, Lean runs each from the sorry's own state, and only the ones Lean accepts are offered, ✦-marked, in the Prove It card. If none works, it asks again with the rejected attempts. Proofs of several lines keep their layout when filled in.
+- Prove It asks the AI too when no tactic in its portfolio closes a goal (the AI menu turns this off), and each goal it can't close has *✦ Ask AI for a proof*.
+- *AI ▸ Explain This* explains the error or goal at the cursor; *AI ▸ Ask AI…* (⌘⌥K) is a conversation about the code at the cursor, with *Insert at Cursor* on every code block.
+- Prompts are cut to fit the model: the goal and the declaration for Apple's 4K-token model, more of the file for larger ones. Reasoning models' `<think>` sections are hidden.
+
+**macOS 27**:
+- The app needs macOS 14 or later, as .NET 10 does (it said 12). The Homebrew cask says so too.
+- The Intel build running under Rosetta on an Apple silicon Mac says so in Output, and the update check offers the Apple silicon build: macOS 27 is the last macOS to run Intel apps.
+- `.lean` files are declared as source code, so Finder, Spotlight and Quick Look treat them as text; the app is filed under Developer Tools.
+- CI uses the Node 24 versions of GitHub's actions.
+
 **Following a long build**:
 - A build dashboard: while a build, the Mathlib cache or Tenet runs with no file open (or from *Details* on the progress banner), the editor area shows the whole task: the stage (toolchain, cache, build, verify), the bar and the time left, the modules compiling now, the slowest so far, and warnings and errors as they come.
 - The progress shows on the app's icon: the percentage as a badge on the Dock icon on macOS, and the taskbar button's progress bar on Windows. When a long task ends while Lean Studio is in the background, the Dock icon bounces once, or the taskbar button flashes.

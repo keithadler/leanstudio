@@ -175,6 +175,13 @@
         <MenuItem Header="Project Map…" Command="{Binding ShowProjectMapCommand}" />
       </MenuItem>
       <MenuItem Header="_AI">
+        <MenuItem Header="Ask AI to Prove This Sorry" Command="{Binding AskAiToProveCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+A', macOS='Cmd+Alt+A'}" />
+        <MenuItem Header="Explain This with AI (the error or goal at the cursor)" Command="{Binding ExplainWithAiCommand}" />
+        <MenuItem Header="Ask AI…" Command="{Binding AskAiCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+K', macOS='Cmd+Alt+K'}" />
+        <MenuItem Header="Ask AI When Prove It's Tactics Don't Work" ToggleType="CheckBox" IsChecked="{Binding Settings.AiAskWhenStuck}" Click="OnSaveSettings" />
+        <Separator />
+        <MenuItem Header="Choose a Model…" Click="OnChooseAiModel" />
+        <Separator />
         <MenuItem Header="Connect an AI Assistant…" Click="OnConnectAssistant" />
       </MenuItem>
       <MenuItem Header="L_earn">

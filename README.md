@@ -15,6 +15,7 @@
   <a href="#how-it-compares">Compared with VS Code</a> ·
   <a href="#new-to-lean">New to Lean?</a> ·
   <a href="#features">Features</a> ·
+  <a href="#ai-in-the-editor-on-your-own-computer">AI</a> ·
   <a href="#use-it-with-ai-assistants">AI assistants</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#building-from-source">Build from source</a> ·
@@ -44,6 +45,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
+| Built-in AI that prefers a model on your computer (Apple's on-device model on macOS 27, Ollama, LM Studio, llama.cpp, MLX), with every proof it suggests checked by Lean before you see it | | ✓ |
 | An MCP server so AI assistants can use Lean | | ✓ |
 | ProofWidgets and other JavaScript widgets in the infoview | ✓ | ✓ (Lean's own infoview, in the window or a browser) |
 | Vim mode | ✓ (an extension) | ✓ built in |
@@ -320,6 +322,23 @@ What CI and reviewers check, before you push:
 
 ![The light theme](docs/images/light-theme.png)
 
+## AI in the editor, on your own computer
+
+Lean Studio has an AI of its own, and it prefers one that runs on your computer, so your code stays there:
+
+- **Apple's on-device model** on macOS 27 with Apple Intelligence on. Lean Studio reaches it through the `fm` command macOS 27 ships (`fm serve`, or `fm respond`), with nothing to install and nothing sent anywhere.
+- **Ollama, LM Studio, llama.cpp's `llama-server`, or MLX's `mlx_lm.server`**, found at their usual addresses when one is running. With several models, one trained for Lean (DeepSeek-Prover, Kimina, Goedel) comes first, then ones trained for code or maths.
+- **A cloud model** only if you choose one: Claude with your Anthropic API key, or any OpenAI-compatible service (OpenAI, Gemini, OpenRouter, a vLLM box) at an address you give. Keys go in the macOS Keychain (the keyring on Linux), never in settings.json. The automatic choice never falls back to the cloud unless you allow it.
+
+**AI ▸ Choose a Model…** shows what it found and lets you pick. What the AI does:
+
+1. **Suggests proofs, and Lean checks them.** *AI ▸ Ask AI to Prove This Sorry* (⌘⌥A / Ctrl+Alt+A) sends the goal and the declaration, asks for several proofs, and runs every one in Lean from the sorry's own state, the way Prove It runs its portfolio. Only proofs Lean accepts with no `sorry` left are offered, ✦-marked, shortest first; a click puts one in the file, laid out on its own lines if it has several. An invented lemma costs a failed trial, never a wrong proof. If nothing works, it asks once more with the rejected attempts listed.
+2. **Steps in when Prove It is stuck.** When no tactic in Prove It's portfolio closes a goal, the card asks the AI too (turn this off in the AI menu), or offers *✦ Ask AI for a proof* on any goal it couldn't close.
+3. **Explains.** *AI ▸ Explain This* explains Lean's error at the cursor (what it means, why, and the fix), or else the goal.
+4. **Answers questions.** *AI ▸ Ask AI…* (⌘⌥K / Ctrl+Alt+K) opens a conversation that starts with the code around the cursor, the goal and Lean's messages there. Code in an answer has *Insert at Cursor*, and Lean checks it the moment it lands.
+
+Prompts are sized to the model: Apple's on-device model sees 4096 tokens, so it gets the goal and the declaration; a large model gets more of the file.
+
 ## Use it with AI assistants
 
 Lean Studio is also an **MCP server**, so Claude Code, Gemini CLI, Codex, Grok CLI, Cursor, or any other assistant that speaks the [Model Context Protocol](https://modelcontextprotocol.io) can use Lean itself while it works, instead of guessing whether its Lean is right. The same binary does both: `LeanStudio --mcp` runs the server with no window.
@@ -532,6 +551,8 @@ The build generates XML documentation for every project in `src/`, and a public 
 | Find in files | ⌘⇧F | Ctrl+Shift+F |
 | Quick fix / Try this | ⌘. | Ctrl+. |
 | Prove It (tactics on the sorry at the cursor) | ⌘⌥P | Ctrl+Alt+P |
+| Ask AI to prove the sorry at the cursor (Lean checks it) | ⌘⌥A | Ctrl+Alt+A |
+| Ask AI about the code at the cursor | ⌘⌥K | Ctrl+Alt+K |
 | REPL at the cursor | ⌘⌥R | Ctrl+Alt+R |
 | Who uses this (callers) | ⌘⌥H | Ctrl+Alt+H |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |

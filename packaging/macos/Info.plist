@@ -10,15 +10,34 @@
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>__VERSION__</string>
   <key>CFBundleVersion</key><string>__VERSION__</string>
-  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <!-- .NET 10 runs on macOS 14 (Sonoma) and later. -->
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSHumanReadableCopyright</key><string>© 2026 Keith Adler (@keithadler). MIT License.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>
       <key>CFBundleTypeName</key><string>Lean source</string>
       <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Default</string>
+      <key>LSItemContentTypes</key><array><string>org.lean-lang.lean-source</string></array>
       <key>CFBundleTypeExtensions</key><array><string>lean</string></array>
+    </dict>
+  </array>
+  <!-- A .lean file is source code: Finder, Spotlight and Quick Look treat it as text (a Quick Look preview shows the
+       code). Imported, not exported: the type belongs to Lean, not to this app. -->
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>org.lean-lang.lean-source</string>
+      <key>UTTypeDescription</key><string>Lean source</string>
+      <key>UTTypeConformsTo</key><array><string>public.source-code</string><string>public.plain-text</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key><array><string>lean</string></array>
+      </dict>
     </dict>
   </array>
 </dict>

@@ -24,10 +24,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -54,7 +54,7 @@ jobs:
       - name: Drive the UI against a real Lean server
         if: runner.os != 'Windows'
         run: dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll . snapshots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always() && runner.os != 'Windows'
         with:
           name: snapshots-${{ runner.os }}
@@ -78,10 +78,10 @@ jobs:
           - { os: windows-latest, rid: win-x64 }
           - { os: windows-latest, rid: win-arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
 
@@ -164,7 +164,7 @@ jobs:
       - name: AppImage
         if: startsWith(matrix.rid, 'linux-')
         run: packaging/linux/build-appimage.sh ${{ matrix.rid }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: leanstudio-${{ matrix.rid }}
           if-no-files-found: error
@@ -184,7 +184,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           pattern: leanstudio-*   # the builds only, not the UI run's screenshots

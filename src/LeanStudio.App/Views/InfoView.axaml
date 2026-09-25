@@ -80,9 +80,14 @@
                             ToolTip.Tip="These values satisfy every hypothesis and make the goal false, so no proof exists: fix the statement">
                       <TextBlock Text="{Binding Counterexample}" Classes="mono" FontSize="12" TextWrapping="Wrap" />
                     </Border>
-                    <Button Classes="chip" Content="Extract as a lemma…" IsVisible="{Binding CanExtract}" HorizontalAlignment="Left" Margin="0,2,0,0"
-                            ToolTip.Tip="Set this goal aside as a lemma of its own, above the declaration, and use it here"
-                            Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).Search.ExtractAsLemmaCommand}" CommandParameter="{Binding}" />
+                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,2,0,0">
+                      <Button Classes="chip accent" Content="✦ Ask AI for a proof" IsVisible="{Binding CanAskAi}"
+                              ToolTip.Tip="Ask the AI (a local model when one is running) for proofs of this goal. Lean checks every one before it is offered."
+                              Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).Search.AskAiAboutCommand}" CommandParameter="{Binding}" />
+                      <Button Classes="chip" Content="Extract as a lemma…" IsVisible="{Binding CanExtract}"
+                              ToolTip.Tip="Set this goal aside as a lemma of its own, above the declaration, and use it here"
+                              Command="{Binding $parent[UserControl].((vm:InfoViewModel)DataContext).Search.ExtractAsLemmaCommand}" CommandParameter="{Binding}" />
+                    </StackPanel>
                     <ItemsControl ItemsSource="{Binding Shown}" IsVisible="{Binding !IsApplied}">
                       <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
