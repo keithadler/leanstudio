@@ -17,6 +17,7 @@
 - Several cursors: Backspace or Delete where a selection meets another cursor crashed.
 - A number where text belongs in commands.json or keybindings.json broke the command palette or the keys; it is now taken as text, or reported.
 - A Loogle answer of an unexpected shape crashed the search, and closing a window after its project was put away logged an error.
+- Every file ever opened stayed in memory after it was closed (the editor remembered each one's scroll position): about 0.7 MB per closed file of that size, all day. Closed files are now freed, and the tests check it.
 
 **Fixes, found by checking every feature against what it says**:
 - Uses of deprecated names are struck through again. Lean sends no semantic token for most names, so the strike-through now comes from Lean's "has been deprecated" warning.

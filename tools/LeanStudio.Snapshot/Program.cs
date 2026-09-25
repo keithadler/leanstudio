@@ -46,6 +46,8 @@ Dispatcher.UIThread.Post(async () =>
     {
         failures = args.Length > 2 && args[0] == "--validate"
             ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
+            : args.Length > 1 && args[0] == "--leak"
+            ? await LeanStudio.Snapshot.Leak.RunAsync(Path.GetFullPath(args[1]))
             : args.Length > 3 && args[0] == "--scale"
             ? await Validate.ScaleAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]))
             : await Scenario.RunAsync(repo, outDir);
@@ -1808,6 +1810,45 @@ internal static class Scenario
                     && typed.Diagnostics.Single(d => d.Severity == LeanStudio.Lsp.DiagnosticSeverity.Error).Range.Start.Line == 6, 90),
                     "restarting Lean in the middle of a check ends with the file checked again, as it is now");
                 await vm.SaveCommand.ExecuteAsync(null);
+
+                // Open and close a file 40 times: the closed documents are freed, and memory doesn't grow with them.
+                string leakFile = Path.Combine(sourceDir, "Leak.lean");
+                await File.WriteAllTextAsync(leakFile, "theorem leak : True := trivial\n" + string.Concat(Enumerable.Repeat("-- padding to make a leak visible\n", 2000)));
+                var closedDocs = new List<WeakReference>();
+                static long Managed()
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                    }
+                    return GC.GetTotalMemory(forceFullCollection: true);
+                }
+                async Task Cycle()
+                {
+                    DocumentViewModel? d = await vm.OpenFileAsync(leakFile);
+                    await WaitFor(() => false, 0.1);
+                    closedDocs.Add(new WeakReference(d));
+                    await vm.CloseDocumentCommand.ExecuteAsync(d);
+                }
+                for (int i = 0; i < 5; i++)
+                {
+                    await Cycle(); // warm up: caches, the first layout
+                }
+                vm.ActiveDocument = doc;
+                await WaitFor(() => false, 1);
+                long memoryBefore = Managed();
+                for (int i = 0; i < 40; i++)
+                {
+                    await Cycle();
+                }
+                vm.ActiveDocument = doc;
+                await WaitFor(() => false, 1);
+                long memoryAfter = Managed();
+                int alive = closedDocs.Count(w => w.IsAlive);
+                Check(alive <= 1, $"closed files are freed ({alive} of {closedDocs.Count} closed documents still held)");
+                Check(memoryAfter - memoryBefore < 40L * 1024 * 1024, $"and 40 open-and-close cycles don't grow memory ({(memoryAfter - memoryBefore) / 1024 / 1024} MB)");
+                File.Delete(leakFile);
 
                 // A build cancelled the moment it starts, then a build that finishes.
                 bool verifyAfter = vm.Settings.VerifyAfterBuild;

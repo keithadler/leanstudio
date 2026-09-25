@@ -1075,6 +1075,9 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         int index = Documents.IndexOf(d);
         Documents.Remove(d);
+        d.TextChanged -= OnDocumentEdited;
+        Forget(_pendingChanges, d);
+        Forget(_autoSave, d);
         if (d.IsLean && _server is { State: LeanServerState.Running } s)
         {
             await s.CloseAsync(d.Uri);
@@ -1090,6 +1093,15 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
         UpdateProblems();
         RememberOpenFiles();
+    }
+
+    // A closed document's pending work (an edit not yet sent, an auto-save) is dropped with it.
+    private static void Forget(Dictionary<DocumentViewModel, CancellationTokenSource> pending, DocumentViewModel d)
+    {
+        if (pending.Remove(d, out CancellationTokenSource? cts))
+        {
+            cts.Cancel();
+        }
     }
 
     /// <summary>Close every file; returns false if the user kept one with unsaved changes.</summary>

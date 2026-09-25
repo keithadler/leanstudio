@@ -237,6 +237,11 @@ public sealed class LeanEditor : UserControl
         if (_current is not null)
         {
             _scroll[_current] = new Vector(_editor.HorizontalOffset, _editor.VerticalOffset);
+            // Forget closed files: this held on to every document ever shown, and with it its whole text and undo.
+            foreach (DocumentViewModel gone in _scroll.Keys.Where(k => Main is not null && !Main.Documents.Contains(k)).ToList())
+            {
+                _scroll.Remove(gone);
+            }
             _current.PropertyChanged -= OnDocumentPropertyChanged;
             _current.Document.Changed -= OnTextChangedForLayers;
             _current.RevealRequested -= Reveal;
