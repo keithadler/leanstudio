@@ -19,6 +19,8 @@ namespace LeanStudio.Mcp;
 /// </summary>
 public static class LeanTools
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> ScratchGates = new(StringComparer.Ordinal);
+
     /// <summary>
     /// The guidance sent to clients in the <c>initialize</c> result: which tool to use when, and what counts as proved.
     /// Keep it in step with the tools in <see cref="Tools"/>.
@@ -318,9 +320,20 @@ public static class LeanTools
                 Directory.CreateDirectory(dir);
                 string file = Path.Combine(dir, "Scratch.lean");
                 string code = Str(a, "code");
-                await File.WriteAllTextAsync(file, code, ct);
-                FileReport r = await s.CheckAsync(file, code, ct);
-                return r.Diagnostics.Count == 0 ? "Lean accepted the snippet with no messages." : FormatDiagnostics(r, "snippet");
+                // Snippets share one scratch file: write and check it one snippet at a time, or two writers collide
+                // (Windows refuses the second) and a check could read another snippet's text.
+                SemaphoreSlim gate = ScratchGates.GetOrAdd(file, _ => new SemaphoreSlim(1, 1));
+                await gate.WaitAsync(ct);
+                try
+                {
+                    await File.WriteAllTextAsync(file, code, ct);
+                    FileReport r = await s.CheckAsync(file, code, ct);
+                    return r.Diagnostics.Count == 0 ? "Lean accepted the snippet with no messages." : FormatDiagnostics(r, "snippet");
+                }
+                finally
+                {
+                    gate.Release();
+                }
             }),
 
         new("build",

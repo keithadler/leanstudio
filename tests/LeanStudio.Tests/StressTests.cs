@@ -288,11 +288,12 @@ public sealed class StressTests
     [Fact]
     public async Task CancellingAProcessStopsItsChildrenToo()
     {
-        Assert.SkipWhen(OperatingSystem.IsWindows(), "uses /bin/sh and ps");
+        // `exec -a` (which names the children, to find them after) is bash's: Ubuntu's /bin/sh is dash, which lacks it.
+        Assert.SkipWhen(OperatingSystem.IsWindows() || !File.Exists("/bin/bash"), "uses bash and ps");
         string marker = "leanstudio_stress_" + Environment.ProcessId;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            ProcessRunner.RunAsync("/bin/sh", ["-c", $"(exec -a {marker} sleep 300) & (exec -a {marker} sleep 300) & wait"], ct: cts.Token));
+            ProcessRunner.RunAsync("/bin/bash", ["-c", $"(exec -a {marker} sleep 300) & (exec -a {marker} sleep 300) & wait"], ct: cts.Token));
         Assert.True(await WaitUntil(() =>
         {
             ProcessResult ps = ProcessRunner.RunAsync("ps", ["-axo", "args="]).GetAwaiter().GetResult();

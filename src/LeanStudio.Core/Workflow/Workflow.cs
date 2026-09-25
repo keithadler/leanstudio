@@ -221,6 +221,18 @@ public sealed class LocalHistory(string folder)
     /// </summary>
     public void Record(string path, string text)
     {
+        // One save at a time: two at once (auto-save beside Save All) would race for the same snapshot name and the
+        // same old versions to delete, which Windows reports as access denied.
+        lock (_gate)
+        {
+            RecordOne(path, text);
+        }
+    }
+
+    private readonly object _gate = new();
+
+    private void RecordOne(string path, string text)
+    {
         string dir = FolderFor(path);
         Directory.CreateDirectory(dir);
         File.WriteAllText(System.IO.Path.Combine(dir, "path.txt"), System.IO.Path.GetFullPath(path));

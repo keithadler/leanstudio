@@ -410,7 +410,11 @@ public sealed class FuzzTests
                 // On a POSIX machine every local path maps to a remote one and back unchanged.
                 Assert.True(target.ToLocal(remote) == s, $"seed {seed}: '{s}' came back as '{target.ToLocal(remote)}'");
             }
-            Assert.DoesNotContain("/mnt/box/Proofs/", remote.Replace('\\', '/'), StringComparison.Ordinal);
+            // The project's folder glued to more name ("…\ProofsC:\…") is another path, rightly left alone.
+            if (!System.Text.RegularExpressions.Regex.IsMatch(s, System.Text.RegularExpressions.Regex.Escape(local) + @"(?![/\\""'\s:),\]}]|$)"))
+            {
+                Assert.DoesNotContain("/mnt/box/Proofs/", remote.Replace('\\', '/'), StringComparison.Ordinal);
+            }
             _ = RemoteTarget.Quote(s);
             _ = RemoteTarget.ParseDestination(s);
         });
