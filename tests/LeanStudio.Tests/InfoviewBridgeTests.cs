@@ -76,7 +76,9 @@ public sealed class InfoviewBridgeTests
         await using var bridge = new InfoviewBridge(() => null, new Editor(),
             path => path == "index.html" ? (Encoding.UTF8.GetBytes("<html>infoview</html>"), "text/html") : null);
         Uri page = bridge.Start();
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        // At most 64 connections for the 300 requests: the kernel's listen queue holds 128 (kern.ipc.somaxconn on
+        // macOS), and a connection it has no room for is reset, which says nothing about the server.
+        using var http = new HttpClient(new SocketsHttpHandler { MaxConnectionsPerServer = 64 }) { Timeout = TimeSpan.FromSeconds(30) };
         Uri bare = new(page.GetLeftPart(UriPartial.Path));
         Uri missing = new(page.GetLeftPart(UriPartial.Authority) + "/no/such/file.js");
         HttpStatusCode[] codes = await Task.WhenAll(Enumerable.Range(0, 300).Select(async i =>
