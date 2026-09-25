@@ -221,6 +221,18 @@ public sealed class LocalHistory(string folder)
     /// </summary>
     public void Record(string path, string text)
     {
+        // One save at a time: two at once would both trim the old versions (one failing to delete what the other
+        // already had) and could keep more than Keep.
+        lock (_gate)
+        {
+            RecordOne(path, text);
+        }
+    }
+
+    private readonly object _gate = new();
+
+    private void RecordOne(string path, string text)
+    {
         string dir = FolderFor(path);
         Directory.CreateDirectory(dir);
         File.WriteAllText(System.IO.Path.Combine(dir, "path.txt"), System.IO.Path.GetFullPath(path));
@@ -241,7 +253,14 @@ public sealed class LocalHistory(string folder)
         File.WriteAllText(System.IO.Path.Combine(dir, name), text);
         foreach (string old in existing.Take(Math.Max(0, existing.Length + 1 - Keep)))
         {
-            File.Delete(old);
+            try
+            {
+                File.Delete(old);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // gone already (another window trimmed it), or in use a moment: the next save trims it
+            }
         }
     }
 

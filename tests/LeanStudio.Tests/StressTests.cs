@@ -289,10 +289,12 @@ public sealed class StressTests
     public async Task CancellingAProcessStopsItsChildrenToo()
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "uses /bin/sh and ps");
-        string marker = "leanstudio_stress_" + Environment.ProcessId;
+        // Children marked by an unusual sleep time, which `ps` shows (`exec -a` isn't in every /bin/sh).
+        int seconds = 3000 + Environment.ProcessId % 997;
+        string marker = "sleep " + seconds;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            ProcessRunner.RunAsync("/bin/sh", ["-c", $"(exec -a {marker} sleep 300) & (exec -a {marker} sleep 300) & wait"], ct: cts.Token));
+            ProcessRunner.RunAsync("/bin/sh", ["-c", $"sleep {seconds} & sleep {seconds} & wait"], ct: cts.Token));
         Assert.True(await WaitUntil(() =>
         {
             ProcessResult ps = ProcessRunner.RunAsync("ps", ["-axo", "args="]).GetAwaiter().GetResult();
@@ -308,27 +310,11 @@ public sealed class StressTests
         {
             var history = new LocalHistory(Path.Combine(dir, "h"));
             string file = Path.Combine(dir, "A.lean");
-            var errors = new List<Exception>();
-            Parallel.For(0, 400, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i =>
-            {
-                try
-                {
-                    history.Record(file, "version " + i);
-                }
-                catch (IOException e)
-                {
-                    lock (errors)
-                    {
-                        errors.Add(e);
-                    }
-                }
-            });
-            // Two saves writing the same snapshot at once may collide on the disk (one fails, the other wins);
-            // what must hold: nothing else throws, at most Keep versions stay, and each is readable.
+            Parallel.For(0, 400, new ParallelOptions { MaxDegreeOfParallelism = 16 }, i => history.Record(file, "version " + i));
             var kept = history.Versions(file);
-            Assert.InRange(kept.Count, 1, LocalHistory.Keep);
+            Assert.Equal(LocalHistory.Keep, kept.Count);
             Assert.All(kept, v => Assert.StartsWith("version ", File.ReadAllText(v.SnapshotFile), StringComparison.Ordinal));
-            Assert.True(errors.Count < 40, $"{errors.Count} saves failed");
+
         }
         finally
         {

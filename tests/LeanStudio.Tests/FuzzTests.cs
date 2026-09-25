@@ -403,7 +403,8 @@ public sealed class FuzzTests
         string[] parts = [local, local + Path.DirectorySeparatorChar + "A.lean", LeanServer.UriOf(Path.Combine(local, "B.lean")), "/home/me/Proofs2", "file:///x", "\"", ":", "{\"uri\":\"", "\"}", " ", "\n", "é", "😀", "%20"];
         ForSeeds((r, seed) =>
         {
-            string s = string.Concat(Enumerable.Range(0, r.Next(12)).Select(_ => parts[r.Next(parts.Length)]));
+            // Pieces apart, as paths are in real text (glued together, `C:\\a` + `C:\\a` is no path at all).
+            string s = string.Join(r.Next(2) == 0 ? " " : "\n", Enumerable.Range(0, r.Next(12)).Select(_ => parts[r.Next(parts.Length)]));
             string remote = target.ToRemote(s);
             if (!OperatingSystem.IsWindows())
             {
