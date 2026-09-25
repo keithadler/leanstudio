@@ -105,7 +105,13 @@ public sealed partial class MessageView : ObservableObject
     public ObservableList<CodeAction> Suggestions { get; } = new();
 
     /// <summary>What the message means, in plain words, when there is a known explanation.</summary>
-    public string? Explanation { get; init; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasExplanation))]
+    private string? _explanation;
+
+    /// <summary><see cref="Explanation"/> is the on-device model's, not one of <see cref="Core.Learn.ErrorGuide"/>'s rules.</summary>
+    [ObservableProperty]
+    private bool _explainedByModel;
 
     /// <summary>There is a plain-words <see cref="Explanation"/>.</summary>
     public bool HasExplanation => Explanation is not null;
@@ -442,6 +448,9 @@ public sealed partial class InfoViewModel : ObservableObject
     /// <summary>Explain messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
 
+    /// <summary>Explains the messages no rule covers (Apple's on-device model on macOS 27); null for none.</summary>
+    public Core.Learn.OnDeviceExplainer? Explainer { get; set; }
+
     /// <summary>Raised with a 0-based line and column to move the editor's caret to (after a proof step).</summary>
     public event Action<int, int>? NavigateRequested;
 
@@ -569,11 +578,12 @@ public sealed partial class InfoViewModel : ObservableObject
         // Messages on this line need no round trip.
         var msgs = doc.Diagnostics
             .Where(d => d.Extent.Start.Line <= pos.Line && pos.Line <= d.Extent.End.Line)
-            .Select(d => new MessageView(d) { Explanation = ExplainErrors ? Core.Learn.ErrorGuide.Explain(d.Message) : null })
+            .Select(Explained)
             .ToList();
         Messages.Reset(msgs);
         HasMessages = msgs.Count > 0;
         _ = LoadSuggestionsAsync(server, doc, msgs, cts.Token);
+        _ = LoadModelExplanationsAsync(msgs, cts.Token);
         _ = LoadTracesAsync(server, doc, msgs, pos, cts.Token);
         _ = LoadWidgetsAsync(server, doc, pos, cts.Token);
 
@@ -701,6 +711,47 @@ public sealed partial class InfoViewModel : ObservableObject
         }
         catch (Exception e) when (e is JsonRpcException or IOException or OperationCanceledException)
         {
+        }
+    }
+
+    private MessageView Explained(Diagnostic d)
+    {
+        var m = new MessageView(d);
+        if (!ExplainErrors)
+        {
+            return m;
+        }
+        m.Explanation = Core.Learn.ErrorGuide.Explain(d.Message);
+        if (m.Explanation is null && Explainer?.Cached(d.Message) is string known)
+        {
+            m.Explanation = known;
+            m.ExplainedByModel = true;
+        }
+        return m;
+    }
+
+    /// <summary>Ask the on-device model about the errors and warnings no rule explains, one at a time.</summary>
+    private async Task LoadModelExplanationsAsync(List<MessageView> msgs, CancellationToken ct)
+    {
+        if (!ExplainErrors || Explainer is not Core.Learn.OnDeviceExplainer explainer)
+        {
+            return;
+        }
+        foreach (MessageView m in msgs.Where(m => m.Explanation is null
+            && m.Diagnostic.Severity is DiagnosticSeverity.Error or DiagnosticSeverity.Warning))
+        {
+            try
+            {
+                if (await explainer.ExplainAsync(m.Diagnostic.Message, ct) is string answer && !ct.IsCancellationRequested)
+                {
+                    m.Explanation = answer;
+                    m.ExplainedByModel = true;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
     }
 

@@ -20,7 +20,8 @@ public sealed record ProcessResult(int ExitCode, string Output)
 public static class ProcessRunner
 {
     /// <summary>
-    /// Start <paramref name="fileName"/> without a shell or window, close its stdin, and wait for it to exit.
+    /// Start <paramref name="fileName"/> without a shell or window, write <paramref name="input"/> to its stdin and
+    /// close it, and wait for it to exit.
     /// Arguments are passed as a list, so they need no quoting. Stdout and stderr are decoded as UTF-8.
     /// </summary>
     /// <param name="fileName">The executable to run: a path, or a name looked up on <c>PATH</c>.</param>
@@ -31,6 +32,7 @@ public static class ProcessRunner
     /// message when the process cannot be started.
     /// </param>
     /// <param name="environment">Variables to set (or override) in the process's environment.</param>
+    /// <param name="input">What to write to the process's stdin (as UTF-8) before closing it; nothing when null.</param>
     /// <param name="ct">Cancelling kills the whole process tree and throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>
     /// The exit code and combined output. A process that cannot be started does not throw: the result has exit
@@ -42,6 +44,7 @@ public static class ProcessRunner
         string? workingDirectory = null,
         Action<string>? onLine = null,
         IReadOnlyDictionary<string, string>? environment = null,
+        string? input = null,
         CancellationToken ct = default)
     {
         // Lean's tools for a remote project run on its machine, over SSH; what they print names local paths.
@@ -64,6 +67,7 @@ public static class ProcessRunner
             CreateNoWindow = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = new UTF8Encoding(false),
         };
         if (workingDirectory is not null)
         {
@@ -108,11 +112,29 @@ public static class ProcessRunner
             onLine?.Invoke(msg);
             return new ProcessResult(-1, msg);
         }
-        p.StandardInput.Close();
+        // Read before writing: a process that answers as it reads would otherwise fill its output pipe and stall.
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         try
         {
+            if (input is not null)
+            {
+                try
+                {
+                    await p.StandardInput.WriteAsync(input.AsMemory(), ct).ConfigureAwait(false);
+                }
+                catch (IOException)
+                {
+                    // It exited without reading everything; its exit code and output say why.
+                }
+            }
+            try
+            {
+                p.StandardInput.Close();
+            }
+            catch (IOException)
+            {
+            }
             await p.WaitForExitAsync(ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException)

@@ -1166,6 +1166,12 @@ public sealed class LeanEditor : UserControl
             {
                 panel.Children.Add(new TextBlock { Text = "What this means: " + meaning, TextWrapping = TextWrapping.Wrap, FontSize = _editor.FontSize - 2, Opacity = 0.85 });
             }
+            // What the on-device model said when the Tactic State asked it about this message (the hover doesn't wait for it).
+            else if (Main?.Settings is { ExplainErrors: true, ExplainWithOnDeviceModel: true }
+                && Core.Learn.OnDeviceExplainer.ForThisMachine?.Cached(d.Message) is string guess)
+            {
+                panel.Children.Add(new TextBlock { Text = "What this means (Apple's on-device model, can be wrong): " + guess, TextWrapping = TextWrapping.Wrap, FontSize = _editor.FontSize - 2, Opacity = 0.85 });
+            }
         }
         // A tactic or keyword under the pointer: say what it does, for people new to Lean.
         if (doc.IsLean && WordAt(doc.Document, doc.Document.GetOffset(p.Location)) is string word && Core.Learn.TacticGuide.Explain(word) is { } guide)

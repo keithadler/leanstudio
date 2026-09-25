@@ -212,6 +212,8 @@
                     </TreeView>
                     <TextBlock Text="{Binding Explanation}" IsVisible="{Binding HasExplanation}" FontSize="12" TextWrapping="Wrap"
                                Foreground="{DynamicResource GoalAccent}" />
+                    <TextBlock Text="Explained by Apple's on-device model, which can be wrong." IsVisible="{Binding ExplainedByModel}"
+                               Classes="dim" FontSize="11" />
                     <ItemsControl ItemsSource="{Binding Suggestions}" IsVisible="{Binding HasSuggestions}">
                       <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="lsp:CodeAction">

@@ -79,6 +79,8 @@ public sealed class Settings
 
     /// <summary>Explain Lean's error messages in plain words.</summary>
     public bool ExplainErrors { get; set; } = true;
+    /// <summary>Explain the messages no rule covers with Apple's on-device model (macOS 27 and later).</summary>
+    public bool ExplainWithOnDeviceModel { get; set; } = true;
     /// <summary>Whether to check for a new release on start (at most every 20 hours).</summary>
     public bool CheckForUpdates { get; set; } = true;
     /// <summary>Save a file a moment after you stop typing, and everything when the window loses focus.</summary>

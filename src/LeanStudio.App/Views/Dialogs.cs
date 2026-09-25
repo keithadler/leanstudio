@@ -271,6 +271,11 @@ internal static class Dialogs
         var emacs = Check("Emacs keys (C-f, M-f, C-k, C-y, the mark, C-x C-s; Vim mode wins if both are on)", s.EmacsMode);
         var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
         var explain = Check("Explain Lean's messages in plain words", s.ExplainErrors);
+        var onDevice = Check("Explain the rest with Apple's on-device model (stays on this Mac)", s.ExplainWithOnDeviceModel,
+            "macOS 27's built-in model explains the messages Lean Studio has no explanation for. It needs its terms accepted "
+            + "once: run sudo fm license in Terminal.");
+        onDevice.IsVisible = Core.Learn.OnDeviceExplainer.ForThisMachine is not null;
+        onDevice.Margin = new Thickness(20, 0, 0, 0);
         var autofix = Check("Apply a lone Try this suggestion automatically", s.AutoApplyFixes);
         var verify = Check("Verify with Tenet after every build", s.VerifyAfterBuild);
         var blame = Check("Show who last changed the current line", s.ShowBlame);
@@ -312,7 +317,7 @@ internal static class Dialogs
             {
                 Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
                 Head("Editing"), unicode, autosave, inline, marks, vim, emacs,
-                Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback), Row("Lean arguments", serverArgs), logServer,
+                Head("Lean"), english, explain, onDevice, autofix, verify, Row("Loose files use", fallback), Row("Lean arguments", serverArgs), logServer,
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
             },
@@ -341,6 +346,7 @@ internal static class Dialogs
             s.LogServerMessages = logServer.IsChecked == true;
             s.ShowGoalsInEnglish = english.IsChecked == true;
             s.ExplainErrors = explain.IsChecked == true;
+            s.ExplainWithOnDeviceModel = onDevice.IsChecked == true;
             s.AutoApplyFixes = autofix.IsChecked == true;
             s.VerifyAfterBuild = verify.IsChecked == true;
             s.ShowBlame = blame.IsChecked == true;

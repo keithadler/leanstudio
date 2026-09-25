@@ -114,7 +114,7 @@ public sealed partial class GitRepository
     public Task<ProcessResult> RunAsync(IEnumerable<string> args, Action<string>? onLine = null, CancellationToken ct = default) =>
         ProcessRunner.RunAsync(GitExecutable ?? "git", args, Root, onLine,
             // Never stop to ask for a password in a terminal nobody can see; fail and say so instead.
-            new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0", ["GIT_OPTIONAL_LOCKS"] = "0" }, ct);
+            new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0", ["GIT_OPTIONAL_LOCKS"] = "0" }, ct: ct);
 
     /// <summary>
     /// Run <c>git init -b main</c> in <paramref name="folder"/>, which must exist. Returns the result, and the folder
@@ -139,7 +139,7 @@ public sealed partial class GitRepository
         string target = Path.Combine(parent, name);
         Directory.CreateDirectory(parent);
         ProcessResult r = await ProcessRunner.RunAsync(GitExecutable ?? "git", ["clone", "--recurse-submodules", "--progress", url, target], parent, onLine,
-            new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0" }, ct).ConfigureAwait(false);
+            new Dictionary<string, string> { ["GIT_TERMINAL_PROMPT"] = "0" }, ct: ct).ConfigureAwait(false);
         return (r, r.Success && Directory.Exists(target) ? target : null);
     }
 

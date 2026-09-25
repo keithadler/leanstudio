@@ -1278,6 +1278,7 @@ public sealed partial class MainWindow : Window, IDialogs
             ed.ApplySettings(_vm.Settings);
         }
         _vm.Info.ExplainErrors = _vm.Settings.ExplainErrors;
+        _vm.Info.Explainer = _vm.Settings.ExplainWithOnDeviceModel ? Core.Learn.OnDeviceExplainer.ForThisMachine : null;
         _vm.Settings.Save();
     }
 

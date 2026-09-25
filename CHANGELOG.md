@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+**macOS 27**:
+- Lean messages that Lean Studio has no plain-words explanation for are explained by Apple's on-device model, through the `fm` command macOS 27 ships. The message stays on the Mac, with no account or key. The answer shows under the message in the Tactic State, marked as the model's, and in the message's hover once given. It needs the model's terms accepted once (`sudo fm license` in Terminal); until then nothing changes. Turn it off in Settings, under Lean.
+
 **Following a long build**:
 - A build dashboard: while a build, the Mathlib cache or Tenet runs with no file open (or from *Details* on the progress banner), the editor area shows the whole task: the stage (toolchain, cache, build, verify), the bar and the time left, the modules compiling now, the slowest so far, and warnings and errors as they come.
 - The progress shows on the app's icon: the percentage as a badge on the Dock icon on macOS, and the taskbar button's progress bar on Windows. When a long task ends while Lean Studio is in the background, the Dock icon bounces once, or the taskbar button flashes.

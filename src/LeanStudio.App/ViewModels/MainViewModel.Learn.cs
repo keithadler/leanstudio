@@ -28,6 +28,7 @@ public sealed partial class MainViewModel
         Learn = new LearnViewModel(this);
         Info.ShowEnglish = Settings.ShowGoalsInEnglish;
         Info.ExplainErrors = Settings.ExplainErrors;
+        Info.Explainer = Settings.ExplainWithOnDeviceModel ? Core.Learn.OnDeviceExplainer.ForThisMachine : null;
         Info.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(InfoViewModel.ShowEnglish))
