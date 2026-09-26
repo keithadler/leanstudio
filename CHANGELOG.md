@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+**Proof-State Map** (Lean ▸ Proof-State Map ▸ This File / Whole Project):
+- Every tactic step's goals, from Lean's language server, merged across proofs into one map of states: where different proofs reach the same state they share it. The window lists the states two or more proofs reach, most shared first, with the proofs to jump to and *Extract as Lemma…*, which has Lean write the lemma for that state above the first proof that reaches it.
+- The same states in 3D beside the list, in the window's own web view (the browser where there is none): drag to turn, scroll to zoom. Picking a state in the list selects it in 3D and the other way round, and the view follows the light and dark themes. It is drawn by a small script of its own, with no library added.
+- What counts as the same state is a choice: exact (up to renaming local names), same goal (hypotheses ignored), or same shape (names and numbers ignored). Trivial goals (`False`, `True`, `a = a`, numbers only) are never listed.
+
 **AI in the editor, on your own computer**:
 - Lean Studio has its own AI, and prefers a model that runs locally: Apple's on-device model on macOS 27 (through the `fm` command, started and stopped by Lean Studio), or Ollama, LM Studio, llama.cpp or MLX when one is running. Claude (with your Anthropic key) or any OpenAI-compatible service can be chosen instead; the automatic choice never uses the cloud unless you allow it. Keys are kept in the Keychain. *AI ▸ Choose a Model…* shows what was found.
 - *AI ▸ Ask AI to Prove This Sorry* (⌘⌥A): the model suggests several proofs, Lean runs each from the sorry's own state, and only the ones Lean accepts are offered, ✦-marked, in the Prove It card. If none works, it asks again with the rejected attempts. Proofs of several lines keep their layout when filled in.

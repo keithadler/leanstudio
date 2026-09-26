@@ -128,6 +128,10 @@
         <MenuItem Header="Prove It (try tactics on this sorry)" Command="{Binding ProveItCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+P', macOS='Cmd+Alt+P'}" />
         <MenuItem Header="Prove Every Sorry in File" Command="{Binding ProveAllSorriesCommand}" />
         <MenuItem Header="Extract Goal as Lemma…" Command="{Binding ExtractLemmaCommand}" />
+        <MenuItem Header="Proof-State Map">
+          <MenuItem Header="This File" Command="{Binding ShowProofStatesForFileCommand}" />
+          <MenuItem Header="Whole Project" Command="{Binding ShowProofStatesForProjectCommand}" />
+        </MenuItem>
         <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
         <MenuItem Header="Count Heartbeats (what maxHeartbeats limits)" Command="{Binding CountHeartbeatsCommand}" />
         <MenuItem Header="REPL (evaluate Lean at the cursor)" Click="OnShowRepl" InputGesture="{OnPlatform Default='Ctrl+Alt+R', macOS='Cmd+Alt+R'}" />

@@ -97,7 +97,7 @@ The Outline also shows, live, which theorems Lean accepts (✓), which still use
 
 AI assistants get all five too: the `prove`, `why_not_proved`, `profile`, `export_walkthrough` and `search_mathlib` tools.
 
-### And four more for real proof work
+### And five more for real proof work
 
 1. **"Is this even true?"** When no tactic closes a goal, Prove It looks for a counterexample. It tries small values of the goal's `Nat`, `Int` and `Bool` variables (and runs [Plausible](https://github.com/leanprover-community/plausible) where the project has it). If it finds values that satisfy every hypothesis and make the goal false, it says so ("✗ False when n = 4"). You find out the statement is wrong before spending an afternoon trying to prove it.
 
@@ -118,6 +118,8 @@ AI assistants get all five too: the `prove`, `why_not_proved`, `profile`, `expor
 4. **Project Map** (Tenet ▸ Project Map…). The whole project as a graph: every declaration, what it uses, and whether it's fully proved (green), rests on `sorry` (amber), or rests on an axiom (purple). Columns run from foundations on the left to what builds on them. **Fix these first** lists the sorries and axioms that the most declarations depend on. Hover shows details, and a click opens the declaration.
 
    ![The project map](docs/images/project-map.png)
+
+5. **Proof-State Map** (Lean ▸ Proof-State Map ▸ This File, or Whole Project). Every state your tactic proofs pass through, the goals Lean shows between one tactic and the next, merged across proofs: where two proofs reach the same state, they share it. On the right, the states two or more proofs reach, most shared first, each with the proofs to jump to and *Extract as Lemma…*: a state several proofs pass through is a lemma nobody has written yet. On the left, the same states in 3D, a point per state and a line per tactic, to turn and zoom; picking a state in either selects it in the other. You choose what counts as the same state: *Exact* (same hypotheses and goals, whatever the local names are called), *Same goal* (hypotheses ignored) or *Same shape* (numbers and names ignored too, so `n + 2 ≤ n * 5` meets `k + 3 ≤ k * 7`). Trivial goals like `False` and `a = a` are left out of the list.
 
 Assistants get these through the `extract_lemma` and `project_map` tools, and through `prove`, which now reports counterexamples.
 

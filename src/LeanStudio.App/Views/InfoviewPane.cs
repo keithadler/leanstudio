@@ -74,7 +74,7 @@ public sealed class InfoviewPane : UserControl
         || (to.Scheme == _page.Scheme && to.Host == _page.Host && to.Port == _page.Port));
 
     /// <summary>Why this platform has no web view for the pane, or null if it has one.</summary>
-    private static string? Unavailable()
+    internal static string? Unavailable()
     {
         if (!NativeWebViewAllowed)
         {

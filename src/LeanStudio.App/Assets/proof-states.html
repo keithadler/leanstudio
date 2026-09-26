@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof-state map</title>
+<style>
+  :root {
+    --bg: #1b1f24; --fg: #d9dee4; --dim: #8b949e; --line: rgba(139, 148, 158, 0.18);
+    --one: #7d8fa3; --few: #4fb3c7; --many: #e3a82b; --most: #f0715a; --triv: #4a525c; --hi: #ffffff;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f7f5; --fg: #1f2328; --dim: #59636e; --line: rgba(89, 99, 110, 0.18);
+    --one: #8a9aac; --few: #1f8fa6; --many: #b77d09; --most: #d14a2f; --triv: #c7ccd1; --hi: #111418;
+  }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 12px/1.45 var(--font); overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .corner { position: fixed; left: 12px; bottom: 10px; display: grid; gap: 3px; color: var(--dim); pointer-events: none; }
+  .corner div { display: flex; gap: 6px; align-items: center; }
+  .corner i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .levels { position: fixed; top: 10px; left: 12px; display: flex; gap: 6px; }
+  .levels button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  .levels button[aria-pressed="true"] { border-color: var(--many); color: var(--many); }
+  .tip { position: fixed; pointer-events: none; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 7px; max-width: 360px; font: 11px/1.4 var(--mono); white-space: pre-wrap; display: none; }
+  .empty { position: fixed; inset: 0; display: grid; place-items: center; color: var(--dim); text-align: center; padding: 24px; }
+  .info { position: fixed; right: 12px; top: 10px; width: min(360px, 45vw); max-height: 70vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px; display: none; }
+  .info pre { margin: 6px 0 0; white-space: pre-wrap; font: 11px/1.45 var(--mono); }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Proof states in three dimensions. Drag to turn, scroll to zoom, click a state to select it."></canvas>
+<div class="levels" id="levels" hidden></div>
+<div class="corner" id="legend"></div>
+<div class="tip" id="tip"></div>
+<div class="info" id="info"></div>
+<div class="empty" id="empty" hidden></div>
+<script>
+const DATA = /*DATA*/null;
+const EMBEDDED = /*EMBEDDED*/false;
+const LEVEL_NAMES = { exact: "Exact", goal: "Same goal", shape: "Same shape" };
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const post = m => { try { window.invokeCSharpAction?.(JSON.stringify(m)); } catch (e) { /* no host */ } };
+
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+const tip = document.getElementById("tip");
+let W = 0, H = 0, dpr = 1;
+function resize() {
+  dpr = window.devicePixelRatio || 1; W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); draw();
+}
+window.addEventListener("resize", resize);
+
+// ---------- colors, from the theme
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let C = {};
+function readColors() { C = { one: css("--one"), few: css("--few"), many: css("--many"), most: css("--most"), triv: css("--triv"), hi: css("--hi"), line: css("--line"), dim: css("--dim") }; }
+function setTheme(t) { document.documentElement.dataset.theme = t; readColors(); legend(); draw(); }
+window.setTheme = setTheme;
+const colorOf = n => n.trivial ? C.triv : n.decls.length >= 10 ? C.most : n.decls.length >= 4 ? C.many : n.decls.length >= 2 ? C.few : C.one;
+function legend() {
+  document.getElementById("legend").innerHTML = [["one", "one proof"], ["few", "2 to 3 proofs"], ["many", "4 to 9"], ["most", "10 or more"], ["triv", "trivial (False, a = a)"]]
+    .map(([k, t]) => `<div><i style="background:${C[k]}"></i>${t}</div>`).join("");
+}
+
+// ---------- layout: a small seeded force simulation, so the same proofs always give the same picture
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const levels = {};
+function prepare(name) {
+  if (levels[name]) return levels[name];
+  const g = DATA[name];
+  const byId = new Map();
+  const nodes = g.nodes.map(n => { const o = { ...n, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }; byId.set(n.id, o); return o; });
+  const links = g.links.filter(l => byId.has(l.source) && byId.has(l.target)).map(l => ({ s: byId.get(l.source), t: byId.get(l.target), decl: l.decl }));
+  const r = rng(nodes.length * 7919 + 17), R = 18 * Math.cbrt(nodes.length + 1);
+  for (const n of nodes) { const u = r() * 2 - 1, th = r() * Math.PI * 2, rad = R * Math.cbrt(r()); const s = Math.sqrt(1 - u * u); n.x = rad * s * Math.cos(th); n.y = rad * s * Math.sin(th); n.z = rad * u; }
+  const L = { name, nodes, links, byId, shared: new Set(g.shared), ticks: 0 };
+  levels[name] = L;
+  return L;
+}
+function tick(L) {
+  const N = L.nodes, cell = 26, grid = new Map(), key = (a, b, c) => a + "," + b + "," + c;
+  for (const n of N) { const k = key(Math.floor(n.x / cell), Math.floor(n.y / cell), Math.floor(n.z / cell)); let b = grid.get(k); if (!b) grid.set(k, b = []); b.push(n); }
+  for (const n of N) {
+    const cx = Math.floor(n.x / cell), cy = Math.floor(n.y / cell), cz = Math.floor(n.z / cell);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+      const bucket = grid.get(key(cx + a, cy + b, cz + c)); if (!bucket) continue;
+      for (const m of bucket) {
+        if (m === n) continue;
+        let dx = n.x - m.x, dy = n.y - m.y, dz = n.z - m.z, d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > cell * cell) continue; if (d2 < 0.01) { dx = 0.1; d2 = 0.01; }
+        const f = 18 / d2; n.vx += dx * f; n.vy += dy * f; n.vz += dz * f;
+      }
+    }
+  }
+  for (const l of L.links) {
+    const dx = l.t.x - l.s.x, dy = l.t.y - l.s.y, dz = l.t.z - l.s.z, d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1, f = (d - 12) * 0.04 / d;
+    l.s.vx += dx * f; l.s.vy += dy * f; l.s.vz += dz * f; l.t.vx -= dx * f; l.t.vy -= dy * f; l.t.vz -= dz * f;
+  }
+  for (const n of N) { n.vx -= n.x * 0.004; n.vy -= n.y * 0.004; n.vz -= n.z * 0.004; n.x += n.vx *= 0.55; n.y += n.vy *= 0.55; n.z += n.vz *= 0.55; }
+  L.ticks++;
+}
+
+// ---------- camera and drawing
+const cam = { yaw: 0.6, pitch: -0.35, dist: 0, tx: 0, ty: 0, tz: 0, goal: null };
+let L = null, selected = null, hiDecls = new Set(), hover = null, touched = false;
+function fit() { let m = 1; for (const n of L.nodes) m = Math.max(m, Math.hypot(n.x, n.y, n.z)); cam.dist = m * 2.6 + 40; }
+function project(n) {
+  const x = n.x - cam.tx, y = n.y - cam.ty, z = n.z - cam.tz;
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = x * cy - z * sy, z1 = x * sy + z * cy, y2 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
+  const depth = cam.dist + z2; if (depth < 1) return null;
+  const f = Math.min(W, H) * 0.9 / depth;
+  return { sx: W / 2 + x1 * f, sy: H / 2 + y2 * f, f, depth };
+}
+function draw() {
+  if (!L || !W) return;
+  ctx.clearRect(0, 0, W, H);
+  const P = new Map(); for (const n of L.nodes) P.set(n, project(n));
+  const lit = hiDecls.size > 0;
+  ctx.lineWidth = 1;
+  for (const l of L.links) {
+    const a = P.get(l.s), b = P.get(l.t); if (!a || !b) continue;
+    const on = lit && hiDecls.has(l.decl);
+    if (lit && !on) { ctx.globalAlpha = 0.25; }
+    ctx.strokeStyle = on ? C.hi : C.line; ctx.lineWidth = on ? 1.6 : 1;
+    ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  const order = L.nodes.filter(n => P.get(n)).sort((a, b) => P.get(b).depth - P.get(a).depth);
+  for (const n of order) {
+    const p = P.get(n), on = !lit || n.decls.some(d => hiDecls.has(d));
+    const r = Math.max(1.4, Math.min(14, (1.3 + 1.5 * Math.sqrt(n.decls.length - 1)) * p.f * 2.2));
+    ctx.globalAlpha = on ? 1 : 0.18; ctx.fillStyle = colorOf(n);
+    ctx.beginPath(); ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2); ctx.fill();
+    if (n === selected) { ctx.globalAlpha = 1; ctx.strokeStyle = C.hi; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.sx, p.sy, r + 4, 0, Math.PI * 2); ctx.stroke(); }
+    p.r = r;
+  }
+  ctx.globalAlpha = 1;
+  draw.P = P;
+}
+
+function frame() {
+  if (L && L.ticks < 320) { for (let i = 0; i < (reduce ? 320 : 6); i++) if (L.ticks < 320) tick(L); if (L.ticks <= 12 || L.ticks % 40 === 0) fit(); }
+  if (cam.goal) { const k = reduce ? 1 : 0.12; cam.tx += (cam.goal.x - cam.tx) * k; cam.ty += (cam.goal.y - cam.ty) * k; cam.tz += (cam.goal.z - cam.tz) * k; if (Math.hypot(cam.goal.x - cam.tx, cam.goal.y - cam.ty, cam.goal.z - cam.tz) < 0.2) cam.goal = null; }
+  if (!touched && !reduce) cam.yaw += 0.0018;
+  draw(); requestAnimationFrame(frame);
+}
+
+// ---------- the app's side: level, selection, theme
+function setLevel(name) {
+  if (!DATA || !DATA[name]) return;
+  L = prepare(name); selected = null; hiDecls = new Set(); cam.tx = cam.ty = cam.tz = 0; cam.goal = null; fit();
+  document.querySelectorAll("#levels button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.level === name)));
+  const empty = document.getElementById("empty");
+  empty.hidden = L.nodes.length > 0; empty.textContent = "No tactic proofs here to map.";
+}
+function pickState(id, fromApp) {
+  const n = L && L.byId.get(id); if (!n) return;
+  selected = n; hiDecls = new Set(n.decls); cam.goal = { x: n.x, y: n.y, z: n.z };
+  if (!EMBEDDED) showInfo(n);
+  if (!fromApp) post({ type: "select", level: L.name, id });
+}
+function clearSelection() { selected = null; hiDecls = new Set(); document.getElementById("info").style.display = "none"; }
+window.setLevel = setLevel;
+// (a top-level function is itself window.pickState, so the app's entry point needs a name of its own)
+window.selectState = id => pickState(id, true);
+window.clearSelection = clearSelection;
+// What the app's own checks read and do (the snapshot tool): the selection, what is drawn, and a click on a state.
+window.proofStates = {
+  selected: () => selected ? selected.id : null,
+  level: () => L ? L.name : null,
+  drawn: () => draw.P ? draw.P.size : 0,
+  click: id => pickState(id, false),
+};
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function showInfo(n) {
+  const box = document.getElementById("info");
+  box.style.display = "block";
+  box.innerHTML = `<b>${n.decls.length} proof${n.decls.length > 1 ? "s" : ""} reach this state</b><pre>${esc(n.text)}</pre><div style="color:var(--dim);margin-top:6px">${n.decls.map(esc).join("<br>")}</div>`;
+}
+
+// ---------- pointer
+let drag = null;
+canvas.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, moved: false }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", e => {
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) { drag.moved = true; touched = true; canvas.classList.add("dragging"); }
+    cam.yaw += dx * 0.006; cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch + dy * 0.006)); drag.x = e.clientX; drag.y = e.clientY;
+    return;
+  }
+  const n = pick(e.clientX, e.clientY);
+  if (n !== hover) { hover = n; }
+  if (n) { tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 14, W - 370) + "px"; tip.style.top = (e.clientY + 14) + "px";
+    tip.textContent = `${n.decls.length} proof${n.decls.length > 1 ? "s" : ""}${n.trivial ? " (trivial)" : ""}\n${n.text.split("⊢").pop().trim().slice(0, 200)}`; }
+  else tip.style.display = "none";
+});
+canvas.addEventListener("pointerup", e => {
+  canvas.classList.remove("dragging");
+  if (drag && !drag.moved) { const n = pick(e.clientX, e.clientY); if (n) pickState(n.id, false); else { clearSelection(); post({ type: "clear" }); } }
+  drag = null;
+});
+canvas.addEventListener("wheel", e => { e.preventDefault(); touched = true; cam.dist = Math.max(20, cam.dist * Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+canvas.addEventListener("pointerleave", () => { tip.style.display = "none"; });
+function pick(x, y) {
+  const P = draw.P; if (!P) return null;
+  let best = null, bd = 1e9;
+  for (const [n, p] of P) { if (!p) continue; const d = Math.hypot(p.sx - x, p.sy - y); if (d < Math.max(7, (p.r || 3) + 3) && p.depth < bd) { best = n; bd = p.depth; } }
+  return best;
+}
+window.addEventListener("keydown", e => {
+  if (e.key === "Escape") { clearSelection(); post({ type: "clear" }); }
+});
+
+// ---------- start
+readColors(); legend();
+if (!EMBEDDED && DATA) {
+  const box = document.getElementById("levels"); box.hidden = false;
+  box.innerHTML = Object.keys(LEVEL_NAMES).map(k => `<button data-level="${k}">${LEVEL_NAMES[k]} · ${DATA[k].shared.length} shared</button>`).join("");
+  box.querySelectorAll("button").forEach(b => b.onclick = () => setLevel(b.dataset.level));
+}
+resize();
+if (DATA) { setLevel("exact"); requestAnimationFrame(frame); post({ type: "ready" }); }
+else { const e = document.getElementById("empty"); e.hidden = false; e.textContent = "No proof states loaded."; }
+</script>
+</body>
+</html>

@@ -23,6 +23,11 @@ Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", "leanstudio-snapshot-" + E
 // The tutorial and playground go in a temporary folder, not the person's Documents.
 Environment.SetEnvironmentVariable("LEANSTUDIO_HOME", Path.Combine(settingsDir, "home"));
 
+if (args.Length > 0 && args[0] == "--native-proof-states")
+{
+    return NativeProofStates.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.GetFullPath("."), args.Length > 2 ? Path.GetFullPath(args[2]) : Path.GetFullPath("snapshots"));
+}
+
 if (args.Length > 0 && args[0] == "--native-infoview")
 {
     // Not headless: the real window, with the platform's web view, to see the infoview render a widget in it.
@@ -76,6 +81,29 @@ return failures == 0 ? 0 : 1;
 internal static class Scenario
 {
     private static int _failures;
+
+    /// <summary>
+    /// Proofs that share states: the first two are written differently but start and split the same way; the last
+    /// two differ in their numbers only, so they meet when states are compared by shape.
+    /// </summary>
+    internal const string SharedStatesSource = """
+        theorem shared_a (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
+          constructor
+          · exact hp
+          · exact hq
+
+        theorem shared_b (a b : Prop) (ha : a) (hb : b) : a ∧ b := by
+          refine ⟨?_, ?_⟩
+          · exact ha
+          · exact hb
+
+        theorem shape_a (n : Nat) (h : n + 2 ≤ n * 5) : n + 2 ≤ n * 5 := by
+          exact h
+
+        theorem shape_b (k : Nat) (h : k + 3 ≤ k * 7) : k + 3 ≤ k * 7 := by
+          exact h
+
+        """;
 
     /// <summary>A Lean file with a user widget (core Lean, no ProofWidgets), and the 0-based line of its #widget.</summary>
     internal const string WidgetSource = """
@@ -650,6 +678,37 @@ internal static class Scenario
             mw.View.Select("not_not_elim");
             Snap(mw, outDir, "23-project-map-selected");
             mw.Close();
+        }
+        vm.ActiveDocument = doc;
+
+        Console.WriteLine("proof-state map");
+        string statesFile = Path.Combine(repo, "samples", "Proofs", "Proofs", "SharedStates.lean");
+        await File.WriteAllTextAsync(statesFile, SharedStatesSource);
+        try
+        {
+            DocumentViewModel sd2 = (await vm.OpenFileAsync(statesFile))!;
+            Check(await WaitFor(() => !sd2.IsProcessing, 90), "a file of proofs that share states elaborates");
+            ProofStatesResult? states = await vm.CollectProofStatesAsync(wholeProject: false);
+            Check(states is not null && states.Steps.Count == 8, $"the map reads every tactic step ({states?.Steps.Count} of 8)");
+            Check(await WaitFor(() => window.StatesWindow is not null, 5), "in a window of its own");
+            if (window.StatesWindow is { } sw)
+            {
+                Check(sw.Listed.Count > 0 && sw.Listed.All(n => n.Declarations.All(d => d.Contains("shared_", StringComparison.Ordinal))),
+                    "compared exactly, the states listed are the ones shared_a and shared_b both reach");
+                Check(sw.WebView is null, "with no web view here, the 3D view offers the browser instead");
+                await Task.Delay(300);
+                Snap(sw, outDir, "23b-proof-states");
+                sw.ShowLevel(LeanStudio.Core.Proofs.StateMatch.Shape);
+                Check(sw.Listed.Any(n => n.Declarations.Any(d => d.EndsWith("shape_a", StringComparison.Ordinal)) && n.Declarations.Any(d => d.EndsWith("shape_b", StringComparison.Ordinal))),
+                    "compared by shape, shape_a and shape_b meet too");
+                Snap(sw, outDir, "23c-proof-states-shape");
+                sw.Close();
+            }
+            await vm.CloseDocumentAsync(sd2);
+        }
+        finally
+        {
+            File.Delete(statesFile);
         }
         vm.ActiveDocument = doc;
 

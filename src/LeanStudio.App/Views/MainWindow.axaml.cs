@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window, IDialogs
         _vm = new MainViewModel(this, settings);
         DataContext = _vm;
         _vm.ProjectMapReady += map => ShowProjectMap(map);
+        _vm.ProofStatesReady += result => ShowProofStates(result);
         _vm.AiChatRequested += question => _ = ShowAiChatAsync(question);
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         this.FindControl<CodeView>("CView")!.DataContext = _vm;
@@ -529,6 +530,30 @@ public sealed partial class MainWindow : Window, IDialogs
         _mapWindow.Closed += (_, _) => _mapWindow = null;
         _mapWindow.Show(this);
         return _mapWindow;
+    }
+
+    private ProofStatesWindow? _statesWindow;
+
+    /// <summary>The proof-state map window, while one is open.</summary>
+    public ProofStatesWindow? StatesWindow => _statesWindow;
+
+    /// <summary>Show a proof-state map, replacing one that is open.</summary>
+    public ProofStatesWindow ShowProofStates(ProofStatesResult result)
+    {
+        _statesWindow?.Close();
+        _statesWindow = new ProofStatesWindow(result, _vm.Settings.Theme == "Light",
+            v => { _vm.OpenStateVisit(result.Root, v); Activate(); },
+            async n => { Activate(); await _vm.ExtractSharedStateAsync(result.Root, n); },
+            async html =>
+            {
+                // No web view in the window: the same page, standalone, in the browser (without the list's links).
+                string path = Path.Combine(Path.GetTempPath(), "leanstudio-proof-states.html");
+                await File.WriteAllTextAsync(path, html);
+                await LaunchAsync(new Uri(path));
+            });
+        _statesWindow.Closed += (_, _) => _statesWindow = null;
+        _statesWindow.Show(this);
+        return _statesWindow;
     }
 
     private async void OnCheckFfi(object? sender, RoutedEventArgs e)
@@ -1295,6 +1320,7 @@ public sealed partial class MainWindow : Window, IDialogs
         }
         ApplySettings();
         _vm.InfoviewThemeChanged();
+        _statesWindow?.SetTheme(theme == "Light");
     }
 
     private void OnFontBigger(object? sender, RoutedEventArgs e)
