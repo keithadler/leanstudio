@@ -90,6 +90,8 @@ public sealed class ProofStateTests
         string dir = Directory.CreateTempSubdirectory("leanstudio-states").FullName;
         try
         {
+            // The toolchain, as the other Lean tests pin it: CI's elan has no default to fall back on.
+            File.WriteAllText(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n");
             string path = Path.Combine(dir, "Shared.lean");
             string text = """
                 theorem t1 (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
