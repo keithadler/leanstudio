@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 **Proof-State Map** (Lean ▸ Proof-State Map ▸ This File / Whole Project):
 - Every tactic step's goals, from Lean's language server, merged across proofs into one map of states: where different proofs reach the same state they share it. The window lists the states two or more proofs reach, most shared first, with the proofs to jump to and *Extract as Lemma…*, which has Lean write the lemma for that state above the first proof that reaches it.
