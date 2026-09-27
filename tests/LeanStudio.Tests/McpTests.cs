@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using LeanStudio.Core.Agents;
 using LeanStudio.Mcp;
@@ -282,6 +283,39 @@ public sealed class McpTests
                 Assert.Equal("context", again?["echo"]?.GetValue<string>());
                 Assert.False(StudioBridge.TryServe(_ => Task.FromResult(new JsonObject()), cts.Token), $"the pipe was free after request {i + 1}");
             }
+            cts.Cancel();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", null);
+        }
+    }
+
+    [Fact]
+    public async Task AWindowThatCrashedDoesNotKeepTheNextFromServing()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return; // Windows pipes are not files, and go when their process does.
+        }
+        Environment.SetEnvironmentVariable("LEANSTUDIO_PIPE", "leanstudio-stale-" + Environment.ProcessId);
+        try
+        {
+            // What a crashed window leaves behind: its socket file, with nothing listening on it. (A socket deletes
+            // its file when disposed, as a crashed process can't, so the file is moved away until it's closed.)
+            string path = StudioBridge.SocketPath!;
+            using (var dead = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
+            {
+                dead.Bind(new UnixDomainSocketEndPoint(path));
+                dead.Listen();
+                File.Move(path, path + ".dead");
+            }
+            File.Move(path + ".dead", path);
+            Assert.True(File.Exists(path));
+            using var cts = new CancellationTokenSource();
+            Assert.True(StudioBridge.TryServe(_ => Task.FromResult(new JsonObject { ["ok"] = true }), cts.Token));
+            JsonObject? r = await StudioBridge.RequestAsync(new JsonObject { ["method"] = "context" }, ct: TestContext.Current.CancellationToken);
+            Assert.True(r?["ok"]?.GetValue<bool>());
             cts.Cancel();
         }
         finally

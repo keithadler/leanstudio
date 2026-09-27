@@ -185,7 +185,8 @@ change.
 each input replaces only its last lines, so Lean reuses the elaboration it has already done.
 
 **AI assistants and the window.** When a window opens, it starts serving `StudioBridge` (if another window already
-owns the pipe, it steps aside). An assistant's `studio_context` call asks the window what file, cursor, selection
+owns the pipe, it steps aside and says so in Output; on macOS and Linux a socket file left by a window that crashed,
+which nothing is listening on, is removed first). An assistant's `studio_context` call asks the window what file, cursor, selection
 and goals the person has. When an assistant edits a file on disk, the file watcher reloads any open document that
 has no unsaved edits of your own.
 
@@ -193,7 +194,7 @@ has no unsaved edits of your own.
 
 | What | Where |
 |---|---|
-| Settings (`settings.json`) | `LeanStudio` in .NET's `ApplicationData` folder: `%APPDATA%\LeanStudio` on Windows, `~/.config/LeanStudio` on macOS and Linux |
+| Settings (`settings.json`) | `LeanStudio` in .NET's `ApplicationData` folder: `%APPDATA%\LeanStudio` on Windows, `~/Library/Application Support/LeanStudio` on macOS, `~/.config/LeanStudio` on Linux |
 | Tutorial and playground | `Lean Studio` in the system's Documents folder |
 | elan | `$ELAN_HOME`, or `~/.elan` |
 

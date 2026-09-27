@@ -10,13 +10,25 @@ namespace LeanStudio.App;
 internal static class Program
 {
     /// <summary>
-    /// Start Lean Studio. With <c>--mcp</c> (and optionally <c>--project DIR</c>) it serves MCP on stdio until
-    /// standard input closes or Ctrl+C, logging to standard error; otherwise it opens the window, and the first
-    /// argument not starting with <c>--</c> is a file or folder to open. Returns the process exit code.
+    /// Start Lean Studio. <c>--help</c> and <c>--version</c> print and exit. With <c>--mcp</c> (and optionally
+    /// <c>--project DIR</c>) it serves MCP on stdio until standard input closes or Ctrl+C, logging to standard error;
+    /// otherwise it opens the window, and the first argument not starting with <c>-</c> is a file or folder to open.
+    /// Returns the process exit code.
     /// </summary>
     [STAThread]
     public static int Main(string[] args)
     {
+        // Answered here, before any window: from a terminal, `leanstudio --help` must print, not open the IDE.
+        if (args.Contains("--help") || args.Contains("-h"))
+        {
+            Console.Out.Write(Usage);
+            return 0;
+        }
+        if (args.Contains("--version"))
+        {
+            Console.Out.WriteLine("Lean Studio " + Services.Credits.Version);
+            return 0;
+        }
         // `LeanStudio --mcp [--project DIR]` runs Lean Studio as an MCP server for an AI assistant (Claude Code,
         // Gemini CLI, Codex, Grok…) instead of opening a window. Same binary, so one install serves both.
         if (args.Contains("--mcp"))
@@ -25,6 +37,19 @@ internal static class Program
         }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
+
+    /// <summary>What <c>--help</c> prints.</summary>
+    internal const string Usage = """
+        Lean Studio, an IDE for Lean 4.
+
+        Usage:
+          leanstudio [PATH]                   open the IDE, with a project folder or a .lean file
+          leanstudio --new-window [PATH]      open a new window instead of restoring the last session
+          leanstudio --mcp [--project DIR]    run the MCP server for AI assistants on standard input and output
+          leanstudio --version                print the version
+          leanstudio --help                   print this
+
+        """;
 
     /// <summary>The Avalonia app configuration; also used by the XAML designer.</summary>
     public static AppBuilder BuildAvaloniaApp() =>

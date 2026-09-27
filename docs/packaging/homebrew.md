@@ -18,7 +18,7 @@ it to the tap, so the history of the cask stays with the code.
 - Installs `Lean Studio.app` into `/Applications`.
 - Links `leanstudio` onto the PATH, so `leanstudio --mcp` works in AI assistants' MCP settings, and
   `leanstudio path/to/project` opens a project.
-- On `brew uninstall --zap`, removes the settings in `~/.config/LeanStudio`. It never removes
+- On `brew uninstall --zap`, removes the settings and crash log in `~/Library/Application Support/LeanStudio`. It never removes
   `~/Documents/Lean Studio`, which holds the person's tutorial and playground work.
 - Requires macOS 14 (Sonoma) or later, like the app's `Info.plist` (.NET 10 needs it). macOS 27 runs only on Apple silicon, so the Intel build is for Intel Macs on macOS 14 to 26.
 

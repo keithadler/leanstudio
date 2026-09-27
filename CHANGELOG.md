@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+**Fixes, found by driving the app from outside** (Finder, `open`, AppleScript, VoiceOver, an MCP assistant):
+- A window that crashed left its assistant pipe (a socket file on macOS and Linux) behind, and every window opened after it quietly stopped serving assistants: `studio_context` and `studio_show` answered "Lean Studio is not running" while it was. A socket nothing is listening on is now reclaimed, and a window that can't serve says so in Output.
+- The crash behind it: a picker (Go to File, the command palette, snippets, quick fixes and the rest) being dismissed while it was already closing ended the app.
+- A `.lean` file or project opened from Finder, the Dock or `open -a "Lean Studio" file.lean` was ignored, and the last session opened instead. It now opens, at launch and while Lean Studio is running.
+- AppleScript's `quit app "Lean Studio"` (and anything else that sends the quit Apple Event) was told "User canceled" (-128) although Lean Studio quit: Avalonia accepts a quit by telling macOS "cancel" and ending the app itself. Lean Studio now answers the quit event itself, with success, or with "User canceled" only when it stops to ask about unsaved changes. A quit with nothing unsaved no longer cancels and closes the window again afterwards.
+- VoiceOver and other accessibility tools read the toolbar's buttons (and every button or menu item with an icon beside its text) as "Avalonia.Controls.StackPanel". They are read by their text now, or their tooltip.
+- After Restart File, the infoview said "Click somewhere in the Lean file to enable the infoview" until the cursor moved. It shows the state at the cursor again when the file reopens.
+- `leanstudio --help` opened the IDE instead of printing help, and `-h` was taken as a file name. Both print the options now, and `--version` prints the version.
+- `brew uninstall --zap` removed `~/.config/LeanStudio`, but on macOS the settings and crash log are in `~/Library/Application Support/LeanStudio`.
+
 ## 0.9.0
 
 **Proof-State Map** (Lean ▸ Proof-State Map ▸ This File / Whole Project):

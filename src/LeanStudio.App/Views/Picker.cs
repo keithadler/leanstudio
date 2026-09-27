@@ -112,7 +112,18 @@ internal static class Picker
                 w.Close();
             }
         };
-        w.Deactivated += (_, _) => w.Close();
+        // Clicking elsewhere dismisses the picker. Deactivated is also raised while the window is already closing
+        // (its native window gone), and closing it again then throws past every handler and ends the app; so close
+        // only a picker that is still open, and only after the event has finished.
+        bool closed = false;
+        w.Closed += (_, _) => closed = true;
+        w.Deactivated += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed && w.IsVisible)
+            {
+                w.Close();
+            }
+        });
         w.Opened += (_, _) =>
         {
             DialogHooks.Raise(w);

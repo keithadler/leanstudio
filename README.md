@@ -417,7 +417,7 @@ Every build is self-contained, so nothing else needs installing. Pick whichever 
 brew install --cask keithadler/tap/lean-studio
 ```
 
-This installs `Lean Studio.app` for Apple silicon or Intel, and puts `leanstudio` on your PATH (for `leanstudio --mcp` in AI assistants' settings). `brew upgrade` keeps it current. The cask lives in [keithadler/homebrew-tap](https://github.com/keithadler/homebrew-tap) ([docs/packaging/homebrew.md](docs/packaging/homebrew.md)). Until releases are notarized, macOS asks you to allow the app on first launch (see [Unsigned builds](#unsigned-builds)).
+This installs `Lean Studio.app` for Apple silicon or Intel, and puts `leanstudio` on your PATH (for `leanstudio --mcp` in AI assistants' settings; `leanstudio --help` lists the options). `brew upgrade` keeps it current. The cask lives in [keithadler/homebrew-tap](https://github.com/keithadler/homebrew-tap) ([docs/packaging/homebrew.md](docs/packaging/homebrew.md)). Until releases are notarized, macOS asks you to allow the app on first launch (see [Unsigned builds](#unsigned-builds)).
 
 ### winget (Windows)
 

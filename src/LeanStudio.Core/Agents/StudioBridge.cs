@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -56,7 +57,8 @@ public static class StudioBridge
 
     /// <summary>
     /// Serve requests until cancelled. Returns immediately with false if another window already owns the pipe:
-    /// the first window opened is the one assistants talk to. Requests are handled one at a time on a thread-pool
+    /// the first window opened is the one assistants talk to. A socket file left by a window that crashed is
+    /// reclaimed (<see cref="RemoveStaleSocket"/>). Requests are handled one at a time on a thread-pool
     /// thread, so <paramref name="handle"/> must marshal to the UI thread itself; an exception it throws is sent back
     /// as <c>{"error": message}</c>.
     /// </summary>
@@ -70,10 +72,67 @@ public static class StudioBridge
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return false;
+            // On macOS and Linux the name is a socket file, and a window that crashed leaves its file behind, which
+            // would keep every later window from serving. Reclaim it only when nothing is listening on it.
+            if (!RemoveStaleSocket())
+            {
+                return false;
+            }
+            try
+            {
+                first = Create(PipeOptions.FirstPipeInstance);
+            }
+            catch (Exception again) when (again is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
         _ = Task.Run(() => LoopAsync(first, handle, ct), ct);
         return true;
+    }
+
+    /// <summary>
+    /// Where .NET puts the pipe's socket on macOS and Linux (<c>CoreFxPipe_</c> and the name, in the temp folder);
+    /// null on Windows, whose pipes are not files.
+    /// </summary>
+    public static string? SocketPath =>
+        OperatingSystem.IsWindows() ? null : Path.Combine(Path.GetTempPath(), "CoreFxPipe_" + PipeName);
+
+    /// <summary>
+    /// Delete the pipe's socket file if a window that is gone left it behind: one that refuses a connection. A socket
+    /// another window is listening on accepts the connection, so it is never touched. True if a stale file was removed.
+    /// </summary>
+    public static bool RemoveStaleSocket()
+    {
+        if (SocketPath is not string path || !File.Exists(path))
+        {
+            return false;
+        }
+        using (var probe = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
+        {
+            try
+            {
+                probe.Connect(new UnixDomainSocketEndPoint(path));
+                return false;
+            }
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionRefused)
+            {
+                // Nobody is listening: the file is stale.
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
+        }
+        try
+        {
+            File.Delete(path);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

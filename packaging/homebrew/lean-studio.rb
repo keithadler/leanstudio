@@ -28,8 +28,9 @@ cask "lean-studio" do
   # `leanstudio --mcp` runs the MCP server for AI assistants; `leanstudio path/to/project` opens a project.
   binary "#{appdir}/Lean Studio.app/Contents/MacOS/LeanStudio", target: "leanstudio"
 
-  # Settings only. The tutorial and playground in ~/Documents/Lean Studio hold the person's own work, so they stay.
-  zap trash: "~/.config/LeanStudio"
+  # Settings and the crash log only. The tutorial and playground in ~/Documents/Lean Studio hold the person's own work,
+  # so they stay.
+  zap trash: "~/Library/Application Support/LeanStudio"
 
   caveats <<~EOS
     Lean Studio needs elan, Lean's toolchain manager. If you don't have it, Lean Studio

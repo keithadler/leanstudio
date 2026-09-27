@@ -19,7 +19,8 @@ namespace LeanStudio.App.Views;
 /// <summary>
 /// The IDE window: menus, sidebar, editor, infoview and bottom panel around one <see cref="MainViewModel"/>, for
 /// which it also provides the dialogs (<see cref="IDialogs"/>). On opening it serves the <see cref="StudioBridge"/>
-/// pipe if no other window does, and restores the last session or opens <see cref="OpenOnStartup"/>.
+/// pipe if no other window does, and restores the last session or opens <see cref="OpenOnStartup"/> (or a file the
+/// system hands over, <see cref="OpenFromSystemAsync"/>).
 /// </summary>
 public sealed partial class MainWindow : Window, IDialogs
 {
@@ -75,22 +76,24 @@ public sealed partial class MainWindow : Window, IDialogs
             {
                 _vm.Log("AI assistants connected through Lean Studio's MCP server can see this window (AI ▸ Connect an AI Assistant).");
             }
+            else
+            {
+                _vm.Log("Another Lean Studio window is the one AI assistants see; they can't see or show files in this one.");
+            }
+            // A file opened from Finder or with `open` arrives as an event, not an argument, and can come just after
+            // the window opens: let it arrive before choosing between it and the last session.
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            _started = true;
             if (OpenOnStartup is string path)
             {
-                if (Directory.Exists(path))
-                {
-                    await _vm.OpenProjectAsync(path);
-                }
-                else if (File.Exists(path))
-                {
-                    await _vm.OpenFileAsync(path);
-                }
+                await OpenPathAsync(path);
                 await _vm.Toolchains.RefreshAsync();
             }
             else
             {
                 await _vm.StartAsync(restoreSession: !NewWindow);
             }
+            _ready.TrySetResult();
             BuildRecentMenu();
         };
         Closing += OnClosing;
@@ -160,6 +163,38 @@ public sealed partial class MainWindow : Window, IDialogs
     /// <summary>A folder or file given on the command line, opened instead of the last session.</summary>
     public string? OpenOnStartup { get; set; }
 
+    private bool _started;
+    private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Open a folder or file the system handed over (Finder, <c>open</c>, the Dock): in place of the last session
+    /// when it comes as the app starts, otherwise once the window has finished starting, bringing the window forward.
+    /// </summary>
+    public async Task OpenFromSystemAsync(string path)
+    {
+        if (!_started && OpenOnStartup is null)
+        {
+            OpenOnStartup = path;
+            return;
+        }
+        await _ready.Task;
+        await OpenPathAsync(path);
+        BuildRecentMenu();
+        Activate();
+    }
+
+    private async Task OpenPathAsync(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            await _vm.OpenProjectAsync(path);
+        }
+        else if (File.Exists(path))
+        {
+            await _vm.OpenFileAsync(path);
+        }
+    }
+
     /// <summary>The view model the window is bound to.</summary>
     public MainViewModel ViewModel => _vm;
 
@@ -188,17 +223,42 @@ public sealed partial class MainWindow : Window, IDialogs
         {
             return;
         }
+        if (!_vm.Documents.Any(d => d.IsDirty))
+        {
+            // Nothing to ask about, so the close goes through now. Cancelling it to finish asynchronously would fail
+            // a quit from the Dock, the menu or AppleScript ("User canceled"), since macOS asks for an answer at once.
+            _closing = true;
+            ShutDown();
+            return;
+        }
         e.Cancel = true;
-        if (_vm.Documents.Any(d => d.IsDirty)
-            && !await ConfirmAsync("Unsaved changes", "Some files have unsaved changes. Quit without saving them?"))
+        if (!await ConfirmAsync("Unsaved changes", "Some files have unsaved changes. Quit without saving them?"))
         {
             return;
         }
         _closing = true;
+        ShutDown();
+        Close();
+    }
+
+    /// <summary>
+    /// Stop serving assistants, save the settings, and stop the Lean server and the rest. Waits at most a few
+    /// seconds: the Lean server gets two to shut down cleanly before it is killed, and nothing here needs the UI
+    /// thread, which is blocked meanwhile, so the work runs on the thread pool.
+    /// </summary>
+    private void ShutDown()
+    {
         _bridgeCts.Cancel();
         _vm.Settings.Save();
-        await _vm.DisposeAsync();
-        Close();
+        try
+        {
+            Task.Run(() => _vm.DisposeAsync().AsTask()).Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (AggregateException e)
+        {
+            // Something failing while stopping must not keep Lean Studio from closing.
+            App.Record("closing", e);
+        }
     }
 
     private void BuildRecentMenu()

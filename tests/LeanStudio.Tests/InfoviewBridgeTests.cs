@@ -176,6 +176,14 @@ public sealed class InfoviewBridgeTests
         JsonObject cursor = await client.ReceiveAsync(o => o["op"]?.GetValue<string>() == "cursor");
         Assert.Equal(3, cursor["loc"]!["range"]!["start"]!["line"]!.GetValue<int>());
 
+        // Restart File closes and reopens the file. The close makes the infoview forget the cursor ("Click somewhere in
+        // the Lean file…"), so on the open the page is given it back.
+        await server.CloseAsync(uri);
+        await server.OpenAsync(uri, text);
+        JsonObject back = await client.ReceiveAsync(o => o["op"]?.GetValue<string>() == "cursor");
+        Assert.Equal(3, back["loc"]!["range"]!["start"]!["line"]!.GetValue<int>());
+        Assert.Equal(uri, back["loc"]!["uri"]!.GetValue<string>());
+
         // So does the theme.
         bridge.SetTheme("light");
         JsonObject theme = await client.ReceiveAsync(o => o["op"]?.GetValue<string>() == "theme");

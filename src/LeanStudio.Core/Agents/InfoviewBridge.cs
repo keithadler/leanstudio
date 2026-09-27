@@ -341,8 +341,19 @@ public sealed class InfoviewBridge : IAsyncDisposable
         _wired = s;
         s.ServerNotification += (method, p) => Broadcast(page => page.ServerSubscriptions.ContainsKey(method),
             () => new JsonObject { ["op"] = "serverNotification", ["method"] = method, ["params"] = JsonNode.Parse(p.GetRawText()) });
-        s.ClientNotification += (method, p) => Broadcast(page => page.ClientSubscriptions.ContainsKey(method),
-            () => new JsonObject { ["op"] = "clientNotification", ["method"] = method, ["params"] = p.DeepClone() });
+        s.ClientNotification += (method, p) =>
+        {
+            Broadcast(page => page.ClientSubscriptions.ContainsKey(method),
+                () => new JsonObject { ["op"] = "clientNotification", ["method"] = method, ["params"] = p.DeepClone() });
+            // Closing a file makes the infoview forget the cursor in it ("Click somewhere in the Lean file…"). When
+            // the file is opened again (Restart File, a restarted server), give the cursor back, as the editor's
+            // cursor has not moved.
+            if (method == "textDocument/didOpen" && _cursor is JsonObject cursor
+                && p?["textDocument"]?["uri"]?.GetValue<string>() is string uri && uri == cursor["uri"]?.GetValue<string>())
+            {
+                Broadcast(_ => true, () => new JsonObject { ["op"] = "cursor", ["loc"] = cursor.DeepClone() });
+            }
+        };
     }
 
     /// <summary>Tell connected pages that the Lean server was (re)started, so they reconnect their sessions.</summary>
