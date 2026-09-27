@@ -22,7 +22,7 @@ cask "lean-studio" do
   end
 
   # .NET 10 needs macOS 14 or later. macOS 27 runs only on Apple silicon; the Intel build is for Intel Macs on 14–26.
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Lean Studio.app"
   # `leanstudio --mcp` runs the MCP server for AI assistants; `leanstudio path/to/project` opens a project.
