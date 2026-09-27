@@ -7,9 +7,9 @@
 cask "lean-studio" do
   arch arm: "arm64", intel: "x64"
 
-  version "0.9.0"
-  sha256 arm:   "c70328c33b20fcebf2b24cf11b9db08249c78bf6ba400926eba4f204fd2498ed",
-         intel: "7579684d5f15a9e387bf86815d9f51ce9f664ce5750e2c4acb6720c417e0762f"
+  version "0.9.1"
+  sha256 arm:   "05801db82a3dfe21e2df340716fd017ffacaed27e6c8156e0733f6394b079b1c",
+         intel: "94c5edcafc686e7f2bec488271ccb5ce8dfebce6f6c897a145672afde249443a"
 
   url "https://github.com/keithadler/leanstudio/releases/download/v#{version}/LeanStudio-#{version}-osx-#{arch}.zip"
   name "Lean Studio"
