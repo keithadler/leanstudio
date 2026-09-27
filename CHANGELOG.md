@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.1
 
 **Fixes, found by driving the app from outside** (Finder, `open`, AppleScript, VoiceOver, an MCP assistant):
 - A window that crashed left its assistant pipe (a socket file on macOS and Linux) behind, and every window opened after it quietly stopped serving assistants: `studio_context` and `studio_show` answered "Lean Studio is not running" while it was. A socket nothing is listening on is now reclaimed, and a window that can't serve says so in Output.
