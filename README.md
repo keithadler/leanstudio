@@ -5,13 +5,23 @@
 <h1 align="center">Lean Studio</h1>
 
 <p align="center">
-  <b>A desktop IDE for Lean 4, on macOS, Windows and Linux.</b><br>
-  Lean elaborates your proofs as you type. Tenet then re-checks each one it built.<br>
+  <b>The Lean 4 IDE that checks the checker.</b><br>
+  A native desktop IDE for Lean 4, on macOS, Windows and Linux.<br>
+  Lean checks your proofs as you type. Tenet, a second, independent kernel, re-checks everything you build.<br>
   Created by <b>Keith Adler</b>, <a href="https://x.com/keithadler">@keithadler</a> on X.
 </p>
 
 <p align="center">
+  <a href="https://github.com/keithadler/leanstudio/releases/latest"><img src="https://img.shields.io/github/v/release/keithadler/leanstudio?label=release&color=2f6fdd" alt="Latest release"></a>
+  <a href="https://github.com/keithadler/leanstudio/actions/workflows/ci.yml"><img src="https://github.com/keithadler/leanstudio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-555" alt="macOS, Windows and Linux">
+  <img src="https://img.shields.io/badge/Lean-4-6b4fbb" alt="Lean 4">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3a3" alt="MIT license"></a>
+</p>
+
+<p align="center">
   <a href="#install">Install</a> ·
+  <a href="#tested-on-a-real-result-ζ5-is-irrational">The ζ(5) run</a> ·
   <a href="#how-it-compares">Compared with VS Code</a> ·
   <a href="#new-to-lean">New to Lean?</a> ·
   <a href="#features">Features</a> ·
@@ -25,7 +35,49 @@
 
 ![Lean Studio: the editor, the tactic state with the hypotheses in scope, and the proof's steps](docs/images/tactic-state.png)
 
-Lean Studio is a native desktop app built only for Lean. It is not a plugin or a web view inside another editor. The tactic state gets a full panel. Every tactic in a proof is listed with what it changed. Each declaration you build gets a second, independent check from [Tenet](https://github.com/keithadler/tenet), a separate implementation of Lean's kernel.
+A Lean proof is only as trustworthy as the kernel that accepted it. Lean Studio doesn't take one kernel's word for it. Every declaration you build is re-checked from the compiled `.olean` files by [Tenet](https://github.com/keithadler/tenet), a separate implementation of Lean's type checker. If Lean's kernel had a bug, Tenet would have to repeat the same bug to agree. Each theorem then shows, in the gutter, whether it is really proved, rests on `sorry`, or rests on an axiom, and **Why?** takes you to the lemma responsible.
+
+Around that sits a complete IDE built only for Lean. It is a native app, not a plugin or a web view inside another editor. The tactic state gets a full panel, every step of a proof is listed with what it changed, **Prove It** tries a dozen tactics on any `sorry` at once, and a tutorial, plain-English goals and explained errors make it the place to start if you are new to Lean.
+
+```bash
+brew install --cask keithadler/tap/lean-studio    # macOS
+```
+
+Windows and Linux: download from [Releases](https://github.com/keithadler/leanstudio/releases/latest), or see [Install](#install) for winget and the AppImage. It is free and open source.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/prove-it.png" alt="Prove It"></a><br><b>Prove It.</b> A dozen tactics tried on a <code>sorry</code> at once; one click puts the winner in.</td>
+    <td width="33%" valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/why-not-proved.png" alt="Why isn't this proved?"></a><br><b>Why isn't this proved?</b> The chain of lemmas from a theorem down to the <code>sorry</code> or axiom under it.</td>
+    <td width="33%" valign="top"><a href="#and-five-more-for-real-proof-work"><img src="docs/images/counterexample.png" alt="A counterexample"></a><br><b>Is this even true?</b> When no tactic works, it looks for values that make the goal false.</td>
+  </tr>
+  <tr>
+    <td valign="top"><a href="#independent-verification-with-tenet"><img src="docs/images/tenet.png" alt="Tenet's verdicts"></a><br><b>A second kernel.</b> Tenet's verdict on every declaration, in the gutter and in its panel.</td>
+    <td valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/timing.png" alt="Timing"></a><br><b>Where the time goes.</b> Every declaration by how long it takes to check, and the step that costs the most.</td>
+    <td valign="top"><a href="#new-to-lean"><img src="docs/images/tutorial.png" alt="The tutorial"></a><br><b>New to Lean?</b> Ten lessons inside the editor, goals read in English, errors explained.</td>
+  </tr>
+</table>
+
+## Tested on a real result: ζ(5) is irrational
+
+In September 2026 Lean Studio ran [@mo271](https://github.com/mo271)'s formalization that ζ(5) is irrational ([mo271/zeta5](https://github.com/mo271/zeta5)), about 218,000 lines on top of Mathlib, start to finish on a Mac:
+
+| Step | Result |
+|---|---|
+| Mathlib cache | 8,700 files in 2 minutes |
+| Build, 8,951 jobs | No errors, in about 43 minutes |
+| `Solution.lean` | No errors and no `sorry` |
+| Tenet's independent re-check | 14,953 declarations in 213 modules, in 8 minutes: 14,952 verified, **0 rejected**. The one resting on `sorry` is the challenge statement, as intended. |
+| Axioms under `irrational_five` | `propext`, `Classical.choice` and `Quot.sound`, and nothing else |
+
+The statement `Solution.lean` proves is exactly the one in `Challenge.lean`, which is copied verbatim from Google DeepMind's [Formal Conjectures](https://github.com/google-deepmind/formal-conjectures). Any Lake project gets the same treatment: open it, **Build**, and **Verify with Tenet**.
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/images/zeta5-solution.png" alt="Solution.lean in Lean Studio: irrational_five closed by exact Apery.irrational_five, no errors"><br><code>Solution.lean</code>: the theorem closed, no errors, no <code>sorry</code>.</td>
+    <td width="50%" valign="top"><img src="docs/images/zeta5-tenet.png" alt="Tenet checked 14,953 declarations in 213 modules: 14,952 verified, 1 resting on sorry, 0 rejected"><br>Tenet's re-check: 14,952 verified, 0 rejected.</td>
+  </tr>
+</table>
 
 ## How it compares
 
