@@ -204,7 +204,10 @@ public sealed class AssistTests
             .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         Assert.DoesNotContain(diags, d => d.Severity == DiagnosticSeverity.Error);
         string[] lines = twice.Split('\n');
+        // In file order, not arrival order: Lean elaborates declarations in parallel, so the two warnings can come
+        // back either way round, and on a CI Mac cons_case's sometimes came first.
         Assert.Equal(["key_step", "cons_case"], diags.Where(d => d.Message.Contains("sorry", StringComparison.Ordinal))
+            .OrderBy(d => d.Range.Start.Line)
             .Select(d => lines[d.Range.Start.Line].Split(' ')[1]));
     }
 
