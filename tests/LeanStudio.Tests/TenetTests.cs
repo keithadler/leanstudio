@@ -46,6 +46,62 @@ public sealed class TenetTests
     }
 
     [Fact]
+    public async Task ASorryBehindAStructureFieldIsNotVerified()
+    {
+        // A structure's fields live on its constructor, not on the structure, and nothing in the structure's own
+        // type mentions its constructor. A walk that only follows types never reaches a field, so a theorem that
+        // takes a `Holed` got a green check while `Holed` cannot be built without sorry. That was a real bug in
+        // Tenet's axiom walk (keithadler/tenet 54dbb20). This pins it from Lean Studio's side, so a submodule bump
+        // that brought it back fails here instead of putting ✓ on a proof that rests on sorry.
+        Lean.RequireLean();
+        string root = Directory.CreateTempSubdirectory("leanstudio-holes").FullName;
+        File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+        File.WriteAllText(Path.Combine(root, "lakefile.toml"),
+            "name = \"Holes\"\ndefaultTargets = [\"Holes\"]\n\n[[lean_lib]]\nname = \"Holes\"\n");
+        File.WriteAllText(Path.Combine(root, "Holes.lean"), """
+            def holed : Nat := sorry
+
+            structure Holed where
+              y : Fin (holed + 1)
+
+            -- Mentions the type only: not sorry, not the constructor, not `holed`.
+            theorem usesHoled (h : Holed) : h = h := rfl
+
+            structure Clean where
+              x : Nat
+
+            theorem usesClean (c : Clean) : c = c := rfl
+            """);
+        var project = new LeanProject(root);
+        try
+        {
+            var build = await Lake.BuildAsync(project, ct: TestContext.Current.CancellationToken);
+            Assert.True(build.Success, build.Output);
+            using TenetWorkspace ws = TenetWorkspace.Open(project);
+
+            VerificationReport r = await ws.VerifyAsync(ct: TestContext.Current.CancellationToken);
+            DeclarationVerdict V(string n) => Assert.Single(r.Declarations, d => d.Name == n);
+            Assert.Equal(VerificationStatus.RestsOnAssumption, V("usesHoled").Status);
+            Assert.Equal(["sorryAx"], V("usesHoled").Assumptions);
+            Assert.Contains("sorryAx", ws.AxiomsOf("Holed"));
+
+            // And "Why?" has to lead somewhere a person can fix: the chain ends at `holed`, the declaration that
+            // uses sorry, not at the structure that merely carries it.
+            AssumptionTrail trail = Assert.Single(ws.WhyNotProved("usesHoled", TestContext.Current.CancellationToken));
+            Assert.True(trail.IsSorry);
+            Assert.Equal("holed", trail.Culprit?.Name);
+
+            // The other half, without which the rest proves nothing: a walk that reported everything would pass.
+            Assert.Equal(VerificationStatus.Verified, V("usesClean").Status);
+            Assert.Empty(ws.AxiomsOf("Clean"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task TheNavigatorReadsStatementsDocsAndAxioms()
     {
         Lean.RequireLean();

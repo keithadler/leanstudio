@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+**Tests:**
+- A test now pins that a `sorry` behind a structure's field is not verified. A theorem that takes such a structure mentions neither `sorry` nor the constructor, only the type, and a walk that follows only types never reaches the field. Tenet had exactly that bug until 54dbb20; every Lean Studio release already has the fix, so this guards the next submodule bump. Checked by pointing the submodule at the commit before the fix, where the test fails with the theorem marked verified.
+- `ServesManyRequestsAtOnceAndTurnsStrangersAway` failed about one run in three on a busy machine. Its 300 simultaneous connections overflowed the listen queue, which macOS caps at 128 (`kern.ipc.somaxconn`) and resets past, so it was testing the operating system rather than the bridge. It still sends 300 requests at once, over at most 64 connections, as a browser would: 0 failures in 20 runs under the same load.
+
 ## 0.9.1
 
 **Fixes, found by driving the app from outside** (Finder, `open`, AppleScript, VoiceOver, an MCP assistant):

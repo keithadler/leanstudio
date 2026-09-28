@@ -76,7 +76,15 @@ public sealed class InfoviewBridgeTests
         await using var bridge = new InfoviewBridge(() => null, new Editor(),
             path => path == "index.html" ? (Encoding.UTF8.GetBytes("<html>infoview</html>"), "text/html") : null);
         Uri page = bridge.Start();
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        // Three hundred requests at once, but over at most 64 connections. Unbounded, HttpClient opens a socket
+        // per request, and 300 simultaneous connects overflow the listen queue: macOS caps it at
+        // kern.ipc.somaxconn, 128 by default, and resets whatever doesn't fit. That made this test fail about
+        // one run in three on a busy machine while testing the operating system, not the bridge. A browser
+        // opens a handful of connections per host, so this is also closer to what the infoview really does.
+        using var http = new HttpClient(new SocketsHttpHandler { MaxConnectionsPerServer = 64 })
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
         Uri bare = new(page.GetLeftPart(UriPartial.Path));
         Uri missing = new(page.GetLeftPart(UriPartial.Authority) + "/no/such/file.js");
         HttpStatusCode[] codes = await Task.WhenAll(Enumerable.Range(0, 300).Select(async i =>
