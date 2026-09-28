@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
 
 **A newer Lean, when it's safe to say so.** The Toolchains panel says when a stable Lean newer than the project's is out, e.g. "Lean v4.34.1 is out. This project uses v4.34.0.", and *Use it for this project* installs it, pins it in `lean-toolchain` and restarts Lean. It stays quiet for a project that requires Mathlib or any other package, whose Lean has to follow its dependencies, and for one pinned to a release candidate, a nightly or the `stable` channel. The latest release is looked up on GitHub once per run, only while update checks are on (the same switch as Lean Studio's own).
 
