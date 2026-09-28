@@ -2,7 +2,10 @@
 
 ## Unreleased
 
+**A newer Lean, when it's safe to say so.** The Toolchains panel says when a stable Lean newer than the project's is out, e.g. "Lean v4.34.1 is out. This project uses v4.34.0.", and *Use it for this project* installs it, pins it in `lean-toolchain` and restarts Lean. It stays quiet for a project that requires Mathlib or any other package, whose Lean has to follow its dependencies, and for one pinned to a release candidate, a nightly or the `stable` channel. The latest release is looked up on GitHub once per run, only while update checks are on (the same switch as Lean Studio's own).
+
 **Tests:**
+- The headless run's Toolchains screenshot named a nightly the project no longer pinned: the run pins one to test *Use for project*, writes the file back, and never refreshed the panel. It refreshes now, and the three new checks cover the offer (made to a project with no dependencies, not to one that requires Mathlib, not with update checks off) against a stand-in for GitHub.
 - A test now pins that a `sorry` behind a structure's field is not verified. A theorem that takes such a structure mentions neither `sorry` nor the constructor, only the type, and a walk that follows only types never reaches the field. Tenet had exactly that bug until 54dbb20; every Lean Studio release already has the fix, so this guards the next submodule bump. Checked by pointing the submodule at the commit before the fix, where the test fails with the theorem marked verified.
 - `ServesManyRequestsAtOnceAndTurnsStrangersAway` failed about one run in three on a busy machine. Its 300 simultaneous connections overflowed the listen queue, which macOS caps at 128 (`kern.ipc.somaxconn`) and resets past, so it was testing the operating system rather than the bridge. It still sends 300 requests at once, over at most 64 connections, as a browser would: 0 failures in 20 runs under the same load.
 

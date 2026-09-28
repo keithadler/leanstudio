@@ -316,6 +316,7 @@ What CI and reviewers check, before you push:
   - Build, clean, update dependencies, and fetch Mathlib's prebuilt cache without leaving the app.
 - **Toolchains**:
   - See what elan has installed, and install `stable`, `nightly` or any version.
+  - Hear when a newer stable Lean is out, and move the project to it in one click: install, pin in `lean-toolchain`, restart Lean. Only for a project that depends on nothing; one that requires Mathlib or another package has to keep the Lean its dependencies were built for. It checks GitHub once per run, and not at all when update checks are off.
   - Pin a toolchain to the project, which writes `lean-toolchain` and restarts Lean on it.
   - Set elan's default.
 

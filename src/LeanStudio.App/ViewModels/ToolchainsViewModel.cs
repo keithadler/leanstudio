@@ -15,17 +15,40 @@ public sealed partial class ToolchainsViewModel : ObservableObject
     private readonly Func<LeanProject?> _project;
     private readonly Action<string> _log;
     private readonly Func<Task> _restartServer;
+    private readonly Func<CancellationToken, Task<string?>>? _latestStable;
+    private Task<string?>? _latestStableLookup;
 
     /// <summary>Create the panel's state. Nothing is listed until <see cref="RefreshAsync"/>.</summary>
     /// <param name="project">The open project, or null; read each time it is needed.</param>
     /// <param name="log">Writes a line to the Output panel.</param>
     /// <param name="restartServer">Restarts Lean, after the project's toolchain changes.</param>
-    public ToolchainsViewModel(Func<LeanProject?> project, Action<string> log, Func<Task> restartServer)
+    /// <param name="latestStable">
+    /// Finds the newest stable Lean's tag, such as <c>v4.34.1</c>, or returns null when it should not look (the
+    /// person turned update checks off). Without it, no newer Lean is ever suggested.
+    /// </param>
+    public ToolchainsViewModel(Func<LeanProject?> project, Action<string> log, Func<Task> restartServer,
+        Func<CancellationToken, Task<string?>>? latestStable = null)
     {
         _project = project;
         _log = log;
         _restartServer = restartServer;
+        _latestStable = latestStable;
     }
+
+    /// <summary>
+    /// A stable Lean newer than the one the open project pins, when the project depends on nothing and so can
+    /// simply move to it; otherwise null. See <see cref="LeanReleases"/> for when it stays quiet.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNewerLean), nameof(NewerLeanText))]
+    [NotifyCanExecuteChangedFor(nameof(UseNewerLeanCommand))]
+    private NewerLean? _newerLean;
+
+    /// <summary>There is a newer stable Lean to offer.</summary>
+    public bool HasNewerLean => NewerLean is not null;
+
+    /// <summary>What the offer says, e.g. "Lean v4.34.1 is out. This project uses v4.34.0."</summary>
+    public string NewerLeanText => NewerLean is NewerLean n ? $"Lean {n.Latest} is out. This project uses {n.Pinned}." : "";
 
     /// <summary>The toolchains elan has installed.</summary>
     public ObservableList<Toolchain> Installed { get; } = new();
@@ -50,7 +73,7 @@ public sealed partial class ToolchainsViewModel : ObservableObject
 
     /// <summary>An elan command is running; the others are disabled until it finishes.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(UninstallCommand), nameof(UseForProjectCommand), nameof(SetDefaultCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(UninstallCommand), nameof(UseForProjectCommand), nameof(SetDefaultCommand), nameof(UseNewerLeanCommand))]
     private bool _isBusy;
 
     /// <summary>elan was found. Updated by <see cref="RefreshAsync"/>.</summary>
@@ -71,7 +94,55 @@ public sealed partial class ToolchainsViewModel : ObservableObject
                : list.Count == 0 ? "No toolchains installed yet."
                : $"{list.Count} toolchain{(list.Count == 1 ? "" : "s")} installed";
         OnPropertyChanged(nameof(ElanInstalled));
+        await FindNewerLeanAsync(p);
     }
+
+    /// <summary>
+    /// Work out <see cref="NewerLean"/> for <paramref name="p"/>. The newest stable release is looked up once per run;
+    /// a lookup that fails is tried again on the next refresh rather than remembered.
+    /// </summary>
+    private async Task FindNewerLeanAsync(LeanProject? p)
+    {
+        NewerLean? found = null;
+        if (p is not null && _latestStable is not null)
+        {
+            try
+            {
+                _latestStableLookup ??= _latestStable(CancellationToken.None);
+                found = LeanReleases.Suggest(p.Toolchain, await _latestStableLookup, LeanReleases.HasDependencies(p));
+            }
+            catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or IOException)
+            {
+                _latestStableLookup = null;
+                _log("Could not check for a newer Lean: " + e.Message);
+            }
+        }
+        NewerLean = found;
+    }
+
+    /// <summary>
+    /// Move the project to <see cref="NewerLean"/>: install it with elan, pin it in lean-toolchain, and restart Lean
+    /// on it. Nothing is pinned if the install fails.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanUseNewerLean))]
+    private async Task UseNewerLeanAsync()
+    {
+        if (NewerLean is not NewerLean n || _project() is not LeanProject p)
+        {
+            return;
+        }
+        await RunAsync($"Installing {n.Toolchain}…", ct => Elan.InstallAsync(n.Toolchain, _log, ct));
+        if (!Installed.Any(t => t.Name == n.Toolchain))
+        {
+            return; // the install failed, and Status says so
+        }
+        p.SetToolchain(n.Toolchain);
+        _log($"{p.ToolchainPath} now pins {n.Toolchain}");
+        await RefreshAsync();
+        await _restartServer();
+    }
+
+    private bool CanUseNewerLean => NotBusy && NewerLean is not null;
 
     private bool NotBusy => !IsBusy;
 

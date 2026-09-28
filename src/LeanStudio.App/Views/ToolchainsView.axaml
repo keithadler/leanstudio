@@ -17,6 +17,14 @@
 
       <TextBlock Text="THIS PROJECT USES" Classes="panelTitle" />
       <SelectableTextBlock Text="{Binding ProjectToolchain}" Classes="mono" FontSize="12" TextWrapping="Wrap" />
+      <Border Classes="card" IsVisible="{Binding HasNewerLean}">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding NewerLeanText}" TextWrapping="Wrap" FontSize="12" />
+          <Button Content="Use it for this project" Command="{Binding UseNewerLeanCommand}" Classes="accent"
+                  FontSize="12" Padding="10,3"
+                  ToolTip.Tip="Install it with elan, write it to lean-toolchain and restart Lean" />
+        </StackPanel>
+      </Border>
 
       <TextBlock Text="INSTALLED" Classes="panelTitle" />
       <ListBox ItemsSource="{Binding Installed}" SelectedItem="{Binding Selected}" MaxHeight="260" Background="Transparent">

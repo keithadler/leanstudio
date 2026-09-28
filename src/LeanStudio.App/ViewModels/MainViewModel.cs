@@ -143,13 +143,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         Navigator = new NavigatorViewModel(() => _tenet);
         Navigator.OpenSourceRequested += (file, line, col) => _ = OpenFileAsync(file, line - 1, col);
         Navigator.OpenUrlRequested += uri => _ = _dialogs.LaunchAsync(uri);
-        Toolchains = new ToolchainsViewModel(() => Project, Log, RestartServerAsync);
+        // The newest stable Lean is looked up only when update checks are on, the same switch as Lean Studio's own.
+        Toolchains = new ToolchainsViewModel(() => Project, Log, RestartServerAsync,
+            ct => Settings.CheckForUpdates ? LeanReleases.LatestStableTagAsync(ReleaseHttp, ct) : Task.FromResult<string?>(null));
         Verification = new VerificationViewModel();
         InitFeatures();
         InitLearn();
         InitAssist();
         InitAi();
     }
+
+    /// <summary>For looking up Lean's newest stable release; GitHub's API answers slowly at times, so it gets its own timeout.</summary>
+    private static readonly HttpClient ReleaseHttp = new() { Timeout = TimeSpan.FromSeconds(20) };
 
     /// <summary>What Lean Studio remembers between runs; changed and saved as the person works.</summary>
     public Settings Settings { get; }

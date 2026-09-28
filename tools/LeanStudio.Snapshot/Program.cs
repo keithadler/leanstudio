@@ -1971,6 +1971,41 @@ internal static class Scenario
             await File.WriteAllTextAsync(pinFile, pinBefore);
             await vm.RestartServerCommand.ExecuteAsync(null);
             await WaitFor(() => vm.ServerStatus == "Lean: ready", 60);
+            await vm.Toolchains.RefreshAsync(); // or the panel keeps naming the toolchain just put back
+        }
+        {
+            // A newer stable Lean is offered to a project that depends on nothing, and to no other. The release feed
+            // is faked, so this depends neither on the network nor on what Lean ships next.
+            string solo = Directory.CreateTempSubdirectory("leanstudio-solo").FullName;
+            string withDeps = Directory.CreateTempSubdirectory("leanstudio-deps").FullName;
+            try
+            {
+                foreach (string d in new[] { solo, withDeps })
+                {
+                    await File.WriteAllTextAsync(Path.Combine(d, "lean-toolchain"), "leanprover/lean4:v4.34.0\n");
+                    await File.WriteAllTextAsync(Path.Combine(d, "lakefile.toml"), "name = \"P\"\n\n[[lean_lib]]\nname = \"P\"\n"
+                        + (d == withDeps ? "\n[[require]]\nname = \"mathlib\"\n" : ""));
+                }
+                LeanStudio.Core.Projects.LeanProject? open = new(solo);
+                var offer = new ToolchainsViewModel(() => open, _ => { }, () => Task.CompletedTask, _ => Task.FromResult<string?>("v4.34.1"));
+                await offer.RefreshAsync();
+                Check(offer.HasNewerLean && offer.NewerLeanText == "Lean v4.34.1 is out. This project uses v4.34.0."
+                        && offer.UseNewerLeanCommand.CanExecute(null),
+                    "a newer stable Lean is offered to a project that depends on nothing");
+                open = new(withDeps);
+                await offer.RefreshAsync();
+                Check(!offer.HasNewerLean && !offer.UseNewerLeanCommand.CanExecute(null),
+                    "but not to one whose toolchain has to follow its dependencies");
+                var off = new ToolchainsViewModel(() => new LeanStudio.Core.Projects.LeanProject(solo), _ => { }, () => Task.CompletedTask,
+                    _ => Task.FromResult<string?>(null));
+                await off.RefreshAsync();
+                Check(!off.HasNewerLean, "and nothing is offered with update checks turned off");
+            }
+            finally
+            {
+                Directory.Delete(solo, recursive: true);
+                Directory.Delete(withDeps, recursive: true);
+            }
         }
         Snap(window, outDir, "05-toolchains");
 
