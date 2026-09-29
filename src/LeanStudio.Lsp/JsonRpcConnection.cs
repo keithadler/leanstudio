@@ -29,6 +29,18 @@ public sealed class JsonRpcException(int code, string message, JsonElement? data
 /// </summary>
 public sealed class JsonRpcConnection : IAsyncDisposable
 {
+    /// <summary>
+    /// How deeply a message may nest. Lean's interactive text (goals, traces) nests with the expressions in it, a few
+    /// levels for each, so a long sum or a deep trace goes well past System.Text.Json's default of 64.
+    /// </summary>
+    public const int MaxDepth = 1024;
+
+    /// <summary>How messages are parsed: <see cref="MaxDepth"/> levels deep.</summary>
+    public static readonly JsonDocumentOptions Reading = new() { MaxDepth = MaxDepth };
+
+    /// <summary>The JSON-RPC code for a message that is not valid JSON.</summary>
+    public const int ParseError = -32700;
+
     private readonly Stream _input;
     private readonly Stream _output;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -156,7 +168,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     {
         null => null,
         JsonNode n => n.DeepClone(),
-        JsonElement e => JsonNode.Parse(e.GetRawText()),
+        JsonElement e => JsonNode.Parse(e.GetRawText(), documentOptions: Reading),
         _ => JsonSerializer.SerializeToNode(value, LspJson.Options),
     };
 
@@ -261,11 +273,16 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         JsonElement root;
         try
         {
-            root = JsonDocument.Parse(body).RootElement;
+            root = JsonDocument.Parse(body, Reading).RootElement;
         }
-        catch (JsonException)
+        catch (JsonException e)
         {
-            return;
+            // An answer that cannot be read still answers its request: it fails, rather than waiting forever.
+            if (IdOf(body) is long id && _pending.TryRemove(id, out TaskCompletionSource<JsonElement>? waiting))
+            {
+                waiting.TrySetException(new JsonRpcException(ParseError, "the answer could not be read: " + e.Message));
+            }
+            throw;
         }
         if (root.ValueKind != JsonValueKind.Object)
         {
@@ -297,6 +314,26 @@ public sealed class JsonRpcConnection : IAsyncDisposable
                 tcs.TrySetResult(root.TryGetProperty("result", out JsonElement r) ? r.Clone() : default);
             }
         }
+    }
+
+    /// <summary>The top-level <c>id</c> of a message that could not be parsed whole, if it can be found before the fault.</summary>
+    private static long? IdOf(byte[] body)
+    {
+        var reader = new Utf8JsonReader(body, new JsonReaderOptions { MaxDepth = int.MaxValue });
+        try
+        {
+            while (reader.Read())
+            {
+                if (reader.CurrentDepth == 1 && reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("id"u8))
+                {
+                    return reader.Read() && reader.TokenType == JsonTokenType.Number && reader.TryGetInt64(out long id) ? id : null;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+        return null;
     }
 
     private async Task AnswerAsync(JsonElement id, string method, JsonElement parameters)

@@ -178,7 +178,7 @@ public sealed partial class LeanServer
 
     private async Task<IReadOnlyList<CallSite>> CallsAsync(string method, string side, CallHierarchyItem item, CancellationToken ct)
     {
-        JsonElement r = await Rpc.RequestAsync(method, new JsonObject { ["item"] = JsonNode.Parse(item.Raw.GetRawText()) }, ct).ConfigureAwait(false);
+        JsonElement r = await Rpc.RequestAsync(method, new JsonObject { ["item"] = JsonNode.Parse(item.Raw.GetRawText(), documentOptions: JsonRpcConnection.Reading) }, ct).ConfigureAwait(false);
         if (r.ValueKind != JsonValueKind.Array)
         {
             return [];
@@ -297,7 +297,7 @@ public sealed partial class LeanServer
             }
             else if (embed.TryGetProperty("goal", out JsonElement goal))
             {
-                InteractiveGoals g = InteractiveGoals.Parse(JsonDocument.Parse("{\"goals\":[" + goal.GetRawText() + "]}").RootElement);
+                InteractiveGoals g = InteractiveGoals.Parse(JsonDocument.Parse("{\"goals\":[" + goal.GetRawText() + "]}", JsonRpcConnection.Reading).RootElement);
                 sb.Append(string.Join("\n", g.Goals.Select(x => x.Render())));
             }
             else if (embed.TryGetProperty("trace", out JsonElement trace))

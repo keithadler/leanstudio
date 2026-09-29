@@ -701,8 +701,13 @@ public sealed partial class LeanServer : IAsyncDisposable
 
     // ---- Lean RPC (interactive goals) ----
 
+    /// <summary>
+    /// The file's RPC session, connecting it on first use. The connection is shared by every caller that asks while it
+    /// is being made, so it is not cancelled with the first one: a goals request dropped as the caret moves on would
+    /// otherwise cancel it for the request that replaced it. Each caller stops waiting on its own token.
+    /// </summary>
     private Task<string> SessionAsync(string uri, CancellationToken ct) =>
-        _sessions.GetOrAdd(uri, u => Observed(ConnectAsync(u, ct)));
+        _sessions.GetOrAdd(uri, u => Observed(ConnectAsync(u))).WaitAsync(ct);
 
     /// <summary>
     /// Mark a session's failure as seen. A session can be dropped with no one waiting on it (an edit or a close
@@ -715,11 +720,11 @@ public sealed partial class LeanServer : IAsyncDisposable
         return t;
     }
 
-    private async Task<string> ConnectAsync(string uri, CancellationToken ct)
+    private async Task<string> ConnectAsync(string uri)
     {
         try
         {
-            JsonElement r = await Rpc.RequestAsync("$/lean/rpc/connect", new JsonObject { ["uri"] = uri }, ct).ConfigureAwait(false);
+            JsonElement r = await Rpc.RequestAsync("$/lean/rpc/connect", new JsonObject { ["uri"] = uri }).ConfigureAwait(false);
             return r.GetProperty("sessionId").GetString() ?? throw new InvalidOperationException("no RPC session");
         }
         catch
@@ -816,8 +821,8 @@ public sealed partial class LeanServer : IAsyncDisposable
             return InteractiveGoals.None;
         }
         // The term goal is a single InteractiveGoal with a range; reuse the goal parser.
-        var wrapped = new JsonObject { ["goals"] = new JsonArray(JsonNode.Parse(r.GetRawText())) };
-        InteractiveGoals goals = InteractiveGoals.Parse(JsonDocument.Parse(wrapped.ToJsonString()).RootElement);
+        var wrapped = new JsonObject { ["goals"] = new JsonArray(JsonNode.Parse(r.GetRawText(), documentOptions: JsonRpcConnection.Reading)) };
+        InteractiveGoals goals = InteractiveGoals.Parse(JsonDocument.Parse(wrapped.ToJsonString(), JsonRpcConnection.Reading).RootElement);
         await ReleaseAsync(uri, goals.References().ToList()).ConfigureAwait(false);
         return goals;
     }

@@ -11,6 +11,7 @@ internal static class LspJson
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         PropertyNameCaseInsensitive = true,
+        MaxDepth = JsonRpcConnection.MaxDepth,
     };
 
     /// <summary>Deserialize with <see cref="Options"/>; an undefined or null element gives <c>default</c>.</summary>

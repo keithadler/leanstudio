@@ -181,7 +181,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
                     message.Write(buffer, 0, r.Count);
                 }
                 while (!r.EndOfMessage);
-                if (JsonNode.Parse(message.ToArray()) is JsonObject m)
+                if (JsonNode.Parse(message.ToArray(), documentOptions: JsonRpcConnection.Reading) is JsonObject m)
                 {
                     _ = HandleMessageAsync(page, m);
                 }
@@ -220,7 +220,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
                 var error = new JsonObject { ["code"] = e.Code, ["message"] = e.Message };
                 if (e.ErrorData is JsonElement data)
                 {
-                    error["data"] = JsonNode.Parse(data.GetRawText());
+                    error["data"] = JsonNode.Parse(data.GetRawText(), documentOptions: JsonRpcConnection.Reading);
                 }
                 await SendAsync(page, new JsonObject { ["id"] = id, ["error"] = error }).ConfigureAwait(false);
             }
@@ -250,7 +250,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
             case "request":
             {
                 JsonElement r = await Server.RequestRawAsync(m["method"]!.GetValue<string>(), m["params"]?.DeepClone(), _stop.Token).ConfigureAwait(false);
-                return r.ValueKind == JsonValueKind.Undefined ? null : JsonNode.Parse(r.GetRawText());
+                return r.ValueKind == JsonValueKind.Undefined ? null : JsonNode.Parse(r.GetRawText(), documentOptions: JsonRpcConnection.Reading);
             }
             case "notify":
                 await Server.NotifyRawAsync(m["method"]!.GetValue<string>(), m["params"]?.DeepClone()).ConfigureAwait(false);
@@ -304,7 +304,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
                 return null;
             }
             case "applyEdit":
-                await _editor.ApplyEditAsync(WorkspaceEdit.Parse(JsonDocument.Parse(m["edit"]!.ToJsonString()).RootElement)).ConfigureAwait(false);
+                await _editor.ApplyEditAsync(WorkspaceEdit.Parse(JsonDocument.Parse(m["edit"]!.ToJsonString(), JsonRpcConnection.Reading).RootElement)).ConfigureAwait(false);
                 return null;
             case "showDocument":
             {
@@ -340,7 +340,7 @@ public sealed class InfoviewBridge : IAsyncDisposable
         }
         _wired = s;
         s.ServerNotification += (method, p) => Broadcast(page => page.ServerSubscriptions.ContainsKey(method),
-            () => new JsonObject { ["op"] = "serverNotification", ["method"] = method, ["params"] = JsonNode.Parse(p.GetRawText()) });
+            () => new JsonObject { ["op"] = "serverNotification", ["method"] = method, ["params"] = JsonNode.Parse(p.GetRawText(), documentOptions: JsonRpcConnection.Reading) });
         s.ClientNotification += (method, p) =>
         {
             Broadcast(page => page.ClientSubscriptions.ContainsKey(method),

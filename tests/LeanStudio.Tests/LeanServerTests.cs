@@ -72,6 +72,32 @@ public sealed class LeanServerTests
         Assert.Contains("ih : n + b = b + n", Assert.Single(plain.Goals), StringComparison.Ordinal);
     }
 
+    [Fact(Timeout = 600_000)]
+    public async Task ReadsDeepGoalsAndSharesTheSessionBeingConnected()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        await server.StartAsync(ct);
+        string uri = LeanServer.UriOf(Path.Combine(dir, "DeepGoal.lean"));
+        // Each `+ 1` nests the goal's interactive text a few levels deeper: sixty of them go far past 64 levels.
+        await server.OpenAsync(uri, "theorem deep (n : Nat) : n" + string.Concat(Enumerable.Repeat(" + 1", 60)) + " = n + 60 := by\n  omega\n");
+        await server.WaitForElaborationAsync(uri, ct).WaitAsync(Lean.Patience, ct);
+
+        // A request cancelled while the file's session is being connected does not cancel the connection for
+        // another one waiting on it.
+        using var gone = new CancellationTokenSource();
+        Task<InteractiveGoals> dropped = server.InteractiveGoalsAsync(uri, new Position(1, 2), gone.Token);
+        Task<InteractiveGoals> kept = server.InteractiveGoalsAsync(uri, new Position(1, 2), ct);
+        gone.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => dropped);
+        InteractiveGoal g = Assert.Single((await kept.WaitAsync(Lean.Patience, ct)).Goals);
+        string target = string.Join(' ', g.Type.Text.Split((char[])[' ', '\n'], StringSplitOptions.RemoveEmptyEntries)); // it is wrapped
+        Assert.Contains(" + 1 + 1 + 1", target, StringComparison.Ordinal); // Lean shows its deepest part as ⋯
+        Assert.EndsWith("1 = n + 60", target, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ConstructorSplitsTheGoalInTwo()
     {

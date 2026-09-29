@@ -192,6 +192,40 @@ public sealed class StressTests
     }
 
     [Fact]
+    public async Task DeepAnswersArriveAndUnreadableOnesFailTheirRequest()
+    {
+        await using var wire = new Wire();
+        wire.A.Start();
+        var ct = TestContext.Current.CancellationToken;
+        async Task Frame(string body)
+        {
+            byte[] b = System.Text.Encoding.UTF8.GetBytes(body);
+            await wire.IntoA.WriteAsync(System.Text.Encoding.ASCII.GetBytes($"Content-Length: {b.Length}\r\n\r\n"), ct);
+            await wire.IntoA.WriteAsync(b, ct);
+            await wire.IntoA.FlushAsync(ct);
+        }
+        static string Nested(int depth) => string.Concat(Enumerable.Repeat("""{"a":[""", depth)) + "1" + string.Concat(Enumerable.Repeat("]}", depth));
+
+        // Lean's goals nest a few levels for each subterm: an answer 300 levels deep is an ordinary long sum.
+        Task<JsonElement> deep = wire.A.RequestAsync("goals", null, ct);
+        await Frame("""{"jsonrpc":"2.0","id":1,"result":""" + Nested(150) + "}");
+        Assert.Equal(JsonValueKind.Object, (await deep.WaitAsync(TimeSpan.FromSeconds(10), ct)).ValueKind);
+
+        // One that cannot be read fails its request, rather than leaving it waiting forever.
+        Task<JsonElement> broken = wire.A.RequestAsync("goals", null, ct);
+        await Frame("""{"jsonrpc":"2.0","id":2,"result":{"a":[1,}""");
+        Assert.Equal(JsonRpcConnection.ParseError, (await Assert.ThrowsAsync<JsonRpcException>(() => broken.WaitAsync(TimeSpan.FromSeconds(10), ct))).Code);
+        Task<JsonElement> tooDeep = wire.A.RequestAsync("goals", null, ct);
+        await Frame("""{"jsonrpc":"2.0","id":3,"result":""" + Nested(JsonRpcConnection.MaxDepth) + "}");
+        Assert.Equal(JsonRpcConnection.ParseError, (await Assert.ThrowsAsync<JsonRpcException>(() => tooDeep.WaitAsync(TimeSpan.FromSeconds(10), ct))).Code);
+
+        // And the connection reads on.
+        Task<JsonElement> after = wire.A.RequestAsync("goals", null, ct);
+        await Frame("""{"jsonrpc":"2.0","id":4,"result":7}""");
+        Assert.Equal(7, (await after.WaitAsync(TimeSpan.FromSeconds(10), ct)).GetInt32());
+    }
+
+    [Fact]
     public async Task ACancellationStormLeavesEveryRequestFinished()
     {
         await using var wire = new Wire();

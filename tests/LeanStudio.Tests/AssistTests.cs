@@ -437,8 +437,36 @@ public sealed class AssistTests
     {
         Lean.RequireLean();
         string dir = Lean.Sample("Demo");
-        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
-        await server.StartAsync(TestContext.Current.CancellationToken);
+        // Lean's messages are kept, to say what it was last asked and told if a step never finishes.
+        string log = Path.Combine(Path.GetTempPath(), $"leanstudio-live-{Guid.NewGuid():N}.log");
+        var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir)) { MessageLogPath = log };
+        try
+        {
+            await server.StartAsync(TestContext.Current.CancellationToken);
+            await FollowEditsAsync(server, dir);
+        }
+        catch (Exception e) when (e is OperationCanceledException or TimeoutException && File.Exists(log))
+        {
+            // The server is still writing to it.
+            using var reader = new StreamReader(new FileStream(log, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+            string[] last = [.. reader.ReadToEnd().Split('\n').TakeLast(40).Select(l => l.Length > 300 ? l[..300] + "…" : l)];
+            throw new TimeoutException("a step did not finish; Lean's last messages:\n" + string.Join('\n', last), e);
+        }
+        finally
+        {
+            await server.DisposeAsync();
+            try
+            {
+                File.Delete(log);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    private static async Task FollowEditsAsync(LeanServer server, string dir)
+    {
         string path = Path.Combine(dir, "LiveSlow.lean");
         string text = """
             /-- A doc comment: the theorem's figures belong to the theorem below it. -/
