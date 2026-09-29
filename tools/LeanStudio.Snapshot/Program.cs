@@ -54,6 +54,8 @@ Dispatcher.UIThread.Post(async () =>
             ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
             : args.Length > 1 && args[0] == "--leak"
             ? await LeanStudio.Snapshot.Leak.RunAsync(Path.GetFullPath(args[1]))
+            : args.Length > 3 && args[0] == "--scale-profiler"
+            ? await LeanStudio.Snapshot.ProfilerScale.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]))
             : args.Length > 3 && args[0] == "--scale"
             ? await Validate.ScaleAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]))
             : await Scenario.RunAsync(repo, outDir);

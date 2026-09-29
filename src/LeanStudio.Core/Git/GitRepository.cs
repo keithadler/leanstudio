@@ -374,6 +374,31 @@ public sealed partial class GitRepository
             .ToList();
     }
 
+    /// <summary>
+    /// Check out <paramref name="rev"/> in a new working tree at <paramref name="path"/> (detached, sharing this
+    /// repository's objects). Worktrees whose folders are gone are forgotten first. Throws when git fails.
+    /// </summary>
+    public async Task AddWorktreeAsync(string path, string rev, CancellationToken ct = default)
+    {
+        await RunAsync(["worktree", "prune"], ct: ct).ConfigureAwait(false);
+        ProcessResult r = await RunAsync(["worktree", "add", "--detach", "--force", path, rev], ct: ct).ConfigureAwait(false);
+        if (!r.Success)
+        {
+            throw new InvalidOperationException("git could not check out " + rev + ": " + r.Output.Trim());
+        }
+    }
+
+    /// <summary>Remove the working tree at <paramref name="path"/> and its folder, even with changes in it.</summary>
+    public async Task RemoveWorktreeAsync(string path, CancellationToken ct = default)
+    {
+        await RunAsync(["worktree", "remove", "--force", path], ct: ct).ConfigureAwait(false);
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, true);
+        }
+        await RunAsync(["worktree", "prune"], ct: ct).ConfigureAwait(false);
+    }
+
     /// <summary>The short hash a revision names, or <see langword="null"/> when it names none.</summary>
     public async Task<string?> ShortHashAsync(string rev, CancellationToken ct = default)
     {

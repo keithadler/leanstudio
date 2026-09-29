@@ -451,7 +451,8 @@ public sealed class AssistTests
               simp [Nat.add_comm]
             """;
         await using var live = new LiveProfiler(server, path);
-        ProfileReport first = await live.UpdateAsync(text, TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        // Editing the slow theorem: its tree is fetched; the quick one gets only its cost until it is asked for.
+        ProfileReport first = await live.UpdateAsync(text, 4, TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         Assert.True(first.Live);
         Assert.False(File.Exists(path));
         DeclarationTiming slow = first.Declarations[0];
@@ -461,16 +462,22 @@ public sealed class AssistTests
         Assert.Equal("omega", slow.HotPath()[^1].Label);
         Assert.Equal(4, slow.LineCosts.MaxBy(kv => kv.Value).Key);
         Assert.Contains(slow.Steps, st => st.What == "tactic execution of omega");
+        Assert.True(slow.TraceComplete);
+        if (first.Declarations.FirstOrDefault(d => d.Name == "quick") is { Trace.Count: > 0 } quick)
+        {
+            Assert.False(quick.TraceComplete);
+            Assert.True((await live.ExpandAsync(quick.Line, TestContext.Current.CancellationToken)).Declarations.Single(d => d.Name == "quick").TraceComplete);
+        }
 
         // An edit below it: Lean re-checks only the edited theorem, and the slow one's tree is kept, not fetched again.
-        ProfileReport second = await live.UpdateAsync(text.Replace("simp [Nat.add_comm]", "omega", StringComparison.Ordinal), TestContext.Current.CancellationToken)
+        ProfileReport second = await live.UpdateAsync(text.Replace("simp [Nat.add_comm]", "omega", StringComparison.Ordinal), 7, TestContext.Current.CancellationToken)
             .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         DeclarationTiming again = second.Declarations.Single(d => d.Name == "slow");
         Assert.All(again.Trace, n => Assert.Contains(slow.Trace, m => ReferenceEquals(m, n)));
         Assert.Equal(slow.Value, again.Value, 9);
 
         // An edit above it moves it down a line; its figures move with it.
-        ProfileReport third = await live.UpdateAsync("-- a new first line\n" + text, TestContext.Current.CancellationToken)
+        ProfileReport third = await live.UpdateAsync("-- a new first line\n" + text, null, TestContext.Current.CancellationToken)
             .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
         Assert.Equal(3, third.Declarations.Single(d => d.Name == "slow").Line);
         await live.DisposeAsync();

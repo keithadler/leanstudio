@@ -79,6 +79,77 @@ public sealed class ProfileCheckTests
     }
 
     [Fact]
+    public async Task CatchesASlowdownInAFileThatDidNotChange()
+    {
+        Lean.RequireLean();
+        Assert.SkipWhen(!GitRepository.IsGitInstalled, "git is not installed");
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Directory.CreateTempSubdirectory("leanstudio-dependents").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n", ct);
+            await File.WriteAllTextAsync(Path.Combine(dir, "lakefile.toml"), "name = \"dep\"\ndefaultTargets = [\"Dep\"]\n\n[[lean_lib]]\nname = \"Dep\"\n", ct);
+            await File.WriteAllTextAsync(Path.Combine(dir, ".gitignore"), ".lake\n", ct);
+            Directory.CreateDirectory(Path.Combine(dir, "Dep"));
+            string basePath = Path.Combine(dir, "Dep", "Base.lean"), userPath = Path.Combine(dir, "Dep", "User.lean");
+            await File.WriteAllTextAsync(basePath, "def n : Nat := 5\n", ct);
+            // Its proof costs more the larger `n` is, but the file never changes.
+            await File.WriteAllTextAsync(userPath, "import Dep.Base\n\ntheorem t : (List.range n).length = n := by decide\n", ct);
+            await File.WriteAllTextAsync(Path.Combine(dir, "Dep.lean"), "import Dep.User\n", ct);
+            await GitRepository.InitAsync(dir, ct);
+            GitRepository repo = GitRepository.Find(dir)!;
+            await repo.RunAsync(["config", "user.email", "test@example.com"], ct: ct);
+            await repo.RunAsync(["config", "user.name", "Test"], ct: ct);
+            await repo.RunAsync(["config", "commit.gpgsign", "false"], ct: ct);
+            await repo.RunAsync(["add", "--all"], ct: ct);
+            Assert.True((await repo.RunAsync(["commit", "-m", "base"], ct: ct)).Success);
+
+            await File.WriteAllTextAsync(basePath, "def n : Nat := 40\n", ct);
+            var project = new LeanProject(dir);
+            Assert.True((await Lake.BuildAsync(project, null, null, ct)).Success);
+            Assert.Equal([userPath, Path.Combine(dir, "Dep.lean")], ProfileCheck.NearestDependents(project, [basePath], 20).Order(StringComparer.Ordinal).Reverse());
+
+            var steps = new List<string>();
+            CheckReport report = await ProfileCheck.RunAsync(project, new CheckOptions("main", MinDelta: 10), new SyncProgress(steps), ct).WaitAsync(Lean.Patience, ct);
+            Assert.True(report.Built);
+            Assert.Equal(2, report.DependentFiles);
+            Assert.Contains(steps, st => st.StartsWith("building main", StringComparison.Ordinal));
+            CheckedDeclaration t = Assert.Single(report.Declarations, d => d.Name == "t");
+            // Too cheap to measure then (n was 5), costly now (n is 40): a regression, not a new declaration.
+            Assert.True(t.Dependent);
+            Assert.True(t.WasUnder && t.Before is null && t.After > 20, $"{t.Before} then, {t.After} now");
+            Assert.EndsWith("more heartbeats than at main, where it was too cheap to measure", t.Problem, StringComparison.Ordinal);
+            Assert.StartsWith("+", t.Change, StringComparison.Ordinal);
+            Assert.EndsWith("hb (was under 20)", t.Change, StringComparison.Ordinal);
+            Assert.False(report.Passed);
+            Assert.Contains("Dep/User.lean:3 (unchanged; imports changed)", ProfileCheck.ToMarkdown(report, dir), StringComparison.Ordinal);
+            Assert.True(File.Exists(Path.Combine(dir, ".lake", "leanstudio", "check", report.Commit, "Dep", "Base.lean")));
+
+            // Without the build, only the changed file is checked, and it did not get costlier.
+            CheckReport quick = await ProfileCheck.RunAsync(project, new CheckOptions("main", MinDelta: 10, Dependents: 0), null, ct).WaitAsync(Lean.Patience, ct);
+            Assert.False(quick.Built);
+            Assert.Equal([basePath], quick.Files.Select(f => f.Path));
+            Assert.True(quick.Passed);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    /// <summary>Records progress as it is reported, on the reporting thread (Progress would post it later).</summary>
+    private sealed class SyncProgress(List<string> into) : IProgress<string>
+    {
+        public void Report(string value)
+        {
+            lock (into)
+            {
+                into.Add(value);
+            }
+        }
+    }
+
+    [Fact]
     public async Task ChecksAChangeAgainstGitFromTheCommandLine()
     {
         Lean.RequireLean();

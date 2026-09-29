@@ -146,6 +146,12 @@ public sealed record DeclarationTiming(int Line, string Declaration, double Valu
     /// <summary>Lean's trace of the declaration: one tree per piece of work it reported (elaboration, the proof, the kernel).</summary>
     public IReadOnlyList<ProfileNode> Trace { get; init; } = [];
 
+    /// <summary>
+    /// The steps inside <see cref="Trace"/> have all been read. False in a live profile for a declaration whose tree
+    /// has not been fetched yet (it has its cost, and its trace only the top of it).
+    /// </summary>
+    public bool TraceComplete { get; init; } = true;
+
     /// <summary>Lean's own profiler lines for the declaration, costliest first. Always in seconds; empty in heartbeats.</summary>
     public IReadOnlyList<ProfileStep> Steps { get; init; } = [];
 

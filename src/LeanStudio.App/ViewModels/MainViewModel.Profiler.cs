@@ -182,7 +182,37 @@ public sealed partial class MainViewModel
     /// <summary>The runs a time profile takes the median of.</summary>
     public int ProfileRuns => ProfileRunsIndex switch { 1 => 3, 2 => 5, _ => 1 };
 
-    partial void OnSelectedTimingChanged(TimingItem? value) => ShowProfileDetail();
+    partial void OnSelectedTimingChanged(TimingItem? value)
+    {
+        ShowProfileDetail();
+        // A live profile fetches a declaration's trace when it is picked (see LiveProfiler).
+        if (value is { Timing.TraceComplete: false } && Profile is { Live: true } && _live is LiveProfiler live && live.SourcePath == value.Path)
+        {
+            _ = ExpandLiveAsync(live, value.Timing.Name, value.Timing.Line);
+        }
+    }
+
+    private async Task ExpandLiveAsync(LiveProfiler live, string name, int line)
+    {
+        try
+        {
+            IsLiveUpdating = true;
+            ProfileReport report = await live.ExpandAsync(line);
+            if (Profile is { Live: true } && _live == live && SelectedTiming?.Timing.Name == name)
+            {
+                ShowProfile(report);
+                SelectedTiming = TimingItems.FirstOrDefault(t => t.Timing.Name == name);
+            }
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            Log("Live profile: " + e.Message);
+        }
+        finally
+        {
+            IsLiveUpdating = false;
+        }
+    }
 
     private ProfileOptions CurrentProfileOptions(int? line = null) =>
         new(ProfileHeartbeats ? ProfileUnit.Heartbeats : ProfileUnit.Seconds, ProfileRuns, ProfileCounters, line);
@@ -265,7 +295,7 @@ public sealed partial class MainViewModel
             }
             string text = d.Document.Text;
             IsLiveUpdating = true;
-            ProfileReport report = await _live.UpdateAsync(text, ct);
+            ProfileReport report = await _live.UpdateAsync(text, d.CaretLine, ct);
             if (ct.IsCancellationRequested || !ProfileLive || ActiveDocument != d)
             {
                 return;
@@ -637,8 +667,7 @@ public sealed partial class MainViewModel
         IsProfiling = true;
         _profileCts = new CancellationTokenSource();
         TimingStatus = $"Checking the files changed since {rev}…";
-        var progress = new Progress<(int Done, int Total, string Path)>(p =>
-            TimingStatus = $"Checking against {rev}: {p.Done + 1} of {p.Total}, {Path.GetRelativePath(project.Root, p.Path)} now and then…");
+        var progress = new Progress<string>(what => TimingStatus = $"Checking against {rev}: {what}…");
         try
         {
             CheckReport report = await ProfileCheck.RunAsync(project, new CheckOptions(rev.Trim()), progress, _profileCts.Token);
@@ -669,7 +698,8 @@ public sealed partial class MainViewModel
         var items = report.Declarations.Select(c => new TimingItem(
             new DeclarationTiming(Math.Max(0, c.Line), c.Name, c.After ?? 0, null, 0) { Unit = ProfileUnit.Heartbeats },
             Math.Max(1, report.Declarations.Max(x => x.After ?? 0)), c.Path, ShowFile: true, Change: c.Change,
-            Note: c.Problem ?? (c.ShareOfLimit is double s ? $"{s:P0} of its maxHeartbeats" : ""), Fails: c.Problem is not null)).ToList();
+            Note: (c.Problem ?? (c.ShareOfLimit is double s ? $"{s:P0} of its maxHeartbeats" : "")) + (c.Dependent ? " (its file is unchanged; an import changed)" : ""),
+            Fails: c.Problem is not null)).ToList();
         ShowProfile(new ProfileReport(items.Select(i => i.Timing).ToList(), ProfileUnit.Heartbeats) { Path = project.Root }, keepFiles: true);
         ProfiledFiles.Reset(files);
         TimingItems.Reset(items);
@@ -677,9 +707,11 @@ public sealed partial class MainViewModel
         _checkMarkdown = ProfileCheck.ToMarkdown(report, project.Root);
         int failed = report.Failures.Count;
         TimingStatus = (report.Passed ? "Passed" : $"Failed: {failed} declaration{(failed == 1 ? "" : "s")} over the limits") +
-            $". Against {report.Against} ({report.Commit}), in heartbeats: {report.Files.Count} changed file{(report.Files.Count == 1 ? "" : "s")}, "
+            $". Against {report.Against} ({report.Commit}), in heartbeats: {report.Files.Count - report.DependentFiles} changed file{(report.Files.Count - report.DependentFiles == 1 ? "" : "s")}"
+            + (report.DependentFiles > 0 ? $" and {report.DependentFiles} that import one" : "") + ", "
             + $"{report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")} changed or near a limit. "
             + "A declaration fails when it costs 10% more (and 1,000 heartbeats more), or uses more than half its maxHeartbeats. "
+            + string.Concat(report.Notes.Select(n => n + " "))
             + "CI runs the same with leanstudio --profile-check.";
         Log("Regression check: " + TimingStatus);
     }
@@ -751,6 +783,10 @@ public sealed partial class MainViewModel
         string unit = report.Unit == ProfileUnit.Heartbeats ? " (heartbeats, in maxHeartbeats units: the same on every run)" : "";
         string runs = report.Runs > 1 ? $", the median of {report.Runs} runs" : "";
         string imports = report.ImportSeconds > 0 ? $" Loading the imports took {DeclarationTiming.Format(report.ImportSeconds)} more." : "";
+        // Lean checks proofs in parallel, so the declarations' times can add up to more than the check took.
+        string parallel = report.Unit == ProfileUnit.Seconds && report.WallSeconds > 0 && report.Total > report.WallSeconds * 1.2
+            ? $" Lean checks proofs in parallel: the whole check took {DeclarationTiming.Format(report.WallSeconds)}."
+            : "";
         string errors = report.Errors > 0 ? $" The file has {report.Errors} error{(report.Errors == 1 ? "" : "s")}: what follows one may not have been fully checked." : "";
         string compared = baseline is null ? ""
             : $" Against {(BaselineLabel.Length > 0 ? BaselineLabel : "the baseline")}: {DeclarationTiming.Format(baseline.Total, baseline.Unit)} → now {DeclarationTiming.Format(report.Total, report.Unit)} ({new TimingChange("", baseline.Total, report.Total).Describe(report.Unit)}).";
@@ -760,7 +796,7 @@ public sealed partial class MainViewModel
             ? (report.OnlyLine is not null ? "That declaration" : "Nothing in this file") + $" takes Lean more than {(report.Unit == ProfileUnit.Heartbeats ? "20 heartbeats" : "a few milliseconds")} to check.{imports}{errors}"
             : report.OnlyLine is not null
                 ? $"{file}, {report.Declarations[0].Name} alone: {report.Declarations[0].Time}{unit}{runs}. Only the lines above it were checked with it.{compared}{errors}"
-                : $"{file}: {DeclarationTiming.Format(report.Total, report.Unit)} across {report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")}{unit}{runs}, costliest first.{compared}{gone}{imports}{errors}");
+                : $"{file}: {DeclarationTiming.Format(report.Total, report.Unit)} across {report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")}{unit}{runs}, costliest first.{parallel}{compared}{gone}{imports}{errors}");
         double catMax = report.Categories.Where(c => c.Name is not ("import" or "initialization")).Select(c => c.Seconds).DefaultIfEmpty(1).Max();
         double catTotal = report.Categories.Where(c => c.Name is not ("import" or "initialization")).Sum(c => c.Seconds);
         ProfileCategories.Reset(report.Categories.Where(c => c.Name is not ("import" or "initialization") && c.Seconds >= 0.0005)

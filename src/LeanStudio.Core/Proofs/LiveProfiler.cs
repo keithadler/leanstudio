@@ -18,13 +18,20 @@ public sealed class LiveProfiler : IAsyncDisposable
     /// <summary>The line put after the file's header, which switches the profilers on for everything below it.</summary>
     public const string Options = "set_option trace.profiler true set_option trace.profiler.threshold 5 set_option profiler true set_option profiler.threshold 1";
 
-    /// <summary>At most this many trace steps are expanded per update; beyond it, declarations get only their totals.</summary>
+    /// <summary>At most this many trace steps are fetched per declaration; a larger tree is left with its totals only.</summary>
     public const int MaxExpanded = 3000;
 
     private readonly LeanServer _server;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, ProfileNode> _expanded = new(StringComparer.Ordinal);
     private bool _open;
+
+    // What the last read found, for expanding a declaration later without asking Lean to check the file again.
+    private string[] _lines = [];
+    private List<(int Line, int Owner, string Key, JsonElement Trace)> _roots = [];
+    private List<(int, string)> _steps = [];
+    private int _errors;
+    private List<string> _refs = [];
 
     /// <summary>Profile <paramref name="sourcePath"/> in <paramref name="server"/>, which must be the project's running server.</summary>
     public LiveProfiler(LeanServer server, string sourcePath)
@@ -74,8 +81,12 @@ public sealed class LiveProfiler : IAsyncDisposable
     /// profile. The first call opens the copy; later ones send it as an edit.
     /// </summary>
     /// <param name="text">The file's text.</param>
+    /// <param name="focusLine">
+    /// A 0-based line in the declaration being edited, whose tree is expanded; null expands none (every
+    /// declaration still gets its cost).
+    /// </param>
     /// <param name="ct">Cancels the wait (the edit has been sent by then; the next update supersedes it).</param>
-    public async Task<ProfileReport> UpdateAsync(string text, CancellationToken ct = default)
+    public async Task<ProfileReport> UpdateAsync(string text, int? focusLine = null, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -96,7 +107,7 @@ public sealed class LiveProfiler : IAsyncDisposable
             }
             await _server.WaitForElaborationAsync(Uri, ct).ConfigureAwait(false);
             await SettleAsync(ct).ConfigureAwait(false);
-            return await ReadAsync(text.Split('\n'), inserted, ct).ConfigureAwait(false);
+            return await ReadAsync(text.Split('\n'), inserted, focusLine, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -117,9 +128,15 @@ public sealed class LiveProfiler : IAsyncDisposable
         }
     }
 
-    private async Task<ProfileReport> ReadAsync(string[] lines, int inserted, CancellationToken ct)
+    private async Task<ProfileReport> ReadAsync(string[] lines, int inserted, int? focusLine, CancellationToken ct)
     {
         int Original(int line) => line > inserted ? line - 1 : line;
+        // The references of the last read are for diagnostics Lean has replaced.
+        if (_refs.Count > 0)
+        {
+            await _server.ReleaseAsync(Uri, _refs).ConfigureAwait(false);
+            _refs = [];
+        }
         var steps = new List<(int, string)>();
         int errors = 0;
         foreach (Diagnostic d in _server.DiagnosticsOf(Uri))
@@ -135,55 +152,90 @@ public sealed class LiveProfiler : IAsyncDisposable
         }
         JsonElement diags = await _server.RpcCallAsync(Uri, new Position(0, 0), "Lean.Widget.getInteractiveDiagnostics",
             new JsonObject { ["lineRange"] = new JsonObject { ["start"] = 0, ["end"] = lines.Length + 2 } }, ct).ConfigureAwait(false);
-        var roots = new List<(int Line, JsonElement Trace)>();
+        var roots = new List<(int Line, int Owner, string Key, JsonElement Trace)>();
         if (diags.ValueKind == JsonValueKind.Array)
         {
             foreach (JsonElement d in diags.EnumerateArray())
             {
                 if (d.TryGetProperty("message", out JsonElement m) && FindTrace(m) is JsonElement t
-                    && d.TryGetProperty("range", out JsonElement r) && r.TryGetProperty("start", out JsonElement s) && s.TryGetProperty("line", out JsonElement l))
+                    && d.TryGetProperty("range", out JsonElement r) && r.TryGetProperty("start", out JsonElement s) && s.TryGetProperty("line", out JsonElement l)
+                    && Original(l.GetInt32()) is int line && line >= 0 && line <= lines.Length)
                 {
-                    roots.Add((Original(l.GetInt32()), t));
+                    // A declaration that did not change keeps its trace (wherever it has moved to): its root reads
+                    // the same, and so does its text.
+                    int owner = Profiler.OwnerOf(lines, line);
+                    string key = string.Join('\n', lines.Skip(owner).Take(Profiler.NextTopLevel(lines, owner) - owner)) + "\u0001" + Head(t);
+                    roots.Add((line, owner, key, t.Clone()));
                 }
             }
         }
-        var refs = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        int budget = MaxExpanded;
-        var trees = new List<(int, ProfileNode)>();
-        foreach ((int line, JsonElement trace) in roots)
+        (_lines, _roots, _steps, _errors) = (lines, roots, steps, errors);
+        var keys = roots.Select(x => x.Key).ToHashSet(StringComparer.Ordinal);
+        foreach (string stale in _expanded.Keys.Where(k => !keys.Contains(k)).ToList())
         {
-            if (line < 0 || line > lines.Length)
+            _expanded.Remove(stale);
+        }
+        if (focusLine is int f && f >= 0 && f < lines.Length)
+        {
+            await ExpandOwnerAsync(Profiler.OwnerOf(lines, f), ct).ConfigureAwait(false);
+        }
+        return Report();
+    }
+
+    /// <summary>
+    /// Fetch the trace of the declaration at the 0-based line <paramref name="line"/> (as of the last update), if
+    /// it is not fetched yet, and return the profile with it.
+    /// </summary>
+    public async Task<ProfileReport> ExpandAsync(int line, CancellationToken ct = default)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await ExpandOwnerAsync(Profiler.OwnerOf(_lines, line), ct).ConfigureAwait(false);
+            return Report();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task ExpandOwnerAsync(int owner, CancellationToken ct)
+    {
+        foreach ((int _, int o, string key, JsonElement trace) in _roots)
+        {
+            if (o == owner && !_expanded.ContainsKey(key))
             {
-                continue;
-            }
-            // A declaration that did not change keeps its trace (wherever it has moved to): its root reads the same,
-            // and so does its text.
-            int owner = Profiler.OwnerOf(lines, line);
-            string key = string.Join('\n', lines.Skip(owner).Take(Profiler.NextTopLevel(lines, owner) - owner)) + "\u0001" + Head(trace);
-            seen.Add(key);
-            if (!_expanded.TryGetValue(key, out ProfileNode? node))
-            {
-                (node, bool complete) = await ExpandAsync(trace, refs, () => budget-- > 0, ct).ConfigureAwait(false);
+                var budget = new Budget(MaxExpanded);
+                (ProfileNode node, bool complete) = await ExpandAsync(trace, _refs, budget, ct).ConfigureAwait(false);
                 if (complete)
                 {
                     _expanded[key] = node;
                 }
             }
-            trees.Add((line, node));
         }
-        foreach (string stale in _expanded.Keys.Where(k => !seen.Contains(k)).ToList())
-        {
-            _expanded.Remove(stale);
-        }
-        if (refs.Count > 0)
-        {
-            await _server.ReleaseAsync(Uri, refs).ConfigureAwait(false);
-        }
-        IReadOnlyList<DeclarationTiming> declarations = Profiler.Build(trees, steps, [], lines, ProfileUnit.Seconds);
+    }
+
+    /// <summary>The profile from the last read: each declaration's roots, expanded where they have been.</summary>
+    private ProfileReport Report()
+    {
+        var trees = _roots.Select(r => (r.Line, _expanded.TryGetValue(r.Key, out ProfileNode? n) ? n : HeadOnly(r.Trace))).ToList();
+        var partial = _roots.Where(r => !_expanded.ContainsKey(r.Key)).Select(r => r.Owner).ToHashSet();
+        IReadOnlyList<DeclarationTiming> declarations = Profiler.Build(trees, _steps, [], _lines, ProfileUnit.Seconds)
+            .Select(d => partial.Contains(d.Line) ? d with { TraceComplete = false } : d).ToList();
         var categories = declarations.SelectMany(d => d.Steps).GroupBy(s => s.Category)
             .Select(g => new ProfileCategory(g.Key, g.Sum(s => s.Seconds))).OrderByDescending(c => c.Seconds).ToList();
-        return new ProfileReport(declarations, ProfileUnit.Seconds) { Path = SourcePath, Errors = errors, Categories = categories, Live = true };
+        return new ProfileReport(declarations, ProfileUnit.Seconds) { Path = SourcePath, Errors = _errors, Categories = categories, Live = true };
+    }
+
+    /// <summary>A trace's root on its own, without the steps inside it: its cost, before they are fetched.</summary>
+    private static ProfileNode HeadOnly(JsonElement trace) =>
+        Profiler.ParseTree(Head(trace)) ?? new ProfileNode("", Head(trace), 0, false, []);
+
+    /// <summary>How many more trace steps may be fetched.</summary>
+    private sealed class Budget(int left)
+    {
+        public bool Take() => left-- > 0;
     }
 
     /// <summary>The trace node in a message, if the message is a trace: <c>{"tag": [{"trace": …}, …]}</c>.</summary>
@@ -250,11 +302,11 @@ public sealed class LiveProfiler : IAsyncDisposable
 
     /// <summary>
     /// A trace node as a <see cref="ProfileNode"/>, its children fetched from the server while
-    /// <paramref name="more"/> allows. Returns whether the whole tree was fetched.
+    /// <paramref name="budget"/> allows. Returns whether the whole tree was fetched.
     /// </summary>
-    private async Task<(ProfileNode Node, bool Complete)> ExpandAsync(JsonElement trace, List<string> refs, Func<bool> more, CancellationToken ct)
+    private async Task<(ProfileNode Node, bool Complete)> ExpandAsync(JsonElement trace, List<string> refs, Budget budget, CancellationToken ct)
     {
-        ProfileNode head = Profiler.ParseTree(Head(trace)) ?? new ProfileNode("", Head(trace), 0, false, []);
+        ProfileNode head = HeadOnly(trace);
         var children = new List<ProfileNode>();
         bool complete = true;
         IEnumerable<JsonElement> kids = [];
@@ -270,7 +322,7 @@ public sealed class LiveProfiler : IAsyncDisposable
                 {
                     refs.Add(p.GetString()!);
                 }
-                if (more())
+                if (budget.Take())
                 {
                     JsonElement got = await _server.RpcCallAsync(Uri, new Position(0, 0), "Lean.Widget.lazyTraceChildrenToInteractive",
                         JsonNode.Parse(lazy.GetRawText()), ct).ConfigureAwait(false);
@@ -286,7 +338,12 @@ public sealed class LiveProfiler : IAsyncDisposable
         {
             if (FindTrace(k) is JsonElement t)
             {
-                (ProfileNode c, bool done) = await ExpandAsync(t, refs, more, ct).ConfigureAwait(false);
+                if (!budget.Take())
+                {
+                    complete = false;
+                    break;
+                }
+                (ProfileNode c, bool done) = await ExpandAsync(t, refs, budget, ct).ConfigureAwait(false);
                 children.Add(c);
                 complete &= done;
             }

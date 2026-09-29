@@ -437,11 +437,15 @@ skew the times. `Compare` matches two profiles by declaration name. The app show
 one line after the header switching the profilers on, and sends it each new version as an edit, so Lean re-checks
 only from the first changed command. In the server a trace arrives as "(trace)" in the plain diagnostics, so it reads
 `Lean.Widget.getInteractiveDiagnostics`: each root carries its total, and `lazyTraceChildrenToInteractive` expands
-the children. Expanded trees are kept per declaration (its text and its root), so an edit only costs the declarations
-it changed. `ProfileStore` saves every whole-file profile under `.lake/leanstudio/profiles`, with the commit and the
-toolchain. `ProfileCheck` profiles each file changed since a revision (`git diff` and untracked files) in heartbeats,
-now and at that revision (`git show`), with the same toolchain and imports, and judges each declaration against the
-thresholds and its `maxHeartbeats` (`LimitAt` reads `set_option maxHeartbeats`). `leanstudio --profile-check` runs
+the children, one request per step. So each update reads only the roots (one request for the file) and expands the
+declaration at the cursor; `ExpandAsync(line)` fetches another's tree when it is picked. Expanded trees are kept per
+declaration (its text and its root), so an edit only costs the declarations it changed. `ProfileStore` saves every whole-file profile under `.lake/leanstudio/profiles`, with the commit and the
+toolchain. `ProfileCheck` profiles each file changed since a revision (`git diff` and untracked files), and the nearest files
+that import them (`NearestDependents`, from `ImportGraph`), in heartbeats, now and at that revision. For the
+revision it checks out a worktree under `.lake/leanstudio/check/<commit>`, links the project's `.lake/packages` into
+it when `lake-manifest.json` is unchanged, and builds only the modules the checked files import. It judges each
+declaration against the thresholds and its `maxHeartbeats` (`LimitAt` reads `set_option maxHeartbeats`). With
+`Dependents = 0` there is no worktree: each changed file's old text (`git show`) is checked under today's imports. `leanstudio --profile-check` runs
 it from `Program.Main` without a window.
 
 `Heartbeats` (Lean ▸ Count Heartbeats) wraps each top-level declaration of a mirror copy in a
@@ -553,6 +557,7 @@ after each step. The README's images come from it. It sets `LEANSTUDIO_SETTINGS_
 |---|---|
 | `--validate <project> <out> [theorem…]` | [`Validate.cs`](../tools/LeanStudio.Snapshot/Validate.cs): validates a Lean project the way a person would (cache, build, Tenet, the axioms of the main theorems), with a screenshot of each stage and a log. A benchmark's `config.json` in Comparator's format (`challenge_module`, `solution_module`, `theorem_names`, `permitted_axioms`) is honoured: each theorem is read in each module that declares it, the challenge must rest on `sorry`, the solution only on the permitted axioms, and both must state the same type. |
 | `--scale <project> <out> <file>` | Times everyday actions on a very large project (the Mathlib repository), with memory use. |
+| `--scale-profiler <project> <out> <file>` | [`ProfilerScale.cs`](../tools/LeanStudio.Snapshot/ProfilerScale.cs): times every profiler feature on a large file of a Mathlib project (in git), each against an aim set from Lean's own time for the file: reading Lean's output, a file profile with counters, the flame graph, one declaration, heartbeats, live (the first profile, a tree fetched on demand, an edit), the regression check with its worktree (which must share the dependencies), and the memory a profile keeps. The weekly Mathlib workflow runs it on Mathlib's `Trigonometric/Basic.lean`. |
 | `--leak <repo>` | Opens and closes a file many times and reports how many closed documents are still held. |
 | `--native-infoview <repo> <out>` | Not headless: checks that the Infoview tab renders a user widget in the platform's web view. Run by hand. |
 | `--native-proof-states <repo> <out>` | Not headless: checks that the Proof-State Map's 3D page loads and stays in step with the list. Run by hand. |

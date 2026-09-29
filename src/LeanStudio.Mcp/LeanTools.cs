@@ -629,18 +629,19 @@ public static class LeanTools
             }),
 
         new("profile_check",
-            "A regression check of Lean's cost, as CI would run it: every Lean file changed since a revision (committed or not) is profiled in heartbeats as it is now and as it was at that revision, and each declaration is compared. Heartbeats are the same on every run, so any change is real. A declaration fails when it costs more than max_regression percent extra (and at least min_delta heartbeats more), or uses more than max_share percent of its maxHeartbeats. Use it before finishing a change to a slow file. The project must be built and in git.",
+            "A regression check of Lean's cost, as CI would run it: every Lean file changed since a revision (committed or not), and the files that import them, is profiled in heartbeats as it is now and as it was at that revision (built in a worktree), and each declaration is compared. Heartbeats are the same on every run, so any change is real. A declaration fails when it costs more than max_regression percent extra (and at least min_delta heartbeats more), or uses more than max_share percent of its maxHeartbeats. Use it before finishing a change to a slow file. The project must be built and in git.",
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
                    ("against", "string", "The branch, tag or commit to compare with (default main).", false),
                    ("max_regression", "number", "Percent more heartbeats a declaration may take before it fails (default 10).", false),
                    ("min_delta", "number", "Heartbeats (maxHeartbeats units) a declaration may grow by before it can fail (default 1000).", false),
                    ("max_share", "number", "Percent of its maxHeartbeats a declaration may use (default 50).", false),
-                   ("all", "boolean", "Check every file of the project, not only the changed ones (default false).", false)),
+                   ("all", "boolean", "Check every file of the project, not only the changed ones (default false).", false),
+                   ("dependents", "integer", "Also check up to this many unchanged files that import a changed one, nearest first (default 20); the revision is then built in a worktree for their before. 0 checks only the changed files, with no build.", false)),
             async (a, ct) =>
             {
                 ProjectSession s = bench.Session(OptStr(a, "project"));
                 double Num(string name, double fallback) => a[name] is JsonValue v && v.TryGetValue(out double d) ? d : fallback;
-                var options = new CheckOptions(OptStr(a, "against") ?? "main", Num("max_regression", 10) / 100, Num("min_delta", 1000), Num("max_share", 50) / 100, OptBool(a, "all") ?? false);
+                var options = new CheckOptions(OptStr(a, "against") ?? "main", Num("max_regression", 10) / 100, Num("min_delta", 1000), Num("max_share", 50) / 100, OptBool(a, "all") ?? false, OptInt(a, "dependents") ?? 20);
                 CheckReport report;
                 try
                 {

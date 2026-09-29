@@ -1,7 +1,8 @@
 name: Mathlib
 
 # Lean Studio against a real Mathlib project, weekly and on demand: Prove It with Mathlib's tactics, counterexamples,
-# the profiler, and Tenet reading Mathlib's compiled library. Too heavy (a Mathlib cache is several GB) for every push.
+# the profiler (every feature of it timed on a large Mathlib file), and Tenet reading Mathlib's compiled library.
+# Too heavy (a Mathlib cache is several GB) for every push.
 # Also a deep fuzz run: the fuzz tests with 20,000 seeds instead of every push's 2,000.
 on:
   schedule:
@@ -30,9 +31,29 @@ jobs:
           cd MathDemo && lake build
           echo "LEANSTUDIO_MATHLIB_PROJECT=$RUNNER_TEMP/MathDemo" >> "$GITHUB_ENV"
       - name: Build
-        run: dotnet build tests/LeanStudio.Tests -c Release
+        run: |
+          dotnet build tests/LeanStudio.Tests -c Release
+          dotnet build tools/LeanStudio.Snapshot -c Release
       - name: Mathlib tests
         run: dotnet test --project tests/LeanStudio.Tests -c Release --no-build -- --filter-class LeanStudio.Tests.MathlibTests
+      - name: The profiler at scale (a 1,300-line Mathlib file, and a file that imports it)
+        run: |
+          cd "$RUNNER_TEMP/MathDemo"
+          cp .lake/packages/mathlib/Mathlib/Analysis/SpecialFunctions/Trigonometric/Basic.lean MathDemo/Trig.lean
+          printf 'import MathDemo.Trig\n\ntheorem bench_user (x : ℝ) : Real.sin x ^ 2 + Real.cos x ^ 2 = 1 := by\n  simp [Real.sin_sq_add_cos_sq]\n' > MathDemo/User.lean
+          printf 'import MathDemo.User\n' > MathDemo.lean
+          lake build
+          git init -q -b main
+          git -c user.email=ci@example.com -c user.name=CI add -A
+          git -c user.email=ci@example.com -c user.name=CI commit -qm base
+          cd "$GITHUB_WORKSPACE"
+          dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll --scale-profiler "$RUNNER_TEMP/MathDemo" profiler-scale "$RUNNER_TEMP/MathDemo/MathDemo/Trig.lean"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: profiler-scale
+          path: profiler-scale/
+          if-no-files-found: ignore
       - name: Deep fuzz (20,000 random inputs per parser and editing engine)
         env:
           LEANSTUDIO_FUZZ_SEEDS: "20000"

@@ -28,6 +28,10 @@ public static class Lake
     public static Task<ProcessResult> BuildAsync(LeanProject project, string? target = null, Action<string>? onLine = null, CancellationToken ct = default) =>
         ProcessRunner.RunAsync(Exe, target is null ? ["build"] : ["build", target], project.Root, onLine, ct: ct);
 
+    /// <summary>Run <c>lake build</c> for several targets at once (modules, by name).</summary>
+    public static Task<ProcessResult> BuildTargetsAsync(LeanProject project, IEnumerable<string> targets, Action<string>? onLine = null, CancellationToken ct = default) =>
+        ProcessRunner.RunAsync(Exe, ["build", .. targets], project.Root, onLine, ct: ct);
+
     /// <summary>
     /// Download Mathlib's prebuilt .olean files instead of compiling Mathlib, which takes hours
     /// (<c>lake exe cache get</c>). Only meaningful when the project depends on Mathlib.
