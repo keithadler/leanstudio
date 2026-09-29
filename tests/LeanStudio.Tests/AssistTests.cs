@@ -451,8 +451,16 @@ public sealed class AssistTests
               simp [Nat.add_comm]
             """;
         await using var live = new LiveProfiler(server, path);
+        // Each step is cancelled when it runs out of time, not just abandoned: a step left running would keep the
+        // profiler's lock, and closing it at the end would then wait for the test's own time limit.
+        using var step = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        CancellationToken Step()
+        {
+            step.CancelAfter(Lean.Patience);
+            return step.Token;
+        }
         // Editing the slow theorem: its tree is fetched; the quick one gets only its cost until it is asked for.
-        ProfileReport first = await live.UpdateAsync(text, 4, TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        ProfileReport first = await live.UpdateAsync(text, 4, Step());
         Assert.True(first.Live);
         Assert.False(File.Exists(path));
         DeclarationTiming slow = first.Declarations[0];
@@ -466,19 +474,17 @@ public sealed class AssistTests
         if (first.Declarations.FirstOrDefault(d => d.Name == "quick") is { Trace.Count: > 0 } quick)
         {
             Assert.False(quick.TraceComplete);
-            Assert.True((await live.ExpandAsync(quick.Line, TestContext.Current.CancellationToken)).Declarations.Single(d => d.Name == "quick").TraceComplete);
+            Assert.True((await live.ExpandAsync(quick.Line, Step())).Declarations.Single(d => d.Name == "quick").TraceComplete);
         }
 
         // An edit below it: Lean re-checks only the edited theorem, and the slow one's tree is kept, not fetched again.
-        ProfileReport second = await live.UpdateAsync(text.Replace("simp [Nat.add_comm]", "omega", StringComparison.Ordinal), 7, TestContext.Current.CancellationToken)
-            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        ProfileReport second = await live.UpdateAsync(text.Replace("simp [Nat.add_comm]", "omega", StringComparison.Ordinal), 7, Step());
         DeclarationTiming again = second.Declarations.Single(d => d.Name == "slow");
         Assert.All(again.Trace, n => Assert.Contains(slow.Trace, m => ReferenceEquals(m, n)));
         Assert.Equal(slow.Value, again.Value, 9);
 
         // An edit above it moves it down a line; its figures move with it.
-        ProfileReport third = await live.UpdateAsync("-- a new first line\n" + text, null, TestContext.Current.CancellationToken)
-            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        ProfileReport third = await live.UpdateAsync("-- a new first line\n" + text, null, Step());
         Assert.Equal(3, third.Declarations.Single(d => d.Name == "slow").Line);
         await live.DisposeAsync();
         Assert.False(server.IsOpen(live.Uri));
