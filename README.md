@@ -636,7 +636,7 @@ Lean Studio is at **0.10**, and the [changelog](CHANGELOG.md) lists what's new s
 | Document | What it covers |
 |---|---|
 | [README](README.md) (this page) | What Lean Studio does, installing it, connecting AI assistants |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized: the projects, how each feature talks to Lean, Lake and Tenet, settings and environment variables, and the conventions the code follows |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the code is organized: the projects (the plugin API and the MCP server included), how each feature talks to Lean, Lake, Tenet and AI models, diagrams of the edit and build loops, settings, files and environment variables, the tests, where to start for common changes, and the conventions the code follows |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Building, running the tests and the headless snapshot run, and what a good change looks like |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
 | [samples/Proofs](samples/Proofs) | The small Lake project the tests, the snapshot run and the screenshots use |
