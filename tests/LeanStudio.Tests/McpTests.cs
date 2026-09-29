@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using LeanStudio.Core.Agents;
+using LeanStudio.Core.Projects;
 using LeanStudio.Mcp;
 
 namespace LeanStudio.Tests;
@@ -175,6 +176,41 @@ public sealed class McpTests
         Assert.False(err, applied);
         Assert.Contains("Lean accepts the file", applied, StringComparison.Ordinal);
         Assert.DoesNotContain("simp?", File.ReadAllText(file), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task VerifyReadsABuildMadeOutsideTheServer()
+    {
+        // Issue #2: verify kept returning the declarations of the build it first read, after `lake build` in a terminal.
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Directory.CreateTempSubdirectory("leanstudio-rebuild").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "lean-toolchain"), Lean.Toolchain + "\n");
+            File.WriteAllText(Path.Combine(dir, "lakefile.toml"), "name = \"nash\"\ndefaultTargets = [\"Nash\"]\n\n[[lean_lib]]\nname = \"Nash\"\n");
+            string source = Path.Combine(dir, "Nash.lean");
+            File.WriteAllText(source, "namespace Nash\ntheorem Rat.cast_ne_zero_of_pos (n : Nat) (h : 0 < n) : n ≠ 0 := by omega\nend Nash\n");
+            var project = new LeanProject(dir);
+            Assert.True((await Lake.BuildAsync(project, null, null, ct)).Success);
+            await using var bench = new Workbench(dir);
+            McpServer server = LeanTools.Create(bench, "test");
+            var (first, err) = await CallAsync(server, "verify", new JsonObject());
+            Assert.False(err, first);
+            Assert.Contains("Nash.Rat.cast_ne_zero_of_pos", first, StringComparison.Ordinal);
+
+            // Renamed and rebuilt behind the server's back, as a person does in a terminal.
+            File.WriteAllText(source, File.ReadAllText(source).Replace("Rat.cast_ne_zero_of_pos", "natCast_ne_zero", StringComparison.Ordinal));
+            Assert.True((await Lake.BuildAsync(project, null, null, ct)).Success);
+            var (second, err2) = await CallAsync(server, "verify", new JsonObject { ["modules"] = new JsonArray("Nash") });
+            Assert.False(err2, second);
+            Assert.Contains("Nash.natCast_ne_zero", second, StringComparison.Ordinal);
+            Assert.DoesNotContain("cast_ne_zero_of_pos", second, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Lean.DeleteTree(dir);
+        }
     }
 
     [Fact]

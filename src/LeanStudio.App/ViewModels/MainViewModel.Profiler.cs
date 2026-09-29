@@ -255,14 +255,21 @@ public sealed partial class MainViewModel
         }
     }
 
-    /// <summary>Close the live copy in the server.</summary>
+    /// <summary>Close the live copy in the server. Never throws: it is often not awaited.</summary>
     private async Task StopLiveAsync()
     {
         LiveProfiler? live = _live;
         _live = null;
         if (live is not null)
         {
-            await live.DisposeAsync();
+            try
+            {
+                await live.DisposeAsync();
+            }
+            catch (Exception e) when (e is IOException or JsonRpcException or ObjectDisposedException or InvalidOperationException)
+            {
+                Log("Live profile: " + e.Message);
+            }
         }
     }
 

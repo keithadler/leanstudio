@@ -702,7 +702,18 @@ public sealed partial class LeanServer : IAsyncDisposable
     // ---- Lean RPC (interactive goals) ----
 
     private Task<string> SessionAsync(string uri, CancellationToken ct) =>
-        _sessions.GetOrAdd(uri, u => ConnectAsync(u, ct));
+        _sessions.GetOrAdd(uri, u => Observed(ConnectAsync(u, ct)));
+
+    /// <summary>
+    /// Mark a session's failure as seen. A session can be dropped with no one waiting on it (an edit or a close
+    /// forgets it while it connects, or two callers race to create it and one is discarded); its failure when the
+    /// server stops must not surface later as an unobserved task. Whoever does await it still gets the exception.
+    /// </summary>
+    private static Task<string> Observed(Task<string> t)
+    {
+        _ = t.ContinueWith(static x => _ = x.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return t;
+    }
 
     private async Task<string> ConnectAsync(string uri, CancellationToken ct)
     {

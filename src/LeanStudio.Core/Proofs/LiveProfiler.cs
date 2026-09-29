@@ -359,7 +359,14 @@ public sealed class LiveProfiler : IAsyncDisposable
         {
             if (_open && _server.State == LeanServerState.Running && _server.IsOpen(Uri))
             {
-                await _server.CloseAsync(Uri).ConfigureAwait(false);
+                try
+                {
+                    await _server.CloseAsync(Uri).ConfigureAwait(false);
+                }
+                catch (Exception e) when (e is IOException or JsonRpcException or ObjectDisposedException)
+                {
+                    // The server stopped as the copy was being closed: nothing is left to close.
+                }
             }
             _open = false;
             _expanded.Clear();

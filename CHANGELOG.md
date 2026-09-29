@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+**Fixes**:
+- `verify` over MCP kept returning the declarations of the build it first read after the project was built again outside it (`lake build` in a terminal), until the server restarted ([#2](https://github.com/keithadler/leanstudio/issues/2)). Tenet now notes the build it opened (each `.olean`'s size and time, the manifest and the toolchain) and reads the new one when it has changed; the window's Verify, Why?, the project map and the blueprint check do the same.
+- A request to Lean left waiting when its server stopped could surface later as an error no one caught; the error now also names the request.
+
 **A first-class profiler** (Lean ▸ Profiler, ⌘⌥T / Ctrl+Alt+T; the Timing panel is now the Profiler panel):
 - A flame graph of Lean's trace for the whole file or one declaration: each step as wide as its cost, coloured by the kind of work (elaboration, instances, `simp`, unification, reduction, the kernel), failed attempts outlined. Hover to read a step; click to zoom in.
 - Bottom up: every step of the trace summed by what it is, by its own cost.

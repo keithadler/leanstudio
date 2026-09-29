@@ -1408,6 +1408,14 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // ---- Tenet ----
 
+    /// <summary>
+    /// Tenet has the project's current build open: it has been opened, has modules of the project's own, and the
+    /// project has not been built again since (by Lean Studio or by anything else, such as <c>lake build</c> in a
+    /// terminal). When not, the caller reopens it.
+    /// </summary>
+    private async Task<bool> TenetIsCurrentAsync() =>
+        _tenet is TenetWorkspace ws && ws.OwnModules.Count > 0 && !await Task.Run(() => ws.IsStale);
+
     private async Task ReopenTenetAsync()
     {
         TenetWorkspace? old = _tenet;
@@ -1438,7 +1446,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
     private async Task VerifyAsync()
     {
-        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        if (!await TenetIsCurrentAsync())
         {
             await ReopenTenetAsync();
         }

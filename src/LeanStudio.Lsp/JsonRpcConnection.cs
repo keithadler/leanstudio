@@ -33,6 +33,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     private readonly Stream _output;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
+    private readonly ConcurrentDictionary<long, string> _pendingMethods = new(); // for saying what was left waiting
     private readonly CancellationTokenSource _cts = new();
     private long _nextId;
     private Task? _readLoop;
@@ -100,6 +101,7 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         long id = Interlocked.Increment(ref _nextId);
         var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[id] = tcs;
+        _pendingMethods[id] = method;
         var msg = new JsonObject
         {
             ["jsonrpc"] = "2.0",
@@ -124,7 +126,14 @@ public sealed class JsonRpcConnection : IAsyncDisposable
             _pending.TryRemove(id, out _);
             throw;
         }
-        return await tcs.Task.ConfigureAwait(false);
+        try
+        {
+            return await tcs.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            _pendingMethods.TryRemove(id, out _);
+        }
     }
 
     /// <summary>Send a notification, which has no answer. Parameters are converted as for <see cref="RequestAsync"/>.</summary>
@@ -234,7 +243,9 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         {
             if (_pending.TryRemove(id, out TaskCompletionSource<JsonElement>? t))
             {
-                t.TrySetException(new IOException("the language server connection closed", error));
+                // Named, so an error nobody waited for says which request it was.
+                string method = _pendingMethods.TryRemove(id, out string? m) ? m : "a request";
+                t.TrySetException(new IOException($"the language server connection closed (while waiting for {method})", error));
             }
         }
         Closed?.Invoke(error);

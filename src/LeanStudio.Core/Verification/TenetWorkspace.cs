@@ -213,6 +213,50 @@ public sealed class TenetWorkspace : IDisposable
     /// <summary>The project the workspace was opened for.</summary>
     public LeanProject Project { get; }
 
+    /// <summary>The build as it was when the workspace was opened (see <see cref="BuildStamp"/>).</summary>
+    public string Stamp { get; private init; } = "";
+
+    /// <summary>
+    /// The project has been built again since the workspace was opened (by anything: Lean Studio, <c>lake build</c>
+    /// in a terminal, CI), so what it read is out of date and it should be opened again. Reads file metadata only.
+    /// </summary>
+    public bool IsStale => BuildStamp(Project) != Stamp;
+
+    /// <summary>
+    /// A fingerprint of a project's build: the name, size and time of every file of its own build (the
+    /// <c>.olean</c> files and their companions), and of its dependency manifest and toolchain file, which change
+    /// when its dependencies do. Any rebuild that changes a module changes it. Reads file metadata only.
+    /// </summary>
+    public static string BuildStamp(LeanProject project)
+    {
+        var sb = new System.Text.StringBuilder();
+        void Add(FileInfo f) => sb.Append(f.FullName).Append('|').Append(f.Length).Append('|').Append(f.LastWriteTimeUtc.Ticks).Append('\n');
+        foreach (string name in new[] { "lake-manifest.json", "lean-toolchain" })
+        {
+            var f = new FileInfo(Path.Combine(project.Root, name));
+            if (f.Exists)
+            {
+                Add(f);
+            }
+        }
+        if (Directory.Exists(project.BuildLibDirectory))
+        {
+            try
+            {
+                foreach (FileInfo f in new DirectoryInfo(project.BuildLibDirectory).EnumerateFiles("*.olean*", SearchOption.AllDirectories)
+                    .OrderBy(f => f.FullName, StringComparer.Ordinal))
+                {
+                    Add(f);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                sb.Append("unreadable");
+            }
+        }
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString())));
+    }
+
     /// <summary>The project's own modules (those built under its .lake/build), not its dependencies.</summary>
     public IReadOnlyList<TenetName> OwnModules { get; }
 
@@ -238,6 +282,8 @@ public sealed class TenetWorkspace : IDisposable
     /// </summary>
     public static TenetWorkspace Open(LeanProject project)
     {
+        // Taken before reading, so a build that finishes while the workspace opens makes it stale, not lost.
+        string stamp = BuildStamp(project);
         var search = new LeanSearchPath();
         search.AddFromEnvironment();
         var own = new List<(TenetName Module, string Path)>();
@@ -292,7 +338,7 @@ public sealed class TenetWorkspace : IDisposable
                 search.AddToolchainFor(version);
                 checker.Load(targets);
             }
-            return new TenetWorkspace(project, checker, search, own.Select(o => o.Module).ToList(), version);
+            return new TenetWorkspace(project, checker, search, own.Select(o => o.Module).ToList(), version) { Stamp = stamp };
         }
         catch
         {

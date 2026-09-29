@@ -203,18 +203,35 @@ public sealed class ProjectSession : IAsyncDisposable
     public string? SentText(string path) =>
         _sent.TryGetValue(LeanServer.UriOf(Path.GetFullPath(path)), out string? t) ? t : null;
 
-    /// <summary>Open the project's build with Tenet, reopening it if a build has happened since.</summary>
+    /// <summary>
+    /// Open the project's build with Tenet, reopening it if the project has been built again since, whether through
+    /// the <c>build</c> tool or anything else (<c>lake build</c> in a terminal).
+    /// </summary>
     public TenetWorkspace Tenet()
     {
-        _tenet ??= TenetWorkspace.Open(Project);
-        return _tenet;
+        lock (_tenetLock)
+        {
+            if (_tenet is { IsStale: true })
+            {
+                _log("The project was built again since Tenet opened it; reading the new build.");
+                _tenet.Dispose();
+                _tenet = null;
+            }
+            _tenet ??= TenetWorkspace.Open(Project);
+            return _tenet;
+        }
     }
+
+    private readonly object _tenetLock = new();
 
     /// <summary>Forget the Tenet workspace, so the next use reads the fresh build.</summary>
     public void BuildChanged()
     {
-        _tenet?.Dispose();
-        _tenet = null;
+        lock (_tenetLock)
+        {
+            _tenet?.Dispose();
+            _tenet = null;
+        }
     }
 
     /// <summary>Close the Tenet workspace and stop the Lean server.</summary>

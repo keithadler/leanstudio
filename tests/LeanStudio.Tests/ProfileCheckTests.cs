@@ -74,7 +74,7 @@ public sealed class ProfileCheckTests
         }
         finally
         {
-            Directory.Delete(dir, true);
+            Lean.DeleteTree(dir);
         }
     }
 
@@ -133,7 +133,7 @@ public sealed class ProfileCheckTests
         }
         finally
         {
-            Directory.Delete(dir, true);
+            Lean.DeleteTree(dir);
         }
     }
 
@@ -195,7 +195,7 @@ public sealed class ProfileCheckTests
         }
         finally
         {
-            Directory.Delete(dir, true);
+            Lean.DeleteTree(dir);
         }
     }
 }

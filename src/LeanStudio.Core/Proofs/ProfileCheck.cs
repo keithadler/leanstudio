@@ -392,6 +392,12 @@ public static partial class ProfileCheck
             Directory.CreateDirectory(checks);
             foreach (string stale in Directory.GetDirectories(checks).Where(d => Path.GetFileName(d) != commit))
             {
+                // The link to the project's packages goes first, so nothing that removes the worktree can reach them.
+                string link = Path.Combine(stale, Path.GetRelativePath(git.Root, project.Root), ".lake", "packages");
+                if (new DirectoryInfo(link).LinkTarget is not null)
+                {
+                    Directory.Delete(link);
+                }
                 await git.RemoveWorktreeAsync(stale, ct).ConfigureAwait(false);
             }
             if (!File.Exists(Path.Combine(tree, ".git")))

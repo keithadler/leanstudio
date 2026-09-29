@@ -252,7 +252,7 @@ public sealed partial class MainViewModel
             Log("Blueprint: this project has no blueprint folder (blueprint/src, as leanblueprint makes it).");
             return [];
         }
-        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        if (!await TenetIsCurrentAsync())
         {
             await ReopenTenetAsync();
         }

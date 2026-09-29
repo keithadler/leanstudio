@@ -117,7 +117,9 @@ public sealed class StressTests
         await closed.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
         foreach (Task t in waiting)
         {
-            await Assert.ThrowsAsync<IOException>(() => t.WaitAsync(TimeSpan.FromSeconds(10), ct));
+            IOException e = await Assert.ThrowsAsync<IOException>(() => t.WaitAsync(TimeSpan.FromSeconds(10), ct));
+            // It says what was left waiting, so a failure no one awaited can be traced to its request.
+            Assert.Contains("(while waiting for hang)", e.Message, StringComparison.Ordinal);
         }
         // And a new request fails at once instead of waiting forever.
         await Assert.ThrowsAnyAsync<Exception>(() => wire.A.RequestAsync("late", null, ct).WaitAsync(TimeSpan.FromSeconds(10), ct));

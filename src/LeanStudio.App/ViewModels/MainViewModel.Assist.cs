@@ -385,7 +385,7 @@ public sealed partial class MainViewModel
         BottomTab = TenetPanel;
         Verification.Trails.Reset([]);
         Verification.HasTrail = true;
-        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        if (!await TenetIsCurrentAsync())
         {
             await ReopenTenetAsync();
         }
@@ -429,7 +429,7 @@ public sealed partial class MainViewModel
     [RelayCommand]
     public async Task<ProjectMap?> ShowProjectMapAsync()
     {
-        if (_tenet is null || _tenet.OwnModules.Count == 0)
+        if (!await TenetIsCurrentAsync())
         {
             await ReopenTenetAsync();
         }

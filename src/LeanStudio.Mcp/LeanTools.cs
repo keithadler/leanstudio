@@ -1033,7 +1033,6 @@ public static class LeanTools
         return sb.ToString();
     }
 
-    /// <summary>The editor context Lean Studio reported (the <c>context</c> bridge request) as text.</summary>
     /// <summary>The 0-based line of a declaration given by name or by 1-based line number.</summary>
     private static int DeclarationLine(string text, string declaration)
     {
@@ -1131,6 +1130,7 @@ public static class LeanTools
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>The editor context Lean Studio reported (the <c>context</c> bridge request) as text.</summary>
     private static string FormatContext(JsonObject r)
     {
         if (r["file"] is null)
