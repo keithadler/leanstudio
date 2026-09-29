@@ -588,30 +588,44 @@ public static class LeanTools
             }),
 
         new("profile",
-            "Lean's profiler over a file: how long each declaration takes to elaborate, slowest first, and the step inside it that costs the most. Use it to find what makes a file slow. The file's imports must be built.",
+            "Lean's profilers over a file: how long each declaration takes to elaborate (or how many heartbeats), costliest first, with the step inside it that costs the most, the path down Lean's trace to it, the tactic lines it is spent on, Lean's per-tactic and per-category times, and optionally what each declaration made Lean do (simp lemmas tried, instances used, definitions unfolded). Use it to find what makes a file slow, and with compare_content to check that a change made it faster. The file's imports must be built.",
             Schema(("path", "string", "The .lean file.", true),
-                   ("content", "string", "Optional full text to profile instead of what is on disk.", false)),
+                   ("content", "string", "Optional full text to profile instead of what is on disk.", false),
+                   ("declaration", "string", "Profile only this declaration: its name or its 1-based line. The file is cut after it, so it is quicker.", false),
+                   ("measure", "string", "\"time\" (default) or \"heartbeats\": Lean's deterministic work count, in maxHeartbeats units, the same on every run.", false),
+                   ("runs", "integer", "Run Lean this many times (1 to 9, default 1) and report the median time of each declaration, with its spread.", false),
+                   ("counters", "boolean", "Also count the simp lemmas, instances and unfoldings each declaration uses (one more run of Lean; default false).", false),
+                   ("compare_content", "string", "Another version of the file (the text before a change, say): it is profiled the same way and each declaration's change is reported.", false)),
             async (a, ct) =>
             {
                 string path = LeanFile(bench, a);
                 LeanProject project = bench.ProjectFor(path);
                 string text = OptStr(a, "content") ?? await File.ReadAllTextAsync(path, ct);
-                var (timings, error) = await Profiler.RunAsync(project, path, text, ct);
+                ProfileUnit unit = OptStr(a, "measure") switch
+                {
+                    null or "time" or "seconds" => ProfileUnit.Seconds,
+                    "heartbeats" => ProfileUnit.Heartbeats,
+                    string m => throw new ToolException($"measure must be \"time\" or \"heartbeats\", not \"{m}\""),
+                };
+                int? line = OptStr(a, "declaration") is string d ? DeclarationLine(text, d) : null;
+                var options = new ProfileOptions(unit, OptInt(a, "runs") ?? 1, OptBool(a, "counters") ?? false, line);
+                var (report, error) = await Profiler.RunAsync(project, path, text, options, null, ct);
                 if (error is not null)
                 {
                     throw new ToolException(error);
                 }
-                if (timings.Count == 0)
+                ProfileReport? before = null;
+                if (OptStr(a, "compare_content") is string old)
                 {
-                    return "nothing in this file takes more than a few milliseconds";
+                    int? oldLine = OptStr(a, "declaration") is string od ? DeclarationLine(old, od) : null;
+                    var (b, berr) = await Profiler.RunAsync(project, path, old, options with { Line = oldLine, Counters = false }, null, ct);
+                    if (berr is not null)
+                    {
+                        throw new ToolException("Lean could not profile compare_content: " + berr);
+                    }
+                    before = b;
                 }
-                double total = timings.Sum(t => t.Seconds);
-                var sb = new StringBuilder(DeclarationTiming.Format(total) + " in total; slowest first:\n");
-                foreach (DeclarationTiming t in timings.Take(25))
-                {
-                    sb.Append(CultureInfo.InvariantCulture, $"  line {t.Line + 1}: {t.Detail}\n    {t.Declaration}\n");
-                }
-                return sb.ToString().TrimEnd();
+                return FormatProfile(report, before);
             }),
 
         new("unused_imports",
@@ -994,6 +1008,103 @@ public static class LeanTools
     }
 
     /// <summary>The editor context Lean Studio reported (the <c>context</c> bridge request) as text.</summary>
+    /// <summary>The 0-based line of a declaration given by name or by 1-based line number.</summary>
+    private static int DeclarationLine(string text, string declaration)
+    {
+        string[] lines = text.Split('\n');
+        if (int.TryParse(declaration, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n))
+        {
+            return n >= 1 && n <= lines.Length ? n - 1 : throw new ToolException($"the file has {lines.Length} lines; there is no line {n}");
+        }
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (Profiler.DeclarationName(lines[i]) is string name && (name == declaration || name.EndsWith("." + declaration, StringComparison.Ordinal)))
+            {
+                return i;
+            }
+        }
+        throw new ToolException($"no declaration named {declaration} in the file");
+    }
+
+    /// <summary>A profile for an assistant: each declaration with where its cost goes, then the file's categories.</summary>
+    private static string FormatProfile(ProfileReport report, ProfileReport? before)
+    {
+        ProfileUnit u = report.Unit;
+        if (report.Declarations.Count == 0)
+        {
+            return report.OnlyLine is not null
+                ? "that declaration takes Lean less than " + (u == ProfileUnit.Heartbeats ? "20 heartbeats" : "a few milliseconds")
+                : "nothing in this file takes more than " + (u == ProfileUnit.Heartbeats ? "20 heartbeats" : "a few milliseconds");
+        }
+        var sb = new StringBuilder(DeclarationTiming.Format(report.Total, u) + " in total");
+        if (report.Runs > 1)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $" (median of {report.Runs} runs)");
+        }
+        if (u == ProfileUnit.Heartbeats)
+        {
+            sb.Append(" (heartbeats in maxHeartbeats units; the default limit is 200000 per declaration)");
+        }
+        if (report.ImportSeconds > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"; loading the imports took {DeclarationTiming.Format(report.ImportSeconds)} more");
+        }
+        if (report.Errors > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"; the file has {report.Errors} error{(report.Errors == 1 ? "" : "s")}, so some of it may not have been checked");
+        }
+        sb.Append("; costliest first:\n");
+        Dictionary<string, TimingChange>? changes = before is null ? null : Profiler.Compare(before, report).ToDictionary(c => c.Name);
+        foreach (DeclarationTiming t in report.Declarations.Take(25))
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"  line {t.Line + 1}: {t.Detail}");
+            if (t.SpreadText.Length > 0)
+            {
+                sb.Append("  ").Append(t.SpreadText);
+            }
+            if (changes is not null && changes.TryGetValue(t.Name, out TimingChange? c))
+            {
+                sb.Append("  change: ").Append(c.Describe(u));
+            }
+            sb.Append("\n    ").Append(t.Declaration).Append('\n');
+            IReadOnlyList<ProfileNode> path = t.HotPath();
+            if (path.Count > 1)
+            {
+                sb.Append("    trace: ").Append(string.Join(" › ", path.Select(n => n.Label.Length > 50 ? n.Label[..50] + "…" : n.Label)))
+                  .Append(CultureInfo.InvariantCulture, $" ({DeclarationTiming.Format(path[^1].Value, u)})\n");
+            }
+            if (t.LineCosts.Count > 0)
+            {
+                sb.Append("    by line: ").Append(string.Join(", ", t.LineCosts.OrderByDescending(kv => kv.Value).Take(6)
+                    .Select(kv => $"{kv.Key + 1} ({DeclarationTiming.Format(kv.Value, u)})"))).Append('\n');
+            }
+            if (t.Steps.Count > 0)
+            {
+                sb.Append("    Lean's profiler: ").Append(string.Join("; ", t.Steps.Take(5)
+                    .Select(s => s.What + " " + DeclarationTiming.Format(s.Seconds) + (s.Count > 1 ? $" ({s.Count}×)" : "")))).Append('\n');
+            }
+            foreach (var g in t.Counters.GroupBy(c => c.Kind).Take(6))
+            {
+                sb.Append("    ").Append(g.Key).Append(": ").Append(string.Join(", ", g.Take(5).Select(c => $"{c.Name} {c.Detail}"))).Append('\n');
+            }
+        }
+        if (changes is not null)
+        {
+            var gone = changes.Values.Where(c => c.After is null).Take(10).ToList();
+            if (gone.Count > 0)
+            {
+                sb.Append("No longer measurable: ").Append(string.Join(", ", gone.Select(c => $"{c.Name} (was {DeclarationTiming.Format(c.Before ?? 0, u)})"))).Append('\n');
+            }
+            sb.Append(CultureInfo.InvariantCulture, $"Total: {DeclarationTiming.Format(before!.Total, u)} before, {DeclarationTiming.Format(report.Total, u)} now.\n");
+        }
+        var categories = report.Categories.Where(c => c.Name is not ("import" or "initialization") && c.Seconds >= 0.001).Take(10).ToList();
+        if (categories.Count > 0)
+        {
+            sb.Append("Where Lean's time went: ").Append(string.Join(", ", categories.Select(c => $"{c.Name} {DeclarationTiming.Format(c.Seconds)}"))).Append('\n');
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     private static string FormatContext(JsonObject r)
     {
         if (r["file"] is null)

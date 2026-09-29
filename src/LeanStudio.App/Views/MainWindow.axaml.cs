@@ -61,6 +61,10 @@ public sealed partial class MainWindow : Window, IDialogs
             {
                 LayOutSplit();
             }
+            else if (e.PropertyName == nameof(MainViewModel.Profile) && _vm.Profile is not null)
+            {
+                MakeRoomForProfile();
+            }
         };
         _vm.SelectionProvider = () => EditorControl.TextEditor.SelectedText;
         _vm.InsertRequested += text => EditorControl.InsertAtCaret(text);
@@ -544,6 +548,7 @@ public sealed partial class MainWindow : Window, IDialogs
             (Key.R, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => OnShowRepl(null, new RoutedEventArgs()),
             (Key.H, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ShowCallersCommand.Execute(null),
             (Key.P, true, false) => () => _ = QuickOpenAsync(),
+            (Key.T, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.ProfileFileCommand.Execute(null),
             (Key.T, true, false) => () => _ = GoToSymbolAsync(),
             (Key.F, true, true) => () => ShowFindInFiles(),
             (Key.OemPeriod, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => _vm.FixAllInFileCommand.Execute(null),
@@ -661,22 +666,6 @@ public sealed partial class MainWindow : Window, IDialogs
         this.FindControl<TextBox>("ReplBox")?.Focus();
     }
 
-    private void OnTimingTapped(object? sender, TappedEventArgs e)
-    {
-        if (sender is ListBox { SelectedItem: TimingItem t })
-        {
-            _vm.OpenTimingCommand.Execute(t);
-        }
-    }
-
-    private void OnModuleTimingTapped(object? sender, TappedEventArgs e)
-    {
-        if (sender is ListBox { SelectedItem: ModuleTiming t })
-        {
-            _vm.OpenModuleTimingCommand.Execute(t);
-        }
-    }
-
     private void OnMarkerTapped(object? sender, TappedEventArgs e)
     {
         if (sender is ListBox { SelectedItem: MarkerItem m })
@@ -696,6 +685,19 @@ public sealed partial class MainWindow : Window, IDialogs
 
     /// <summary>Hide the infoview on the right, or show it again at the width it had.</summary>
     public void ToggleInfo() => Toggle(MainGrid.ColumnDefinitions[4], MainGrid.ColumnDefinitions[3], ref _infoWidth);
+
+    /// <summary>
+    /// A profile needs room for its flame graph: grow the bottom panel to 340 pixels if it is shorter (and shown),
+    /// as long as the editor keeps at least half the window.
+    /// </summary>
+    private void MakeRoomForProfile()
+    {
+        RowDefinition row = CenterGrid.RowDefinitions[3];
+        if (!Hidden(row.Height) && row.Height.IsAbsolute && row.Height.Value < 340 && Bounds.Height >= 680)
+        {
+            row.Height = new GridLength(340);
+        }
+    }
 
     /// <summary>Hide the bottom panel (problems, output), or show it again at the height it had.</summary>
     public void TogglePanel()
@@ -1103,14 +1105,21 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("FFI: New C Binding…", "", Cmd(_vm.NewFfiBindingCommand));
         yield return ("FFI: Write C Stub for This Extern", "", Cmd(_vm.WriteCStubCommand));
         yield return ("FFI: Check C Bindings", "", Act(() => OnCheckFfi(null, new RoutedEventArgs())));
-        yield return ("Lean: Profile File (where the time goes)", "", Cmd(_vm.ProfileFileCommand));
+        yield return ("Profiler: Profile File (where the time goes)", m + "⌥T", Cmd(_vm.ProfileFileCommand));
+        yield return ("Profiler: Profile Declaration at Cursor", "", Cmd(_vm.ProfileDeclarationCommand));
+        yield return ("Profiler: Profile Whole Project", "", Cmd(_vm.ProfileProjectCommand));
+        yield return ("Profiler: Measure Heartbeats Instead of Time", "", Act(() => _vm.ProfileHeartbeats = !_vm.ProfileHeartbeats));
+        yield return ("Profiler: Set Profile as Baseline", "", Cmd(_vm.SetProfileBaselineCommand));
+        yield return ("Profiler: Clear Baseline", "", Cmd(_vm.ClearProfileBaselineCommand));
+        yield return ("Profiler: Copy Profile as Markdown", "", Cmd(_vm.CopyProfileReportCommand));
+        yield return ("Profiler: Save for the Firefox Profiler…", "", Cmd(_vm.ExportFirefoxProfileCommand));
         yield return ("Tenet: Why Isn't This Proved?", "", Cmd(_vm.WhyNotProvedAtCaretCommand));
         yield return ("Tenet: Project Map…", "", Cmd(_vm.ShowProjectMapCommand));
         yield return ("File: Export Proof Walkthrough…", "", Cmd(_vm.ExportWalkthroughCommand));
         yield return ("Share: Open in the Lean 4 Web Editor", "", Cmd(_vm.OpenInWebEditorCommand));
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
-        yield return ("View: Timing", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
+        yield return ("View: Profiler", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
         yield return ("Project: Edit This Project's Commands (commands.json)", "", Cmd(_vm.EditProjectCommandsCommand));
         foreach (Core.Workflow.ProjectCommand pc in _vm.ProjectCommandList())
         {

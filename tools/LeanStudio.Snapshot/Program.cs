@@ -8,6 +8,7 @@ using LeanStudio.App;
 using LeanStudio.App.Services;
 using LeanStudio.App.ViewModels;
 using LeanStudio.App.Views;
+using LeanStudio.Core.Proofs;
 
 // Usage: LeanStudio.Snapshot <repo root> <output dir>
 // Opens the Proofs sample in a real (headless) Lean Studio window with a real Lean server, walks through the main
@@ -610,10 +611,54 @@ internal static class Scenario
             Check(vm.TimingItems.FirstOrDefault()?.Declaration.StartsWith("theorem slow", StringComparison.Ordinal) == true && sd.Timings.Count > 0,
                 $"profiling finds the slow theorem ({vm.TimingStatus})");
             Check(vm.TimingItems.FirstOrDefault()?.HotSpot.Contains("omega", StringComparison.Ordinal) == true, "and that omega is where its time goes");
+            Check(vm.FlameRoot?.Children.Any(c => c.Text == "slow") == true && vm.ProfileDetailTitle == "The whole file",
+                "the flame graph starts on the whole file, a box per declaration");
+            Check(vm.ProfileCategories.Any(c => c.Name == "tactic execution") && vm.ProfileLines.Any(l => l.Name == "tactic execution of omega"),
+                "Lean's own profiler gives its categories and names the tactic");
+            Check(vm.ProfileCounterBars.Count > 0, $"the counters say what the file made Lean do ({vm.ProfileCounterBars.FirstOrDefault()?.Name})");
+            Check(window.FindControl<Grid>("CenterGrid")?.RowDefinitions[3].Height.Value >= 340, "the bottom panel grows to make room for the profile");
+            vm.SelectedTiming = vm.TimingItems[0];
+            Check(vm.FlameRoot?.Text == "slow" && vm.ProfileDetailTitle.StartsWith("slow (line 1)", StringComparison.Ordinal), "picking a declaration shows its own trace");
+            Check(vm.LineCosts.FirstOrDefault() is { Line: 2, Code: "omega" } && vm.HotSteps.FirstOrDefault()?.Name == "omega",
+                $"its cost is put on the omega line, and omega leads the bottom-up list ({vm.LineCosts.FirstOrDefault()?.Code})");
+            Check(sd.Timings[0].LineCosts.ContainsKey(2), "and the editor marks the omega line with its time");
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            FlameGraph? flame = window.GetVisualDescendants().OfType<FlameGraph>().FirstOrDefault();
+            Check(flame is { IsEffectivelyVisible: true, Bounds.Height: > 40, Bounds.Width: > 100 } && flame.Root?.Text == "slow",
+                $"the flame graph is drawn in the Profiler panel ({(flame is null ? "not found" : $"{flame.Bounds.Width:F0}×{flame.Bounds.Height:F0}, visible {flame.IsEffectivelyVisible}, root {flame.Root?.Text}")})");
             Snap(window, outDir, "18-timing");
+            if (flame?.Root?.DescendantsAndSelf().FirstOrDefault(n => n.Text == "omega") is ProfileNode omega)
+            {
+                flame.ZoomTo(omega);
+                Check(flame.Focused == omega, "and zooms in on a step");
+            }
+
+            vm.SetProfileBaselineCommand.Execute(null);
+            sd.Document.Replace(sd.Document.Text.IndexOf("  omega", StringComparison.Ordinal), "  omega".Length, "  sorry");
+            await vm.ProfileFileAsync();
+            TimingItem? after = vm.TimingItems.FirstOrDefault(t => t.Timing.Name == "slow");
+            Check(vm.TimingStatus.Contains("Baseline ", StringComparison.Ordinal)
+                && (after?.IsFaster == true || vm.TimingStatus.Contains("No longer measurable: slow", StringComparison.Ordinal)),
+                $"with a baseline, a profile after an edit says what changed ({after?.Change}; {vm.TimingStatus})");
+            sd.Document.UndoStack.Undo();
+            vm.ClearProfileBaselineCommand.Execute(null);
+
+            vm.ProfileHeartbeats = true;
+            sd.Reveal(2, 2);
+            await vm.ProfileDeclarationAsync();
+            Check(vm.TimingItems.Count == 1 && vm.TimingItems[0].Time.EndsWith(" hb", StringComparison.Ordinal) && vm.TimingItems[0].OfLimit.Length > 0
+                && vm.Profile?.OnlyLine == 0, $"one declaration, in heartbeats, with its share of maxHeartbeats ({vm.TimingItems.FirstOrDefault()?.Time}, {vm.TimingItems.FirstOrDefault()?.OfLimit})");
+            vm.ProfileHeartbeats = false;
+            Snap(window, outDir, "18b-profiler-heartbeats");
             Check(await WaitFor(() => !sd.IsProcessing, 60) && await vm.WriteWalkthroughAsync(walkFile)
                 && File.ReadAllText(walkFile).Contains("<h2>quick", StringComparison.Ordinal), "the proofs are written out as a walkthrough web page");
             Check(LeanStudio.Core.Proofs.Walkthrough.MissingOnWeb(sd.Document.Text).Count == 0, "and the file can be shared to the web editor as it is");
+            await vm.ProfileProjectAsync();
+            Check(vm.ProfiledFiles.Any(f => f.Name == "Slow.lean" && !f.Failed) && vm.TimingItems.FirstOrDefault()?.Where == "Slow.lean:1",
+                $"profiling the project lists its files and the costliest declaration of all ({vm.TimingStatus})");
+            vm.ShowProfiledFileCommand.Execute(vm.ProfiledFiles.First(f => f.Name == "Basic.lean"));
+            Check(vm.Profile?.Path.EndsWith("Basic.lean", StringComparison.Ordinal) == true, "and one file of it can be looked at alone");
             await vm.CloseDocumentCommand.ExecuteAsync(sd);
         }
         finally

@@ -282,15 +282,46 @@ public sealed class AssistTests
         DateTime written = File.GetLastWriteTimeUtc(slowFile);
         try
         {
-            var (timings, error) = await Profiler.RunAsync(project, slowFile, text, TestContext.Current.CancellationToken)
+            var (report, error) = await Profiler.RunAsync(project, slowFile, text, new ProfileOptions(Counters: true), null, TestContext.Current.CancellationToken)
                 .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
             Assert.Null(error);
             Assert.Equal(onDisk, File.ReadAllText(slowFile));
             Assert.Equal(written, File.GetLastWriteTimeUtc(slowFile));
-            DeclarationTiming top = timings[0];
+            DeclarationTiming top = report.Declarations[0];
             Assert.Equal(7, top.Line);
-            Assert.Contains("slow", top.Declaration, StringComparison.Ordinal);
+            Assert.Equal("slow", top.Name);
             Assert.Contains("omega", top.HotSpot ?? "", StringComparison.Ordinal);
+            // The trace goes down to omega, and its time is put on the line omega is written on.
+            Assert.Equal("omega", top.HotPath()[^1].Label);
+            Assert.Equal(9, top.LineCosts.MaxBy(kv => kv.Value).Key);
+            Assert.True(top.LineCosts[9] > top.Value * 0.5, $"omega's line has {top.LineCosts[9]} of {top.Value}");
+            // Lean's own profiler: the tactic by name, and the file's categories.
+            Assert.Contains(top.Steps, s => s.What == "tactic execution of omega");
+            Assert.Contains(report.Categories, c => c.Name == "tactic execution" && c.Seconds > 0);
+            Assert.True(report.ImportSeconds > 0);
+            // The counters run: what omega made Lean unfold and which instances it used.
+            Assert.Contains(top.Counters, c => c.Kind == "instances used");
+            Assert.Contains(top.Counters, c => c.Kind == "definitions unfolded");
+
+            // Heartbeats: the same declaration is the costliest, counted in maxHeartbeats units.
+            var (beats, berr) = await Profiler.RunAsync(project, slowFile, text, new ProfileOptions(ProfileUnit.Heartbeats), null, TestContext.Current.CancellationToken)
+                .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+            Assert.Null(berr);
+            Assert.Equal(ProfileUnit.Heartbeats, beats.Unit);
+            Assert.Equal(7, beats.Declarations[0].Line);
+            Assert.True(beats.Declarations[0].Value > 1000, beats.Declarations[0].Time);
+            Assert.EndsWith(" hb", beats.Declarations[0].Time, StringComparison.Ordinal);
+
+            // One declaration: the file is cut after it, so the slow theorem below is never checked.
+            var (one, oerr) = await Profiler.RunAsync(project, slowFile, text, new ProfileOptions(Line: 3, Runs: 3), null, TestContext.Current.CancellationToken)
+                .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+            Assert.Null(oerr);
+            Assert.Equal(0, one.OnlyLine);
+            Assert.Equal(3, one.Runs);
+            DeclarationTiming fib = Assert.Single(one.Declarations);
+            Assert.Equal("fib", fib.Name);
+            Assert.NotNull(fib.Spread);
+            Assert.DoesNotContain(one.Categories, c => c.Name.Contains("omega", StringComparison.Ordinal));
         }
         finally
         {
@@ -302,14 +333,113 @@ public sealed class AssistTests
     [Fact]
     public void ProfilerReadsNestedTraces()
     {
-        string trace = "[Elab.command] [0.500000] ✅️ theorem t : x := by\n    simp\n    omega\n  [Elab.step] [0.450000] ✅️ simp\n    omega\n    [Elab.step] [0.400000] ✅️ omega\n  [Meta.synthInstance] [0.010000] ✅️ Foo";
+        string trace = "[Elab.command] [0.500000] ✅️ theorem t : x := by\n    simp\n    omega\n  [Elab.step] [0.450000] ✅️ simp\n    omega\n    [Elab.step] [0.400000] ✅️ omega\n  [Meta.synthInstance] [0.010000] ❌️ Foo";
         var timings = Profiler.Parse([(3, trace), (5, "[Elab.async] [0.25] ✅️ checking\n  [Kernel] [0.2] ✅️ typechecking declarations [t._proof_1]"), (9, "not a trace")],
             ["", "", "", "theorem t : x := by", "  simp", "  omega"]);
         DeclarationTiming t = Assert.Single(timings);
-        Assert.Equal(0.75, t.Seconds, 3);
+        Assert.Equal(0.75, t.Value, 3);
         Assert.Equal("omega", t.HotSpot);
         Assert.Equal(1, t.Heat);
+        Assert.Equal("t", t.Name);
+
+        // The trace as a tree: each entry under the one it is indented under, its text continued on the lines after.
+        Assert.Equal(2, t.Trace.Count);
+        ProfileNode command = t.Trace[0];
+        Assert.Equal("Elab.command", command.Category);
+        Assert.Equal("theorem t : x := by\nsimp\nomega", command.Text);
+        Assert.Equal("theorem t : x := by …", command.Label);
+        Assert.Equal(2, command.Children.Count);
+        Assert.Equal(0.04, command.Self, 3);
+        Assert.Equal("omega", Assert.Single(command.Children[0].Children).Text);
+        Assert.True(command.Children[1].Failed);
+        Assert.Equal("instances", command.Children[1].Kind);
+        Assert.Equal(["theorem t : x := by …", "simp …", "omega"], t.HotPath().Select(n => n.Label));
+
+        // omega's step is matched to its line; the kernel's work was reported there too.
+        Assert.Equal(0.4 + 0.25, t.LineCosts[5], 3);
+        Assert.False(t.LineCosts.ContainsKey(3));
     }
+
+    [Fact]
+    public void ProfilerPutsEachTacticOnItsLine()
+    {
+        string[] lines = ["theorem t : p := by", "  · simp", "  · omega  -- done", "  omega"];
+        string trace = "[Elab.async] [1.0] ✅️ elaborating proof of t\n  [Elab.step] [0.9] ✅️ · simp\n    · omega\n    omega\n"
+            + "    [Elab.step] [0.2] ✅️ · simp\n      [Elab.step] [0.15] ✅️ simp\n    [Elab.step] [0.3] ✅️ · omega\n      [Elab.step] [0.3] ✅️ omega\n    [Elab.step] [0.35] ✅️ omega";
+        DeclarationTiming t = Assert.Single(Profiler.Parse([(0, trace)], lines));
+        // The bullet and the tactic inside it are on one line; two omegas are told apart by the order they ran in.
+        Assert.Equal(0.2, t.LineCosts[1], 3);
+        Assert.Equal(0.3, t.LineCosts[2], 3);
+        Assert.Equal(0.35, t.LineCosts[3], 3);
+    }
+
+    [Fact]
+    public void ProfilerReadsCategoriesStepsAndCounters()
+    {
+        string output = string.Join("\n",
+            "import took 1.55s",
+            """{"data":"[Elab.command] [0.034643] ✅️ def f : Nat := 1","pos":{"line":1,"column":0},"severity":"information","kind":"trace"}""",
+            """{"data":"[Elab.async] [0.398317] ✅️ elaborating proof of slow\n  [Elab.step] [0.39] ✅️ omega","pos":{"line":3,"column":0},"severity":"information","kind":"trace"}""",
+            """{"data":"typeclass inference of Decidable took 1.04ms\ntypeclass inference of Decidable took 1.1ms\ntactic execution of Lean.Parser.Tactic.omega took 251ms\n","pos":{"line":3,"column":0},"severity":"information","kind":"[anonymous]"}""",
+            """{"data":"[simp] Diagnostics\n  [simp] tried theorems (max: 9, num: 2):\n    [simp] eq_self ↦ 9, succeeded: 4\n    [simp] Nat.add_zero ↦ 6, succeeded: 6\n  use `set_option diagnostics.threshold <num>` to control threshold for reporting counters","pos":{"line":4,"column":2},"severity":"information","kind":"simp"}""",
+            """{"data":"[diag] Diagnostics\n  [type_class] used instances (max: 52, num: 1):\n    [type_class] Int.instAdd ↦ 52","pos":{"line":3,"column":0},"severity":"information","kind":"diag"}""",
+            """{"data":"unknown identifier 'x'","pos":{"line":6,"column":0},"severity":"error","kind":"[anonymous]"}""",
+            "cumulative profiling times:",
+            "\tattribute application 0.0602ms",
+            "\timport 1.55s",
+            "\ttactic execution 366ms",
+            "\ttype checking 50.8ms");
+        ProfileReport r = Profiler.Parse(output, ["def f : Nat := 1", "", "theorem slow : p := by", "  omega", "", "x"]);
+        Assert.Equal(1.55, r.ImportSeconds, 3);
+        Assert.Equal(1, r.Errors);
+        Assert.Equal(["import", "tactic execution", "type checking", "attribute application"], r.Categories.Select(c => c.Name));
+        Assert.Equal(0.366, r.Categories[1].Seconds, 4);
+        DeclarationTiming slow = r.Declarations[0];
+        Assert.Equal("slow", slow.Name);
+        Assert.Equal(["tactic execution of omega", "typeclass inference of Decidable"], slow.Steps.Select(s => s.What));
+        Assert.Equal(2, slow.Steps[1].Count);
+        Assert.Equal("tactic execution", slow.Steps[0].Category);
+        Assert.Equal(["instances used", "simp lemmas tried", "simp lemmas tried"], slow.Counters.Select(c => c.Kind));
+        Assert.Equal("9 (4 succeeded)", slow.Counters[1].Detail);
+        Assert.Equal(52, r.Counters()[0].Count);
+        Assert.Equal(("Elab.step", "omega"), (r.HotSteps()[0].Category, r.HotSteps()[0].Label));
+
+        // The counters run on its own.
+        var counters = Profiler.ParseCounters(output, ["def f : Nat := 1", "", "theorem slow : p := by", "  omega"]);
+        Assert.Equal(3, counters[2].Count);
+    }
+
+    [Fact]
+    public void ProfilerMergesRunsAndComparesProfiles()
+    {
+        static ProfileReport Run(double a, double b) => new([new DeclarationTiming(0, "theorem a : p", a, null, 0), new DeclarationTiming(2, "theorem b : q", b, "simp", b / 2)], ProfileUnit.Seconds);
+        ProfileReport merged = Profiler.Merge([Run(0.30, 0.10), Run(0.20, 0.50), Run(0.25, 0.12)]);
+        DeclarationTiming a = merged.Declarations.Single(d => d.Name == "a");
+        Assert.Equal(0.25, a.Value, 3);
+        Assert.Equal((0.20, 0.30), a.Spread);
+        Assert.Equal("± 50 ms", a.SpreadText);
+
+        ProfileReport before = Run(0.40, 0.10), after = new([new DeclarationTiming(0, "theorem a : p", 0.10, null, 0), new DeclarationTiming(4, "theorem c : r", 0.2, null, 0)], ProfileUnit.Seconds);
+        var changes = Profiler.Compare(before, after);
+        Assert.Equal(["a", "c", "b"], changes.Select(c => c.Name));
+        Assert.Equal("−300 ms (−75%)", changes[0].Describe(ProfileUnit.Seconds));
+        Assert.Equal("new", changes[1].Describe(ProfileUnit.Seconds));
+        Assert.Equal("gone", changes[2].Describe(ProfileUnit.Seconds));
+        Assert.Equal("+1,500 hb (+50%)", new TimingChange("x", 3000, 4500).Describe(ProfileUnit.Heartbeats));
+
+        string md = Profiler.ToMarkdown(after with { Path = "/p/Slow.lean" }, before);
+        Assert.Contains("### Lean profile of `Slow.lean`", md, StringComparison.Ordinal);
+        Assert.Contains("| 100 ms | −300 ms (−75%) | `a` | 1 |", md, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("theorem foo (n : Nat) : n = n := rfl", "foo")]
+    [InlineData("@[simp] private lemma Nat.bar : True := trivial", "Nat.bar")]
+    [InlineData("noncomputable def baz.{u} (α : Sort u) : Nat := 0", "baz")]
+    [InlineData("instance (priority := low) instFoo : Foo := ⟨⟩", "instFoo")]
+    [InlineData("instance : Foo Nat := ⟨⟩", null)]
+    [InlineData("example : 1 = 1 := rfl", null)]
+    public void ProfilerNamesDeclarations(string line, string? name) => Assert.Equal(name, Profiler.DeclarationName(line));
 
     [Fact]
     public void ReadsLeanSearchAnswers()

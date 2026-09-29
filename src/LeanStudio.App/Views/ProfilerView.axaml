@@ -1,0 +1,199 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LeanStudio.App.ViewModels"
+             xmlns:v="using:LeanStudio.App.Views"
+             x:Class="LeanStudio.App.Views.ProfilerView"
+             x:DataType="vm:MainViewModel">
+  <UserControl.Styles>
+    <Style Selector="Button.chip, ToggleButton.chip"><Setter Property="Padding" Value="8,2" /></Style>
+    <Style Selector="TextBlock.faster"><Setter Property="Foreground" Value="#4CAF50" /></Style>
+    <Style Selector="TextBlock.slower"><Setter Property="Foreground" Value="#F14C4C" /></Style>
+  </UserControl.Styles>
+  <UserControl.DataTemplates>
+    <!-- A labelled bar: categories, Lean's profiler lines, bottom-up steps, counters. -->
+    <DataTemplate DataType="vm:ProfileBar">
+      <Grid ColumnDefinitions="126,86,*">
+        <Border Height="8" Width="{Binding Width}" HorizontalAlignment="Left" CornerRadius="2" Background="{Binding Color}" />
+        <TextBlock Grid.Column="1" Text="{Binding Value}" Classes="mono" FontSize="12" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+          <TextBlock Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="560" />
+          <TextBlock Text="{Binding Note}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
+        </StackPanel>
+      </Grid>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <DockPanel Margin="8,4">
+    <!-- What to profile, and how -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="6" Margin="0,0,0,4">
+      <Button Classes="chip accent" Content="Profile file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}"
+              ToolTip.Tip="Run Lean's profilers over the file as it is in the editor (⌘⌥T, Ctrl+Alt+T)" />
+      <Button Classes="chip" Content="This declaration" Command="{Binding ProfileDeclarationCommand}" IsEnabled="{Binding !IsProfiling}"
+              ToolTip.Tip="Profile only the declaration at the cursor. Nothing below it is checked, so it is quick to repeat while you work on it." />
+      <Button Classes="chip" Content="Stop" Command="{Binding StopProfilingCommand}" IsVisible="{Binding IsProfiling}" />
+      <Border Width="1" Background="{DynamicResource Divider}" Margin="2,3" />
+      <ToggleButton Classes="chip" Content="Heartbeats" IsChecked="{Binding ProfileHeartbeats}"
+                    ToolTip.Tip="Measure Lean's heartbeats instead of time: the unit of maxHeartbeats, the same on every run and every machine. The right measure for comparing a change, or for staying under the limit." />
+      <ComboBox SelectedIndex="{Binding ProfileRunsIndex}" IsEnabled="{Binding !ProfileHeartbeats}" FontSize="11" MinHeight="24" Padding="8,0"
+                ToolTip.Tip="Run Lean several times and show each declaration's median time, with how much it varied. Times vary a little from run to run; heartbeats do not.">
+        <ComboBoxItem Content="1 run" />
+        <ComboBoxItem Content="Median of 3" />
+        <ComboBoxItem Content="Median of 5" />
+      </ComboBox>
+      <ToggleButton Classes="chip" Content="Counters" IsChecked="{Binding ProfileCounters}"
+                    ToolTip.Tip="Also count what each declaration makes Lean do: the simp lemmas it tries, the instances it uses, the definitions it unfolds (one more run of Lean, so the counting does not skew the times)" />
+      <Border Width="1" Background="{DynamicResource Divider}" Margin="2,3" />
+      <Button Classes="chip" Content="Set baseline" Command="{Binding SetProfileBaselineCommand}"
+              ToolTip.Tip="Remember this profile. The next profiles of the file show each declaration's change from it, so you can see what an edit did." />
+      <Button Classes="chip" Content="More ▾" ToolTip.Tip="Profile the whole project, clear the baseline, copy or export the profile">
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedLeft">
+            <MenuItem Header="Profile Whole Project" Command="{Binding ProfileProjectCommand}" IsEnabled="{Binding !IsProfiling}" />
+            <MenuItem Header="Clear Baseline" Command="{Binding ClearProfileBaselineCommand}" IsEnabled="{Binding HasBaseline}" />
+            <Separator />
+            <MenuItem Header="Copy as Markdown" Command="{Binding CopyProfileReportCommand}" />
+            <MenuItem Header="Save for the Firefox Profiler…" Command="{Binding ExportFirefoxProfileCommand}" IsEnabled="{Binding !IsProfiling}" />
+          </MenuFlyout>
+        </Button.Flyout>
+      </Button>
+    </StackPanel>
+    <ProgressBar DockPanel.Dock="Top" IsIndeterminate="True" Height="2" MinHeight="2" IsVisible="{Binding IsProfiling}" />
+    <SelectableTextBlock DockPanel.Dock="Top" Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" MaxLines="2" Margin="0,0,0,4"
+                         ToolTip.Tip="{Binding TimingStatus}" />
+
+    <Grid ColumnDefinitions="5*,6,4*">
+      <!-- The declarations, costliest first -->
+      <Panel>
+        <ListBox x:Name="TimingList" ItemsSource="{Binding TimingItems}" SelectedItem="{Binding SelectedTiming}" Background="Transparent"
+                 DoubleTapped="OnTimingDoubleTapped" KeyDown="OnTimingKey">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:TimingItem">
+              <Grid ColumnDefinitions="126,Auto,Auto,Auto,*" ToolTip.Tip="{Binding HotSpot}">
+                <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
+                        Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
+                <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" MinWidth="76" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,10,0">
+                  <TextBlock Text="{Binding Spread}" Classes="dim mono" FontSize="11" VerticalAlignment="Center" IsVisible="{Binding Spread.Length, Converter={x:Static vm:StatusConverters.IsNonZero}}" />
+                  <TextBlock Text="{Binding OfLimit}" FontSize="11" VerticalAlignment="Center" IsVisible="{Binding OfLimit.Length, Converter={x:Static vm:StatusConverters.IsNonZero}}"
+                             Classes.dim="{Binding !NearLimit}" Classes.bad="{Binding NearLimit}" />
+                  <TextBlock Text="{Binding Change}" Classes="mono" FontSize="11" VerticalAlignment="Center" IsVisible="{Binding Change.Length, Converter={x:Static vm:StatusConverters.IsNonZero}}"
+                             Classes.faster="{Binding IsFaster}" Classes.slower="{Binding IsSlower}" />
+                </StackPanel>
+                <TextBlock Grid.Column="3" Text="{Binding Where}" Classes="dim" FontSize="12" Margin="0,0,10,0" />
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="12">
+                  <TextBlock Text="{Binding Declaration}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                  <TextBlock Text="{Binding HotSpot}" Classes="dim mono" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <TextBlock Classes="empty" TextWrapping="Wrap" IsVisible="{Binding TimingItems.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                   Text="Profile a file to see how long Lean spends on each declaration, and on what. Click a declaration for its details; double-click to go to it." />
+      </Panel>
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="Transparent" />
+
+      <!-- The details: the selection, or the whole file -->
+      <DockPanel Grid.Column="2">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="2,0,0,4">
+          <TextBlock Text="{Binding ProfileDetailTitle}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          <ComboBox Grid.Column="1" x:Name="DetailPicker" SelectedIndex="{Binding ProfileDetailTab}" FontSize="11" MinHeight="24" Padding="8,0" Margin="6,0,0,0">
+            <ToolTip.Tip>
+              <StackPanel Spacing="4" MaxWidth="320">
+                <TextBlock TextWrapping="Wrap" FontSize="11" Text="Flame graph: Lean's trace, each step as wide as its cost and the steps inside it underneath. Click a step to zoom in; Escape zooms out. Bottom up: every step summed by what it is. Tactic lines: the cost of each line of the proof. Lean's profiler: its categories and per-tactic times. Counters: simp lemmas, instances and unfoldings." />
+              </StackPanel>
+            </ToolTip.Tip>
+            <ComboBoxItem Content="Flame graph" />
+            <ComboBoxItem Content="Bottom up" />
+            <ComboBoxItem Content="Tactic lines" />
+            <ComboBoxItem Content="Lean's profiler" />
+            <ComboBoxItem Content="Counters" />
+            <ComboBoxItem Content="Files" />
+            <ComboBoxItem Content="Build" />
+          </ComboBox>
+          <Button Grid.Column="2" Classes="chip" Content="Whole file" Command="{Binding ShowWholeProfileCommand}" Margin="6,0,0,0"
+                  IsVisible="{Binding SelectedTiming, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </Grid>
+        <Carousel SelectedIndex="{Binding ProfileDetailTab}">
+            <DockPanel>
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <v:FlameGraph x:Name="Flame" Root="{Binding FlameRoot}" Unit="{Binding ProfileUnit}" />
+              </ScrollViewer>
+            </DockPanel>
+            <ListBox ItemsSource="{Binding HotSteps}" Background="Transparent" />
+            <Panel>
+              <ListBox ItemsSource="{Binding LineCosts}" Background="Transparent" x:Name="LineCostList" Tapped="OnLineCostTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:LineCostItem">
+                    <Grid ColumnDefinitions="126,86,70,*">
+                      <Border Height="8" Width="{Binding Width}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
+                              Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
+                      <TextBlock Grid.Column="1" Text="{Binding Cost}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
+                      <TextBlock Grid.Column="2" Text="{Binding Where}" Classes="dim" FontSize="12" />
+                      <TextBlock Grid.Column="3" Text="{Binding Code}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <TextBlock Classes="empty" TextWrapping="Wrap" IsVisible="{Binding LineCosts.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                         Text="No tactic line takes a measurable share. Tactic proofs get a cost on each line that takes one." />
+            </Panel>
+            <ScrollViewer>
+              <StackPanel Spacing="2">
+                <TextBlock Text="By category, for the whole file" Classes="dim" FontSize="11" Margin="0,2" IsVisible="{Binding ProfileCategories.Count, Converter={x:Static vm:StatusConverters.IsNonZero}}" />
+                <ItemsControl ItemsSource="{Binding ProfileCategories}" />
+                <TextBlock Text="By what it names" Classes="dim" FontSize="11" Margin="0,8,0,2" IsVisible="{Binding ProfileLines.Count, Converter={x:Static vm:StatusConverters.IsNonZero}}" />
+                <ItemsControl ItemsSource="{Binding ProfileLines}" />
+                <TextBlock Classes="dim" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding ProfileHeartbeats}"
+                           Text="Lean's profiler measures time, so it is left off while profiling heartbeats." />
+              </StackPanel>
+            </ScrollViewer>
+            <Panel>
+              <ListBox ItemsSource="{Binding ProfileCounterBars}" Background="Transparent" />
+              <TextBlock Classes="empty" TextWrapping="Wrap" IsVisible="{Binding ProfileCounterBars.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                         Text="Turn on Counters and profile again to see the simp lemmas, instances and unfoldings each declaration uses (counts of 5 and up)." />
+            </Panel>
+            <DockPanel>
+              <Button DockPanel.Dock="Top" Classes="chip" Content="All files" Command="{Binding ShowWholeProjectProfileCommand}" HorizontalAlignment="Left" Margin="0,0,0,4"
+                      IsVisible="{Binding ProfiledFiles.Count, Converter={x:Static vm:StatusConverters.IsNonZero}}" />
+              <Panel>
+                <ListBox ItemsSource="{Binding ProfiledFiles}" Background="Transparent" x:Name="ProfiledFileList" Tapped="OnProfiledFileTapped">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ProfiledFile">
+                      <Grid ColumnDefinitions="126,86,Auto,*">
+                        <Border Height="8" Width="{Binding Width}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar" IsVisible="{Binding !Failed}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Total}" Classes="mono" FontSize="12" />
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Margin="0,0,10,0" />
+                        <TextBlock Grid.Column="3" Text="{Binding Detail}" FontSize="11" Classes.dim="{Binding !Failed}" Classes.bad="{Binding Failed}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Classes="empty" TextWrapping="Wrap" IsVisible="{Binding ProfiledFiles.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                           Text="Profile the whole project to compare its files." />
+              </Panel>
+            </DockPanel>
+            <Panel>
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="{Binding ModuleTimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+                <ListBox ItemsSource="{Binding ModuleTimings}" Background="Transparent" x:Name="ModuleTimingList" Tapped="OnModuleTimingTapped">
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ModuleTiming">
+                      <Grid ColumnDefinitions="126,70,*">
+                        <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
+                                Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
+                        <TextBlock Grid.Column="2" Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
+                      </Grid>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+              </DockPanel>
+              <TextBlock Classes="empty" TextWrapping="Wrap" IsVisible="{Binding ModuleTimings.Count, Converter={x:Static vm:StatusConverters.IsZero}}"
+                         Text="Build the project (Ctrl+B) to see how long each module takes to compile." />
+            </Panel>
+        </Carousel>
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</UserControl>

@@ -10,7 +10,8 @@ namespace LeanStudio.App.Editor;
 /// <summary>
 /// The performance heat map in the editor: after a profile, each declaration that took measurable time gets its
 /// time at the end of its first line, and the slow ones a tinted line, warmer the slower, so the expensive parts of
-/// a file stand out while scrolling through it.
+/// a file stand out while scrolling through it. Inside a declaration, each tactic line that holds a real share of
+/// its cost gets its own time and a lighter tint, so the line to work on is plain.
 /// </summary>
 /// <param name="labels">
 /// True for the renderer that draws the time labels (over the text), false for the one that draws the tinted lines
@@ -19,6 +20,7 @@ namespace LeanStudio.App.Editor;
 public sealed class TimingRenderer(bool labels) : IBackgroundRenderer
 {
     private Dictionary<int, DeclarationTiming> _byLine = [];
+    private Dictionary<int, (double Cost, ProfileUnit Unit)> _tactics = [];
 
     private static readonly IBrush[] Text =
     [
@@ -34,13 +36,29 @@ public sealed class TimingRenderer(bool labels) : IBackgroundRenderer
         new SolidColorBrush(Color.FromArgb(0x26, 0xF1, 0x4C, 0x4C)),
     ];
 
+    private static readonly IBrush?[] LineBand =
+    [
+        null,
+        new SolidColorBrush(Color.FromArgb(0x12, 0xE5, 0x9E, 0x2C)),
+        new SolidColorBrush(Color.FromArgb(0x1A, 0xF1, 0x4C, 0x4C)),
+    ];
+
     private static readonly IBrush Plate = new SolidColorBrush(Color.FromArgb(0xFF, 0x2A, 0x2D, 0x33));
 
     /// <summary>The tint goes under the text; the labels over it, so a label pinned over a long line stays readable.</summary>
     public KnownLayer Layer => labels ? KnownLayer.Caret : KnownLayer.Background;
 
     /// <summary>Replace the timings shown (from <see cref="Profiler"/>); an empty list clears the heat map. Does not redraw.</summary>
-    public void Update(IReadOnlyList<DeclarationTiming> timings) => _byLine = timings.GroupBy(t => t.Line).ToDictionary(g => g.Key, g => g.First());
+    public void Update(IReadOnlyList<DeclarationTiming> timings)
+    {
+        _byLine = timings.GroupBy(t => t.Line).ToDictionary(g => g.Key, g => g.First());
+        // A tactic line is marked when it holds at least a tenth of its declaration's cost, and is warm on its own.
+        _tactics = timings
+            .SelectMany(t => t.LineCosts.Where(kv => kv.Value >= t.Value * 0.1 && DeclarationTiming.HeatOf(kv.Value, t.Unit) > 0)
+                .Select(kv => (Line: kv.Key, kv.Value, t.Unit)))
+            .GroupBy(x => x.Line)
+            .ToDictionary(g => g.Key, g => (g.Max(x => x.Value), g.First().Unit));
+    }
 
     /// <inheritdoc/>
     public void Draw(TextView textView, DrawingContext drawingContext)
@@ -54,26 +72,38 @@ public sealed class TimingRenderer(bool labels) : IBackgroundRenderer
         foreach (VisualLine vl in textView.VisualLines)
         {
             int line = vl.FirstDocumentLine.LineNumber - 1;
-            if (!_byLine.TryGetValue(line, out DeclarationTiming? t))
+            int heat;
+            string label;
+            if (_byLine.TryGetValue(line, out DeclarationTiming? t))
+            {
+                heat = t.Heat;
+                label = "⏱ " + t.Time + (t.HotSpot is string h && t.Heat > 0 ? $"  · slowest: {(h.Length > 40 ? h[..40] + "…" : h)}" : "");
+            }
+            else if (_tactics.TryGetValue(line, out var tactic))
+            {
+                heat = DeclarationTiming.HeatOf(tactic.Cost, tactic.Unit);
+                label = "⏱ " + DeclarationTiming.Format(tactic.Cost, tactic.Unit);
+            }
+            else
             {
                 continue;
             }
+            bool declaration = t is not null;
             double top = vl.VisualTop - textView.ScrollOffset.Y;
             if (!labels)
             {
-                if (Band[t.Heat] is IBrush band)
+                if ((declaration ? Band[heat] : LineBand[heat]) is IBrush band)
                 {
                     drawingContext.FillRectangle(band, new Rect(0, top, textView.Bounds.Width, vl.Height));
                 }
                 continue;
             }
             Point end = vl.GetVisualPosition(vl.VisualLengthWithEndOfLineMarker, VisualYPosition.TextTop);
-            string label = "⏱ " + t.Time + (t.HotSpot is string h && t.Heat > 0 ? $"  · slowest: {(h.Length > 40 ? h[..40] + "…" : h)}" : "");
-            var ft = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, size, Text[t.Heat]);
+            var ft = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, declaration ? size : size - 1, Text[heat]);
             double x = end.X - textView.ScrollOffset.X + 24, y = end.Y - textView.ScrollOffset.Y;
             if (x + ft.Width > textView.Bounds.Width - 8)
             {
-                // A long first line: pin the label to the right edge, on a plate so it reads over the code.
+                // A long line: pin the label to the right edge, on a plate so it reads over the code.
                 x = Math.Max(0, textView.Bounds.Width - ft.Width - 12);
                 drawingContext.FillRectangle(Plate, new Rect(x - 8, top, textView.Bounds.Width - x + 8, vl.Height), 3);
             }

@@ -8,32 +8,6 @@ using LeanStudio.Lsp;
 
 namespace LeanStudio.App.ViewModels;
 
-/// <summary>A declaration's time in the Timing panel.</summary>
-/// <param name="Timing">The declaration's time, from Lean's profiler.</param>
-/// <param name="Slowest">
-/// The slowest declaration's time in the same profile, in seconds, which gets the full-width bar.
-/// </param>
-/// <param name="Document">The file profiled, to go to the declaration in.</param>
-public sealed record TimingItem(DeclarationTiming Timing, double Slowest, DocumentViewModel Document)
-{
-    /// <summary>The declaration's 1-based line, as <c>line N</c>.</summary>
-    public string Where => $"line {Timing.Line + 1}";
-    /// <summary>How long Lean took to check it, formatted.</summary>
-    public string Time => Timing.Time;
-    /// <summary>The declaration's name.</summary>
-    public string Declaration => Timing.Declaration;
-    /// <summary>
-    /// The step inside the declaration that took longest, and its time; empty when the profile names none.
-    /// </summary>
-    public string HotSpot => Timing.HotSpot is string h ? $"slowest part: {h} ({DeclarationTiming.Format(Timing.HotSpotSeconds)})" : "";
-    /// <summary>It took a second or more.</summary>
-    public bool IsHot => Timing.Heat == 2;
-    /// <summary>It took from a tenth of a second up to a second.</summary>
-    public bool IsWarm => Timing.Heat == 1;
-    /// <summary>The bar's width in pixels: up to 120, in proportion to the slowest, and at least 2.</summary>
-    public double BarWidth => Math.Max(2, 120 * Timing.Seconds / Math.Max(Slowest, 1e-9));
-}
-
 /// <summary>One REPL input and its result.</summary>
 /// <param name="Input">What was typed.</param>
 /// <param name="Output">Lean's answer, or why there was none.</param>
@@ -51,7 +25,7 @@ public sealed record ReplEntry(string Input, string Output, bool IsError, string
 /// </summary>
 public sealed partial class MainViewModel
 {
-    /// <summary>The Timing and REPL panels' indices in <see cref="BottomTab"/>.</summary>
+    /// <summary>The Profiler and REPL panels' indices in <see cref="BottomTab"/>.</summary>
     public const int TimingPanel = 6, ReplPanel = 7;
 
     private CancellationTokenSource? _proveCts;
@@ -515,80 +489,6 @@ public sealed partial class MainViewModel
         };
         thread.Start();
         return tcs.Task;
-    }
-
-    // ---- performance heat map ----
-
-    /// <summary>The Timing panel: the last profiled file's declarations, slowest first.</summary>
-    public ObservableList<TimingItem> TimingItems { get; } = new();
-
-    /// <summary>What the Timing panel says above its list: how to profile, progress, or the total.</summary>
-    [ObservableProperty]
-    private string _timingStatus = "Lean ▸ Profile File runs Lean's profiler over the file and shows how long each declaration takes to check, slowest first, with the step inside it that costs the most.";
-
-    /// <summary>A profile is running; another is not started until it finishes.</summary>
-    [ObservableProperty]
-    private bool _isProfiling;
-
-    /// <summary>
-    /// Run the active Lean file's current text through Lean's profiler (a separate <c>lean</c> process, not the server)
-    /// and show each declaration's time in the Timing panel. The times are also shown in the editor until the next edit.
-    /// Works without a project too, using the file's folder.
-    /// </summary>
-    [RelayCommand]
-    public async Task ProfileFileAsync()
-    {
-        if (ActiveDocument is not { IsLean: true } d || IsProfiling)
-        {
-            return;
-        }
-        LeanProject project = Project ?? new LeanProject(Path.GetDirectoryName(d.Path)!);
-        BottomTab = TimingPanel;
-        IsProfiling = true;
-        TimingStatus = $"Profiling {Path.GetFileName(d.Path)}: Lean is checking it with its profiler on…";
-        string text = d.Document.Text;
-        try
-        {
-            var (timings, error) = await Profiler.RunAsync(project, d.Path, text);
-            if (error is not null)
-            {
-                TimingItems.Reset([]);
-                TimingStatus = "Lean could not profile this file. " + error.Split('\n')[0];
-                Log("Profile: " + error);
-                return;
-            }
-            if (d.Document.Text == text)
-            {
-                d.Timings = timings;
-            }
-            double slowest = timings.Count == 0 ? 1 : timings.Max(t => t.Seconds);
-            TimingItems.Reset(timings.Select(t => new TimingItem(t, slowest, d)));
-            TimingStatus = timings.Count == 0
-                ? "Nothing in this file takes Lean more than a few milliseconds to check."
-                : $"{Path.GetFileName(d.Path)}: {DeclarationTiming.Format(timings.Sum(t => t.Seconds))} across {timings.Count} declaration{(timings.Count == 1 ? "" : "s")}, slowest first. "
-                  + "Click one to go to it; the times are in the editor too, until the next edit.";
-        }
-        catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            TimingStatus = "Could not run Lean: " + e.Message;
-        }
-        finally
-        {
-            IsProfiling = false;
-        }
-    }
-
-    /// <summary>Go to a profiled declaration, if its file is still open.</summary>
-    /// <param name="t">The declaration; null does nothing.</param>
-    [RelayCommand]
-    private void OpenTiming(TimingItem? t)
-    {
-        if (t is null || !Documents.Contains(t.Document))
-        {
-            return;
-        }
-        ActiveDocument = t.Document;
-        t.Document.Reveal(t.Timing.Line, 0);
     }
 
     // ---- walkthroughs and share links ----

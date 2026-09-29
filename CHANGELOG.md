@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+**A first-class profiler** (Lean ▸ Profiler, ⌘⌥T / Ctrl+Alt+T; the Timing panel is now the Profiler panel):
+- A flame graph of Lean's trace for the whole file or one declaration: each step as wide as its cost, coloured by the kind of work (elaboration, instances, `simp`, unification, reduction, the kernel), failed attempts outlined. Hover to read a step; click to zoom in.
+- Bottom up: every step of the trace summed by what it is, by its own cost.
+- The cost of each tactic line, in the panel and at the end of the line in the editor.
+- Lean's own profiler (`set_option profiler true`): its time per category, and per tactic, instance problem and check.
+- Counters (`set_option diagnostics true`, in a run of its own): the simp lemmas each declaration tries and how many succeed, the instances it uses, the definitions it unfolds.
+- Heartbeats instead of time: deterministic, in `maxHeartbeats` units, with each declaration's share of the default limit.
+- The median of 3 or 5 runs, with how much each time varied.
+- A baseline: after an edit, each declaration's change, and the total before and after.
+- Profile only the declaration at the cursor (the file is cut after it, so it is quick to repeat), or every file of the project.
+- Copy a profile as a Markdown table; save Lean's trace for the Firefox Profiler.
+- The `profile` MCP tool gets all of it: `declaration`, `measure` (time or heartbeats), `runs`, `counters`, and `compare_content` to check that a change made a file faster.
+
 ## 0.10.0
 
 **A newer Lean, when it's safe to say so.** The Toolchains panel says when a stable Lean newer than the project's is out, e.g. "Lean v4.34.1 is out. This project uses v4.34.0.", and *Use it for this project* installs it, pins it in `lean-toolchain` and restarts Lean. It stays quiet for a project that requires Mathlib or any other package, whose Lean has to follow its dependencies, and for one pinned to a release candidate, a nightly or the `stable` channel. The latest release is looked up on GitHub once per run, only while update checks are on (the same switch as Lean Studio's own).

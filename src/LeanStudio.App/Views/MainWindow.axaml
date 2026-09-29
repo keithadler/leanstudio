@@ -132,7 +132,19 @@
           <MenuItem Header="This File" Command="{Binding ShowProofStatesForFileCommand}" />
           <MenuItem Header="Whole Project" Command="{Binding ShowProofStatesForProjectCommand}" />
         </MenuItem>
-        <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" />
+        <MenuItem Header="Profiler">
+          <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+T', macOS='Cmd+Alt+T'}" />
+          <MenuItem Header="Profile Declaration at Cursor" Command="{Binding ProfileDeclarationCommand}" />
+          <MenuItem Header="Profile Whole Project" Command="{Binding ProfileProjectCommand}" />
+          <Separator />
+          <MenuItem Header="Measure Heartbeats (deterministic)" ToggleType="CheckBox" IsChecked="{Binding ProfileHeartbeats}" />
+          <MenuItem Header="Count simp Lemmas, Instances and Unfoldings" ToggleType="CheckBox" IsChecked="{Binding ProfileCounters}" />
+          <Separator />
+          <MenuItem Header="Set Profile as Baseline" Command="{Binding SetProfileBaselineCommand}" />
+          <MenuItem Header="Clear Baseline" Command="{Binding ClearProfileBaselineCommand}" />
+          <MenuItem Header="Copy Profile as Markdown" Command="{Binding CopyProfileReportCommand}" />
+          <MenuItem Header="Save for the Firefox Profiler…" Command="{Binding ExportFirefoxProfileCommand}" />
+        </MenuItem>
         <MenuItem Header="Count Heartbeats (what maxHeartbeats limits)" Command="{Binding CountHeartbeatsCommand}" />
         <MenuItem Header="REPL (evaluate Lean at the cursor)" Click="OnShowRepl" InputGesture="{OnPlatform Default='Ctrl+Alt+R', macOS='Cmd+Alt+R'}" />
         <MenuItem Header="C and FFI">
@@ -543,47 +555,8 @@
               </Panel>
             </DockPanel>
           </TabItem>
-          <TabItem Header="Timing" ToolTip.Tip="How long each declaration takes Lean to check (Lean ▸ Profile File)">
-            <DockPanel Margin="8,4">
-              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto">
-                <TextBlock Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="Profile this file" Command="{Binding ProfileFileCommand}" IsEnabled="{Binding !IsProfiling}" Classes="chip" Margin="8,0,0,0" />
-              </Grid>
-              <StackPanel DockPanel.Dock="Bottom" Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ModuleTimings.Count, Converter={x:Static vm:StatusConverters.IsNonZero}}">
-                <TextBlock Text="{Binding ModuleTimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
-                <ListBox ItemsSource="{Binding ModuleTimings}" Background="Transparent" MaxHeight="150" x:Name="ModuleTimingList" Tapped="OnModuleTimingTapped">
-                  <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ModuleTiming">
-                      <Grid ColumnDefinitions="126,70,*">
-                        <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
-                                Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
-                        <TextBlock Grid.Column="2" Text="{Binding Name}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
-                      </Grid>
-                    </DataTemplate>
-                  </ListBox.ItemTemplate>
-                </ListBox>
-              </StackPanel>
-              <Panel>
-              <ListBox ItemsSource="{Binding TimingItems}" Background="Transparent" Margin="0,4,0,0" x:Name="TimingList" Tapped="OnTimingTapped">
-                <ListBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:TimingItem">
-                    <Grid ColumnDefinitions="126,70,70,*" ToolTip.Tip="{Binding HotSpot}">
-                      <Border Height="8" Width="{Binding BarWidth}" HorizontalAlignment="Left" CornerRadius="2" Classes="bar"
-                              Classes.warm="{Binding IsWarm}" Classes.hot="{Binding IsHot}" />
-                      <TextBlock Grid.Column="1" Text="{Binding Time}" Classes="mono" FontSize="12" Classes.warn="{Binding IsWarm}" Classes.bad="{Binding IsHot}" />
-                      <TextBlock Grid.Column="2" Text="{Binding Where}" Classes="dim" FontSize="12" />
-                      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="{Binding Declaration}" Classes="mono" FontSize="12" TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding HotSpot}" Classes="dim mono" FontSize="11" TextTrimming="CharacterEllipsis" />
-                      </StackPanel>
-                    </Grid>
-                  </DataTemplate>
-                </ListBox.ItemTemplate>
-              </ListBox>
-                <TextBlock Classes="empty" Text="Profile a file to see how long Lean spends on each declaration." IsVisible="{Binding TimingItems.Count, Converter={x:Static vm:StatusConverters.IsZero}}" />
-              </Panel>
-            </DockPanel>
+          <TabItem Header="Profiler" ToolTip.Tip="Where Lean's time goes: each declaration, a flame graph of its steps, its tactic lines, and what it makes Lean do (Lean ▸ Profile File)">
+            <v:ProfilerView />
           </TabItem>
           <TabItem Header="REPL" ToolTip.Tip="Evaluate Lean in the context of the file at the cursor">
             <DockPanel Margin="8,4">

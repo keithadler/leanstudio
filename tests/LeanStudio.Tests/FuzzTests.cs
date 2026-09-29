@@ -352,6 +352,10 @@ public sealed class FuzzTests
             _ = GitRepository.ParseLineChanges(output);
             _ = Profiler.Parse(output, output.Split('\n'));
             _ = Profiler.Parse([(r.Next(-1, 5), output)], output.Split('\n'));
+            _ = Profiler.ParseTree(output, ProfileUnit.Heartbeats);
+            _ = Profiler.ParseCounters(output, output.Split('\n'));
+            _ = Profiler.Scope(output, r.Next(-3, 10));
+            _ = Profiler.DeclarationName(output);
             _ = Blame.Parse(output);
             _ = DependencyBump.DeprecatedUses([new BuildMessage("/p/A.lean", 1, 1, false, output)]);
         });

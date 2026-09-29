@@ -195,6 +195,10 @@ public sealed partial class MainViewModel
             ModuleTimings.Reset(slowest.Select(t => new ModuleTiming(t.Name, t.Took, FileOfModule(t.Name), slowest[0].Took)));
             TimeSpan total = progress.Timings.Aggregate(TimeSpan.Zero, (a, t) => a + t.Took);
             ModuleTimingStatus = $"The last build compiled {progress.Timings.Count:N0} module{(progress.Timings.Count == 1 ? "" : "s")} ({TaskProgress.Format(total)} of Lean's time in all). The slowest:";
+            if (TimingItems.Count == 0)
+            {
+                ProfileDetailTab = BuildDetailTab; // nothing profiled yet: the Profiler panel opens on the build's modules
+            }
         }
     }
 

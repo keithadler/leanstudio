@@ -232,6 +232,22 @@ public sealed class McpTests
             Assert.False(perr, profile);
             Assert.Contains("line 1: ", profile, StringComparison.Ordinal);
             Assert.Contains("slowest part: omega", profile, StringComparison.Ordinal);
+            Assert.Contains("by line: 3 (", profile, StringComparison.Ordinal);
+            Assert.Contains("Lean's profiler: tactic execution of omega", profile, StringComparison.Ordinal);
+            Assert.Contains("Where Lean's time went: ", profile, StringComparison.Ordinal);
+            // Heartbeats, one declaration by name, the counters, and the change from an easier version of it.
+            string easy = slow.Replace("≠ 1000 := by\n  omega", "≠ 1000 := by\n  sorry", StringComparison.Ordinal);
+            (profile, perr) = await CallAsync(server, "profile", new JsonObject
+            {
+                ["path"] = "P.lean", ["content"] = slow, ["declaration"] = "slow", ["measure"] = "heartbeats", ["counters"] = true, ["compare_content"] = easy,
+            });
+            Assert.False(perr, profile);
+            Assert.Contains(" hb in total (heartbeats in maxHeartbeats units", profile, StringComparison.Ordinal);
+            Assert.Contains("instances used: ", profile, StringComparison.Ordinal);
+            Assert.Contains("change: +", profile, StringComparison.Ordinal);
+            (profile, perr) = await CallAsync(server, "profile", new JsonObject { ["path"] = "P.lean", ["content"] = slow, ["declaration"] = "nope" });
+            Assert.True(perr);
+            Assert.Contains("no declaration named nope", profile, StringComparison.Ordinal);
 
             File.WriteAllText(file, "theorem u (a b : Nat) (h : a < b) : a + 1 ≤ b := by\n  sorry\n");
             var (ext, eerr) = await CallAsync(server, "extract_lemma", new JsonObject { ["path"] = "P.lean", ["line"] = 2, ["name"] = "step" });

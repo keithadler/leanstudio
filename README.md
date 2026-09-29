@@ -92,7 +92,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Extract a goal as a lemma, with the hypotheses it needs | | ✓ |
 | Independent re-checking of every declaration by a second kernel (Tenet) | | ✓ |
 | Why a theorem isn't fully proved, and a map of what rests on `sorry` | | ✓ |
-| Per-declaration timing from Lean's profiler | | ✓ |
+| A profiler: flame graphs, cost per tactic line, heartbeats, baselines, simp and instance counters | | ✓ |
 | Search Mathlib in plain English, and Loogle, built in | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
@@ -140,9 +140,16 @@ The Outline also shows, live, which theorems Lean accepts (✓), which still use
 
    ![Why not_not_elim is not fully proved: it uses the axiom em'](docs/images/why-not-proved.png)
 
-3. **A performance heat map.** **Lean ▸ Profile File** runs Lean's own profiler over the file and lists every declaration by how long it takes to check, slowest first. For each one it names the step inside that costs the most (`omega`, a `simp` call, the kernel). The times are also shown in the editor on each declaration, tinted warmer the slower it is. It profiles unsaved text, and your file is never modified.
+3. **A profiler.** **Lean ▸ Profiler ▸ Profile File** (⌘⌥T, Ctrl+Alt+T) runs Lean's own profilers over the file and opens the Profiler panel. Every declaration is listed by how long it takes to check, costliest first, with the step inside it that costs the most (`omega`, a `simp` call, an instance search, the kernel). Click one for its details, and pick what to see beside it:
+   - a **flame graph** of Lean's trace, every step as wide as its cost and the steps inside it underneath, coloured by the kind of work; click a step to zoom in on it;
+   - **bottom up**: every step summed by what it is, so twenty cheap `simp` calls add up in one row;
+   - **tactic lines**: the cost of each line of the proof, which the editor also shows at the end of the line;
+   - **Lean's profiler**: Lean's time per category (elaboration, type class inference, `simp`, type checking, compilation) and per tactic;
+   - **counters**: what it made Lean do, from `set_option diagnostics true`: the `simp` lemmas it tried and how many of those worked, the instances it used, the definitions it unfolded.
 
-   ![The Timing panel: the slow theorem, with omega as the step that costs the most](docs/images/timing.png)
+   **This declaration** profiles only the one at the cursor, so it is quick to repeat while you tune a proof. **Heartbeats** measures Lean's heartbeats instead of time: the unit of `maxHeartbeats`, the same on every run, with each declaration's share of the limit. Times vary a little between runs, so **Median of 3** or **5** runs Lean again and shows how much each time varied. **Set baseline** remembers a profile; after an edit, the next profile shows what changed for each declaration. Under **More**, **Profile Whole Project** profiles every file and lists the costliest declarations of all of them, **Copy as Markdown** gives a table for an issue or Zulip, and **Save for the Firefox Profiler** saves Lean's trace for [profiler.firefox.com](https://profiler.firefox.com). The last build's slowest modules are under **Build**. It profiles unsaved text, and your file is never modified.
+
+   ![The Profiler panel: the slow theorem, with omega as the step that costs the most, and its flame graph](docs/images/timing.png)
 
 4. **Proof walkthroughs and share links.** **File ▸ Export Proof Walkthrough…** writes every tactic proof in the file to one self-contained web page, step by step. Each step shows the tactic, what it does in plain words, and the goals before and after, exactly as Lean reported them. You can step through with ← and →. It works for a class handout, a blog post or a code review, and readers don't need Lean installed. **Open in the Lean 4 Web Editor** and **Copy Share Link** give a link that runs the file at [live.lean-lang.org](https://live.lean-lang.org), which has Mathlib.
 5. **Ask Mathlib in plain English.** The Library panel takes a description, such as "the sum of the first n odd numbers is n squared" or "a continuous function on a closed interval attains its maximum". It returns the Mathlib results that say that, with their informal statements, using [LeanSearch](https://leansearch.net). Loogle (below it) finds what you can name or write the shape of. This finds what you can only describe.
@@ -439,7 +446,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
 | `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. When nothing works, it looks for a counterexample. |
 | `why_not_proved` | For a theorem that rests on `sorry` or an axiom, the chain of lemmas down to it, with file and line. |
-| `profile` | How long each declaration takes Lean, slowest first, with the costliest step in each. |
+| `profile` | How long each declaration takes Lean (or how many heartbeats), costliest first: the costliest step in each, the path down Lean's trace to it, the tactic lines the time is spent on, Lean's categories, and optionally the simp lemmas, instances and unfoldings it uses. It can profile one declaration, take the median of several runs, and compare with another version of the file. |
 | `search_mathlib` | Finds Mathlib results from a plain-English description (LeanSearch). |
 | `export_walkthrough` | Writes a step-by-step proof walkthrough web page, and returns a Lean 4 web editor link. |
 | `extract_lemma` | Turns the goal at a `sorry` into a lemma of its own, with the hypotheses it needs, and uses it there. |
@@ -609,6 +616,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 | Ask AI to prove the sorry at the cursor (Lean checks it) | ⌘⌥A | Ctrl+Alt+A |
 | Ask AI about the code at the cursor | ⌘⌥K | Ctrl+Alt+K |
 | REPL at the cursor | ⌘⌥R | Ctrl+Alt+R |
+| Profile the file | ⌘⌥T | Ctrl+Alt+T |
 | Who uses this (callers) | ⌘⌥H | Ctrl+Alt+H |
 | Find references / Rename | ⇧F12 / F2 | Shift+F12 / F2 |
 | Insert a snippet | Learn ▸ Insert a Snippet… | Learn ▸ Insert a Snippet… |
