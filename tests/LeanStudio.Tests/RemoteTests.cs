@@ -13,6 +13,58 @@ public sealed class RemoteTests
     private static string L(string rel) => Path.Combine(Local, rel.Replace('/', Path.DirectorySeparatorChar));
 
     [Fact]
+    public void RunsLeanInAContainerOrInWsl()
+    {
+        var container = new RemoteTarget("1a2b3c4d5e6f7890", "/workspaces/Proofs", Local) { Kind = RemoteKind.Container };
+        (string file, IReadOnlyList<string> args) = container.Command("lake", ["serve"], Local);
+        Assert.Equal("docker", file);
+        Assert.Equal(["exec", "-i", "1a2b3c4d5e6f7890", "sh", "-c", "cd /workspaces/Proofs && PATH=\"$HOME/.elan/bin:$PATH\" exec lake serve"], args);
+        Assert.Equal("the container 1a2b3c4d5e6f", container.Describe());
+
+        var wsl = new RemoteTarget("Ubuntu", "/home/me/Proofs", Local) { Kind = RemoteKind.Wsl };
+        (file, args) = wsl.Command("lake", ["env", "lean", L("Proofs/Basic.lean")], Local);
+        Assert.Equal("wsl.exe", file);
+        Assert.Equal(["-d", "Ubuntu", "-e", "sh", "-c", "cd /home/me/Proofs && PATH=\"$HOME/.elan/bin:$PATH\" exec lake env lean /home/me/Proofs/Proofs/Basic.lean"], args);
+        Assert.Equal("WSL (Ubuntu)", wsl.Describe());
+    }
+
+    [Fact]
+    public void RecognizesWslFoldersAndReadsDevContainers()
+    {
+        RemoteTarget? t = RemoteTarget.ForWslPath(@"\\wsl.localhost\Ubuntu-24.04\home\me\Proofs");
+        Assert.Equal(("Ubuntu-24.04", "/home/me/Proofs", RemoteKind.Wsl), (t?.Host, t?.RemoteRoot, t?.Kind));
+        Assert.Equal("/", RemoteTarget.ForWslPath(@"\\wsl$\Debian")?.RemoteRoot);
+        Assert.Null(RemoteTarget.ForWslPath(@"C:\Users\me\Proofs"));
+        Assert.Null(RemoteTarget.ForWslPath("/home/me/Proofs"));
+
+        string dir = Directory.CreateTempSubdirectory("leanstudio-devc").FullName;
+        try
+        {
+            string project = Path.Combine(dir, "Fermat");
+            Directory.CreateDirectory(Path.Combine(project, ".devcontainer"));
+            Assert.Null(DevContainer.Find(project) is { } none ? none : null);
+            File.WriteAllText(Path.Combine(project, ".devcontainer", "devcontainer.json"), """
+                // A comment, as VS Code allows.
+                {
+                  "name": "Lean 4",
+                  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+                  "workspaceFolder": "/work/${localWorkspaceFolderBasename}",
+                }
+                """);
+            DevContainer? dc = DevContainer.Find(project);
+            Assert.Equal(("Lean 4", "/work/Fermat"), (dc?.Name, dc?.WorkspaceFolder));
+            RemoteTarget target = dc!.Target("abc");
+            Assert.Equal((RemoteKind.Container, "abc", "/work/Fermat"), (target.Kind, target.Host, target.RemoteRoot));
+            File.WriteAllText(Path.Combine(project, ".devcontainer", "devcontainer.json"), "{ \"image\": \"x\" }");
+            Assert.Equal("/workspaces/Fermat", DevContainer.Find(project)?.WorkspaceFolder);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public void MapsPathsAndUrisBothWays()
     {
         Assert.True(Box.Covers(L("Proofs/Basic.lean")));
@@ -91,7 +143,7 @@ public sealed class RemoteLeanTests : IDisposable
 
     private string SshLog => Path.Combine(_scratch, "ssh.log");
 
-    private RemoteTarget Setup()
+    private RemoteTarget Setup(RemoteKind kind = RemoteKind.Ssh)
     {
         Assert.SkipWhen(OperatingSystem.IsWindows(), "the stand-in for ssh is a shell script");
         Lean.RequireLean();
@@ -112,7 +164,18 @@ public sealed class RemoteLeanTests : IDisposable
         {
             File.SetUnixFileMode(ssh, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
-        var target = new RemoteTarget("me@box", remote, local) { Ssh = ssh, SshOptions = ["-o", "BatchMode=yes"] };
+        // A stand-in for docker and for wsl.exe too: both end with `sh -c SCRIPT`, the sixth argument.
+        File.WriteAllText(ssh + "-exec", $"#!/bin/sh\necho \"$6\" >> '{SshLog}'\nexec sh -c \"$6\"\n");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(ssh + "-exec", UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        var target = kind switch
+        {
+            RemoteKind.Container => new RemoteTarget("devc123", remote, local) { Kind = kind, Docker = ssh + "-exec" },
+            RemoteKind.Wsl => new RemoteTarget("Ubuntu", remote, local) { Kind = kind, WslProgram = ssh + "-exec" },
+            _ => new RemoteTarget("me@box", remote, local) { Ssh = ssh, SshOptions = ["-o", "BatchMode=yes"] },
+        };
         RemoteTargets.Register(target);
         return target;
     }
@@ -161,6 +224,50 @@ public sealed class RemoteLeanTests : IDisposable
             var defs = await server.DefinitionAsync(uri, new Position(line, text.Split('\n')[line].IndexOf("double", StringComparison.Ordinal) + 1), TestContext.Current.CancellationToken);
             Assert.Contains(defs, d => d.Uri == uri);
             Assert.Contains("exec lake serve", File.ReadAllText(SshLog), StringComparison.Ordinal);
+        }
+        finally
+        {
+            RemoteTargets.Unregister(target.LocalRoot);
+        }
+    }
+
+    [Theory]
+    [InlineData(RemoteKind.Container)]
+    [InlineData(RemoteKind.Wsl)]
+    public async Task LeanRunsInAContainerOrWslWithLocalPaths(RemoteKind kind)
+    {
+        RemoteTarget target = Setup(kind);
+        try
+        {
+            string file = Path.Combine(target.LocalRoot, "Proofs", "Basic.lean");
+            string uri = LeanServer.UriOf(file);
+            await using var server = new LeanServer(new LeanProject(target.LocalRoot).ServerCommand());
+            var got = new TaskCompletionSource<IReadOnlyList<Diagnostic>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            IReadOnlyList<Diagnostic> last = [];
+            server.DiagnosticsPublished += (u, d) =>
+            {
+                if (u == uri)
+                {
+                    last = d;
+                }
+            };
+            server.FileProgress += (u, p) =>
+            {
+                if (u == uri && p.Count == 0)
+                {
+                    got.TrySetResult(last);
+                }
+            };
+            await server.StartAsync(TestContext.Current.CancellationToken);
+            await server.OpenAsync(uri, await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            IReadOnlyList<Diagnostic> diags = await got.Task.WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+            Assert.Contains(diags, d => d.Message.Contains("sorry", StringComparison.Ordinal));
+            Assert.Contains("exec lake serve", File.ReadAllText(SshLog), StringComparison.Ordinal);
+
+            File.WriteAllText(Path.Combine(target.LocalRoot, "Proofs", "Broken.lean"), "theorem oops : 1 = 2 := rfl\n");
+            ProcessResult r = await ProcessRunner.RunAsync("lake", ["env", "lean", Path.Combine(target.LocalRoot, "Proofs", "Broken.lean")], target.LocalRoot, ct: TestContext.Current.CancellationToken);
+            Assert.Contains(Path.Combine(target.LocalRoot, "Proofs", "Broken.lean") + ":1:", r.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain("/remote/", r.Output, StringComparison.Ordinal);
         }
         finally
         {

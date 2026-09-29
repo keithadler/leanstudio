@@ -4,17 +4,50 @@ using System.Text.RegularExpressions;
 
 namespace LeanStudio.Lsp;
 
+/// <summary>How Lean's tools reach the machine a <see cref="RemoteTarget"/> names.</summary>
+public enum RemoteKind
+{
+    /// <summary>Over SSH, to another machine; its folder is mounted here (sshfs, a network drive).</summary>
+    Ssh,
+
+    /// <summary>In a running container (a dev container): <c>docker exec</c>, the project folder mounted into it.</summary>
+    Container,
+
+    /// <summary>In a WSL distribution on this Windows machine: <c>wsl.exe</c>, its files reached as <c>\\wsl.localhost\…</c>.</summary>
+    Wsl,
+}
+
 /// <summary>
-/// A project on another machine: its files reached through a local folder (an sshfs mount, a network drive), and
-/// Lean, Lake and elan run there over SSH. Paths are rewritten both ways: what goes to the remote machine names its
-/// folder, and what comes back names the local one, so the editor, Problems, go-to-definition and build output all
-/// see local paths.
+/// A project whose Lean runs somewhere else: on another machine over SSH, in a container, or in WSL. Its files are
+/// reached through a local folder, and Lean, Lake and elan run there. Paths are rewritten both ways: what goes there
+/// names its folder, and what comes back names the local one, so the editor, Problems, go-to-definition and build
+/// output all see local paths.
 /// </summary>
-/// <param name="Host">The SSH destination: <c>user@host</c>, or a <c>Host</c> from ~/.ssh/config.</param>
+/// <param name="Host">
+/// Where: the SSH destination (<c>user@host</c>, or a <c>Host</c> from ~/.ssh/config), the container's name or id,
+/// or the WSL distribution's name, depending on <see cref="Kind"/>.
+/// </param>
 /// <param name="RemoteRoot">The project's folder on the remote machine (a POSIX path).</param>
 /// <param name="LocalRoot">Where that folder is mounted here.</param>
 public sealed partial record RemoteTarget(string Host, string RemoteRoot, string LocalRoot)
 {
+    /// <summary>How the tools reach <see cref="Host"/>: SSH (the default), a container, or WSL.</summary>
+    public RemoteKind Kind { get; init; } = RemoteKind.Ssh;
+
+    /// <summary>The docker program, for a container (by default <c>docker</c> on the PATH).</summary>
+    public string Docker { get; init; } = "docker";
+
+    /// <summary>The WSL program, for a WSL distribution.</summary>
+    public string WslProgram { get; init; } = "wsl.exe";
+
+    /// <summary>Where Lean runs, in words: <c>me@box</c>, <c>the dev container 1a2b3c</c>, <c>WSL (Ubuntu)</c>.</summary>
+    public string Describe() => Kind switch
+    {
+        RemoteKind.Container => "the container " + (Host.Length > 12 ? Host[..12] : Host),
+        RemoteKind.Wsl => $"WSL ({Host})",
+        _ => Host,
+    };
+
     /// <summary>The ssh program (by default <c>ssh</c> on the PATH).</summary>
     public string Ssh { get; init; } = "ssh";
 
@@ -123,8 +156,33 @@ public sealed partial record RemoteTarget(string Host, string RemoteRoot, string
             // A local path in the project is mapped whole (a Windows path's separators too); other text is searched for paths.
             sb.Append(' ').Append(Quote(Path.IsPathRooted(a) && Covers(a) ? ToRemotePath(a) : ToRemote(a)));
         }
-        return (Ssh, [.. SshOptions, Host, sb.ToString()]);
+        return Kind switch
+        {
+            // -i keeps stdin open: Lean's server talks over it.
+            RemoteKind.Container => (Docker, ["exec", "-i", Host, "sh", "-c", sb.ToString()]),
+            RemoteKind.Wsl => (WslProgram, ["-d", Host, "-e", "sh", "-c", sb.ToString()]),
+            _ => (Ssh, [.. SshOptions, Host, sb.ToString()]),
+        };
     }
+
+    /// <summary>
+    /// For a folder in a WSL distribution seen from Windows (<c>\\wsl.localhost\Ubuntu\home\me\proj</c>, or
+    /// <c>\\wsl$\Ubuntu\…</c>), the target that runs Lean inside that distribution; null for any other folder.
+    /// </summary>
+    /// <param name="localRoot">The folder, as Windows names it.</param>
+    public static RemoteTarget? ForWslPath(string localRoot)
+    {
+        Match m = WslPath().Match(localRoot);
+        if (!m.Success)
+        {
+            return null;
+        }
+        string rest = m.Groups["rest"].Value.Replace('\\', '/').TrimEnd('/');
+        return new RemoteTarget(m.Groups["distro"].Value, rest.Length == 0 ? "/" : "/" + rest.TrimStart('/'), localRoot) { Kind = RemoteKind.Wsl };
+    }
+
+    [GeneratedRegex(@"^[\\/]{2}(?:wsl\$|wsl\.localhost)[\\/](?<distro>[^\\/]+)(?<rest>(?:[\\/].*)?)$", RegexOptions.IgnoreCase)]
+    private static partial Regex WslPath();
 
     /// <summary>
     /// Read <c>user@host:/path</c> (scp's notation) into a host and a remote folder; null when it isn't one.

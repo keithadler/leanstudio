@@ -367,6 +367,20 @@ public sealed partial class SourceControlViewModel : ObservableObject
         await _openDiff(c.FullPath, diff);
     }
 
+    /// <summary>A change should be compared side by side with its last commit: the file's full path.</summary>
+    public event Action<string>? CompareRequested;
+
+    /// <summary>Compare a changed file side by side with its last commit.</summary>
+    /// <param name="c">The change; null does nothing.</param>
+    [RelayCommand]
+    private void CompareChange(ChangeView? c)
+    {
+        if (c is not null)
+        {
+            CompareRequested?.Invoke(c.FullPath);
+        }
+    }
+
     /// <summary>Open a changed file in the editor, unless it was deleted.</summary>
     /// <param name="c">The change; null does nothing.</param>
     [RelayCommand]

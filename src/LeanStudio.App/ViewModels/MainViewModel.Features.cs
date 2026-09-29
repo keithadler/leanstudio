@@ -117,6 +117,7 @@ public sealed partial class MainViewModel
             _dialogs.LaunchAsync,
             () => (ActiveDocument?.Path, (ActiveDocument?.CaretLine ?? 0) + 1));
         SourceControl.RepositoryChanged += () => ScheduleGitRefresh(full: false);
+        SourceControl.CompareRequested += path => _ = DiffWithRevisionAsync(path, "HEAD");
         SourceControl.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SourceControlViewModel.BranchLabel))

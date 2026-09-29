@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+**What VS Code had and Lean Studio didn't**:
+- **An integrated terminal** (⌃`, *View ▸ Terminal*): your shell in the bottom panel, in the project's folder, with `lake` and `lean` on its path. A real pseudo-terminal and xterm's emulator, so colours, full-screen programs and resizing work; a 5,000-line scrollback; copy and paste. *Open in Terminal* in Files now opens it there (*Open in External Terminal* is the old one).
+- **Sticky scroll**: the first line of the namespace, section and declaration you are reading stays pinned at the top of the editor while its start is out of view. Click one to go there.
+- **Breadcrumbs** above the editor: the file's folders and name, then the namespace, sections and declaration the cursor is in.
+- **A minimap** beside the editor, with errors, warnings and the profiler's slow declarations marked. Click or drag to scroll.
+- **Side-by-side diffs**: against the last commit, a saved version from local history, or a change in the Git panel (*Compare Side by Side* on its right-click menu). The two panes scroll together, each line level with its counterpart, and the changed part of a changed line is brighter; F7 and ⇧F7 step through the changes.
+- **Merge conflicts**: each side tinted, and **Keep mine**, **Take theirs** or **Keep both** on the conflict's first line, as one undoable edit.
+- **Markdown preview** in the right column, following your edits; links open in the browser or, for the project's files, in the editor.
+- **AI completion as you type** (off until turned on in Preferences, as it needs a model): after a pause at the end of a line, the model in use suggests what comes next, as grey text; Tab takes it, Esc or typing drops it. In a Lean file, Lean checks the suggestion first, and one it rejects is never shown.
+- **Dev containers and WSL**: *Remote: Use the Dev Container* runs a project's Lean in its dev container (found running, or started with `devcontainer up`), which mounts the folder, so no sshfs is needed. On Windows, a folder in WSL runs its Lean inside WSL by itself.
+- Each file came back scrolled to the top after switching to another and back: AvaloniaEdit's `ScrollToVerticalOffset` does nothing in the version used. It now keeps its place.
+
 **Fixes**:
 - `verify` over MCP kept returning the declarations of the build it first read after the project was built again outside it (`lake build` in a terminal), until the server restarted ([#2](https://github.com/keithadler/leanstudio/issues/2)). Tenet now notes the build it opened (each `.olean`'s size and time, the manifest and the toolchain) and reads the new one when it has changed; the window's Verify, Why?, the project map and the blueprint check do the same.
 - A request to Lean left waiting when its server stopped could surface later as an error no one caught; the error now also names the request.

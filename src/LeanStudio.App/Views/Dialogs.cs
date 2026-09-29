@@ -267,6 +267,10 @@ internal static class Dialogs
         var marks = Check("Mark the end of each proof (✔ finished, ⊢ goals left)", s.ShowProofMarks);
         var semantic = Check("Colour variables and fields as Lean sees them (semantic highlighting)", s.SemanticHighlighting);
         var hints = Check("Show inlay hints (what Lean fills in, such as implicit arguments)", s.InlayHints);
+        var sticky = Check("Sticky scroll (keep the namespace, section and declaration you are in pinned at the top)", s.StickyScroll);
+        var crumbs = Check("Breadcrumbs (the file and the scopes the cursor is in, above the editor)", s.Breadcrumbs);
+        var minimap = Check("Minimap (the whole file in miniature beside the editor)", s.Minimap);
+        var aiInline = Check("AI completion as you type (grey text at the cursor, Tab takes it; in Lean files only what Lean accepts)", s.AiCompletions);
         var vim = Check("Vim mode (normal, insert and visual modes; motions, operators, :w, :q)", s.VimMode);
         var emacs = Check("Emacs keys (C-f, M-f, C-k, C-y, the mark, C-x C-s; Vim mode wins if both are on)", s.EmacsMode);
         var english = Check("Read goals aloud in English", s.ShowGoalsInEnglish);
@@ -310,7 +314,7 @@ internal static class Dialogs
             Spacing = 2,
             Children =
             {
-                Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints,
+                Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints, sticky, crumbs, minimap, aiInline,
                 Head("Editing"), unicode, autosave, inline, marks, vim, emacs,
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback), Row("Lean arguments", serverArgs), logServer,
                 Head("Other"), blame, updates,
@@ -334,6 +338,10 @@ internal static class Dialogs
             s.InlineResults = inline.IsChecked == true;
             s.SemanticHighlighting = semantic.IsChecked == true;
             s.InlayHints = hints.IsChecked == true;
+            s.StickyScroll = sticky.IsChecked == true;
+            s.Breadcrumbs = crumbs.IsChecked == true;
+            s.Minimap = minimap.IsChecked == true;
+            s.AiCompletions = aiInline.IsChecked == true;
             s.VimMode = vim.IsChecked == true;
             s.EmacsMode = emacs.IsChecked == true;
             s.ShowProofMarks = marks.IsChecked == true;

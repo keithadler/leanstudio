@@ -50,6 +50,13 @@ public sealed class LeanEditor : UserControl
     private readonly SemanticColorizer _semantic = new();
     private readonly OccurrenceHighlighter _occurrences = new();
     private readonly InlayHintGenerator _hints = new();
+    private readonly GhostText _ghost = new();
+    private CancellationTokenSource? _ghostCts;
+    private readonly StickyScroll _sticky;
+    private readonly Breadcrumbs _crumbs = new();
+    private readonly Minimap _minimap;
+    private readonly ConflictLayer _conflicts;
+    private Core.Editing.LeanScopes.ScopeIndex? _scopeIndex;
     private CancellationTokenSource? _semanticCts, _occurrenceCts;
     private readonly VimEngine _vim;
     private readonly VimBlockCaret _vimCaret;
@@ -97,6 +104,7 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_timingLabels);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_occurrences);
         _editor.TextArea.TextView.ElementGenerators.Add(_hints);
+        _editor.TextArea.TextView.ElementGenerators.Add(_ghost);
         _vimCaret = new VimBlockCaret(_editor);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_vimCaret);
         _vim = new VimEngine(new EditorVimHost(_editor, VimEx));
@@ -125,7 +133,164 @@ public sealed class LeanEditor : UserControl
         _editor.AddHandler(KeyDownEvent, OnKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         _margin.PointerPressed += OnMarginPressed;
 
-        Content = _editor;
+        // Around the text: breadcrumbs above, the minimap beside it, sticky scroll pinned at its top, and the
+        // choices of a merge conflict on its lines.
+        _conflicts = new ConflictLayer(_editor);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_conflicts);
+        _conflicts.Resolved += choice => Main?.Log($"Merge conflict settled: {choice switch { Core.Editing.ConflictChoice.Mine => "kept mine", Core.Editing.ConflictChoice.Theirs => "took theirs", _ => "kept both" }}.");
+        _sticky = new StickyScroll(_editor, Scopes) { Margin = new Thickness(0, 0, 14, 0) };
+        _sticky.LineClicked += line => Reveal(line, 0);
+        _crumbs.LineClicked += line => Reveal(line, 0);
+        _crumbs.BorderThickness = new Thickness(0, 0, 0, 1);
+        _crumbs.BorderBrush = new SolidColorBrush(Color.FromArgb(0x30, 0x80, 0x80, 0x80));
+        _minimap = new Minimap(_editor);
+        // Not while a document is being swapped in: the text view has no line index then, and reading it throws.
+        _editor.TextArea.TextView.ScrollOffsetChanged += (_, _) =>
+        {
+            if (_switching)
+            {
+                return;
+            }
+            _sticky.Update();
+            _minimap.Scrolled();
+            _conflicts.Place();
+        };
+        _editor.TextArea.TextView.VisualLinesChanged += (_, _) =>
+        {
+            if (!_switching)
+            {
+                _conflicts.Place();
+            }
+        };
+        var frame = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*"), ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        Grid.SetColumnSpan(_crumbs, 2);
+        frame.Children.Add(_crumbs);
+        Grid.SetRow(_editor, 1);
+        frame.Children.Add(_editor);
+        Grid.SetRow(_conflicts, 1);
+        frame.Children.Add(_conflicts);
+        Grid.SetRow(_sticky, 1);
+        frame.Children.Add(_sticky);
+        Grid.SetRow(_minimap, 1);
+        Grid.SetColumn(_minimap, 1);
+        frame.Children.Add(_minimap);
+        Content = frame;
+    }
+
+    private bool _suggestAsYouType;
+
+    /// <summary>The AI suggestion shown at the cursor, if any (for checks).</summary>
+    public (int Offset, string Text, bool Checked)? Suggestion => _ghost.Suggestion;
+
+    /// <summary>Drop the suggestion shown, and stop waiting for one.</summary>
+    public void DropSuggestion()
+    {
+        _ghostCts?.Cancel();
+        if (_ghost.Suggestion is not null)
+        {
+            _ghost.Clear();
+            _editor.TextArea.TextView.Redraw();
+        }
+    }
+
+    /// <summary>Take the suggestion shown: insert it at the cursor as one undoable edit. False when there is none.</summary>
+    public bool AcceptSuggestion()
+    {
+        if (_ghost.Suggestion is not { } g || _current is null || g.Offset != _editor.CaretOffset)
+        {
+            return false;
+        }
+        _ghost.Clear();
+        _current.Document.Insert(g.Offset, g.Text);
+        _editor.CaretOffset = g.Offset + g.Text.Length;
+        return true;
+    }
+
+    /// <summary>
+    /// After a pause in typing at the end of a line, ask for a suggestion (when AI completion as you type is on).
+    /// It is shown only if the cursor has not moved and the text has not changed meanwhile.
+    /// </summary>
+    private void ScheduleSuggestion()
+    {
+        _ghostCts?.Cancel();
+        if (!_suggestAsYouType || _current is not { IsVirtual: false } doc || Main is null || !_editor.TextArea.Selection.IsEmpty)
+        {
+            return;
+        }
+        int offset = _editor.CaretOffset;
+        DocumentLine line = doc.Document.GetLineByOffset(offset);
+        if (doc.Document.GetText(offset, line.EndOffset - offset).Trim().Length > 0)
+        {
+            return; // only at the end of a line: in the middle of one, grey text would sit on the code after it
+        }
+        var cts = _ghostCts = new CancellationTokenSource();
+        _ = SuggestAsync(doc, offset, cts.Token);
+    }
+
+    private async Task SuggestAsync(DocumentViewModel doc, int offset, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(700, ct);
+            string text = doc.Document.Text;
+            Core.Ai.InlineSuggestion? s = await Main!.SuggestInlineAsync(doc, text, offset, ct);
+            if (s is null || ct.IsCancellationRequested || _current != doc || _editor.CaretOffset != offset || doc.Document.Text != text)
+            {
+                return;
+            }
+            _ghost.Show(offset, s.Text, s.CheckedByLean);
+            _editor.TextArea.TextView.Redraw();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>The pinned scopes at the top of the editor.</summary>
+    public StickyScroll Sticky => _sticky;
+
+    /// <summary>The breadcrumbs above the editor.</summary>
+    public Breadcrumbs Crumbs => _crumbs;
+
+    /// <summary>The minimap beside the editor.</summary>
+    public Minimap Minimap => _minimap;
+
+    /// <summary>The merge conflicts in the editor, and their choices.</summary>
+    public ConflictLayer Conflicts => _conflicts;
+
+    /// <summary>The scopes of the Lean file shown, read once per version of its text; null for other files.</summary>
+    private Core.Editing.LeanScopes.ScopeIndex? Scopes() =>
+        _current is { IsLean: true } ? _scopeIndex ??= new Core.Editing.LeanScopes.ScopeIndex(_editor.Document.Text) : null;
+
+    /// <summary>Show where the cursor is in the breadcrumbs.</summary>
+    private void UpdateCrumbs()
+    {
+        int line = _editor.TextArea.Caret.Line - 1;
+        _crumbs.Update(_current?.IsVirtual == true ? null : _current?.Path, Main?.Project?.Root, Scopes()?.At(line) ?? []);
+    }
+
+    /// <summary>The minimap's marks: Lean's problems, and the profiler's slow declarations and lines.</summary>
+    private void UpdateMinimapMarks()
+    {
+        if (_current is null)
+        {
+            _minimap.SetMarks([], []);
+            return;
+        }
+        var heat = _current.Timings.Where(t => t.Heat > 0).Select(t => (t.Line, t.Heat))
+            .Concat(_current.Timings.SelectMany(t => t.LineCosts.Select(kv => (kv.Key, Core.Proofs.DeclarationTiming.HeatOf(kv.Value, t.Unit)))).Where(x => x.Item2 > 0))
+            .ToList();
+        _minimap.SetMarks(_current.Diagnostics, heat);
+    }
+
+    /// <summary>The text changed or another file is shown: bring the scopes, minimap and conflicts up to date.</summary>
+    private void RefreshChrome()
+    {
+        _scopeIndex = null;
+        _minimap.TextChanged();
+        _conflicts.Update();
+        _sticky.Update();
+        UpdateCrumbs();
     }
 
     /// <summary>
@@ -175,7 +340,14 @@ public sealed class LeanEditor : UserControl
         OnVimChanged();
         _semantic.Enabled = s.SemanticHighlighting;
         _hints.Enabled = s.InlayHints;
+        _sticky.Enabled = s.StickyScroll;
+        _sticky.Update();
+        _crumbs.IsVisible = s.Breadcrumbs;
+        _minimap.IsVisible = s.Minimap;
         _hints.FontFamily = _editor.FontFamily;
+        _ghost.FontFamily = _editor.FontFamily;
+        _ghost.FontSize = _editor.FontSize;
+        _suggestAsYouType = s.AiCompletions;
         _hints.FontSize = _editor.FontSize;
         _semantic.SetDark(s.Theme != "Light");
         _editor.TextArea.TextView.Redraw();
@@ -195,6 +367,7 @@ public sealed class LeanEditor : UserControl
         if (_textMate.TryGetThemeColor("editor.background", out string? bg) && Color.TryParse(bg, out Color b))
         {
             _editor.Background = new SolidColorBrush(b);
+            _crumbs.Background = _editor.Background;
         }
         if (_textMate.TryGetThemeColor("editor.foreground", out string? fg) && Color.TryParse(fg, out Color f))
         {
@@ -257,7 +430,15 @@ public sealed class LeanEditor : UserControl
         }
         if (doc is null)
         {
-            _editor.Document = new TextDocument();
+            _switching = true;
+            try
+            {
+                _editor.Document = new TextDocument();
+            }
+            finally
+            {
+                _switching = false;
+            }
             _editor.IsEnabled = false;
             _diagnostics.Update([]);
             _inline.Update([]);
@@ -265,6 +446,8 @@ public sealed class LeanEditor : UserControl
             _timings.Update([]);
             _timingLabels.Update([]);
             _margin.Update([], new Dictionary<int, DeclarationVerdict>(), []);
+            RefreshChrome();
+            UpdateMinimapMarks();
             return;
         }
         _editor.IsEnabled = true;
@@ -308,14 +491,16 @@ public sealed class LeanEditor : UserControl
         _timingLabels.Update(doc.Timings);
         _margin.Update(doc.Processing, doc.Verdicts, doc.LineChanges);
         UpdateBulbs();
+        RefreshChrome();
+        UpdateMinimapMarks();
         _editor.IsReadOnly = doc.IsVirtual;
         ScheduleFolds();
         int offset = Math.Min(doc.Document.TextLength, SafeOffset(doc.Document, doc.CaretLine, doc.CaretColumn));
         _editor.TextArea.Caret.Offset = offset;
         if (_scroll.TryGetValue(doc, out Vector v))
         {
-            Dispatcher.UIThread.Post(() => _editor.ScrollToHorizontalOffset(v.X), DispatcherPriority.Background);
-            Dispatcher.UIThread.Post(() => _editor.ScrollToVerticalOffset(v.Y), DispatcherPriority.Background);
+            // Where the file was scrolled to when last shown (after the layout, when the editor can scroll).
+            Dispatcher.UIThread.Post(() => _editor.ScrollToOffset(v.Y, v.X), DispatcherPriority.Background);
         }
         _editor.TextArea.TextView.Redraw();
         Dispatcher.UIThread.Post(() => _editor.TextArea.Focus(), DispatcherPriority.Background);
@@ -335,6 +520,7 @@ public sealed class LeanEditor : UserControl
                 _editor.TextArea.TextView.Redraw();
                 _inline.Update(_current.Diagnostics);
                 UpdateBulbs();
+                UpdateMinimapMarks();
                 _editor.TextArea.TextView.InvalidateLayer(_diagnostics.Layer);
                 break;
             case nameof(DocumentViewModel.ProofMarks):
@@ -346,6 +532,7 @@ public sealed class LeanEditor : UserControl
                 _timingLabels.Update(_current.Timings);
                 _editor.TextArea.TextView.InvalidateLayer(_timings.Layer);
                 _editor.TextArea.TextView.InvalidateLayer(_timingLabels.Layer);
+                UpdateMinimapMarks();
                 break;
             case nameof(DocumentViewModel.Processing):
             case nameof(DocumentViewModel.Verdicts):
@@ -389,6 +576,11 @@ public sealed class LeanEditor : UserControl
         if (_current is null || Main is null || _switching)
         {
             return;
+        }
+        UpdateCrumbs();
+        if (_ghost.Suggestion is { } g && g.Offset != _editor.CaretOffset)
+        {
+            DropSuggestion();
         }
         TextViewPosition p = _editor.TextArea.Caret.Position;
         Main.CaretMoved(_current, p.Line - 1, p.Column - 1);
@@ -596,6 +788,12 @@ public sealed class LeanEditor : UserControl
 
     private void OnTextChangedForLayers(object? sender, DocumentChangeEventArgs e)
     {
+        RefreshChrome();
+        DropSuggestion();
+        if (!_switching)
+        {
+            Dispatcher.UIThread.Post(ScheduleSuggestion, DispatcherPriority.Background); // once the caret has moved past the edit
+        }
         _multi.DocumentChanged();
         _edits++;
         _semantic.Shift(e);
@@ -1019,6 +1217,15 @@ public sealed class LeanEditor : UserControl
             return;
         }
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        if (_ghost.Suggestion is not null && e.KeyModifiers == KeyModifiers.None && (e.Key == Key.Tab || e.Key == Key.Escape))
+        {
+            if (e.Key == Key.Tab ? AcceptSuggestion() : true)
+            {
+                DropSuggestion();
+                e.Handled = true;
+                return;
+            }
+        }
         if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             e.Handled = true;

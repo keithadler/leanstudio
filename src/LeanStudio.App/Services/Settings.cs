@@ -39,6 +39,21 @@ public sealed class Settings
     /// <summary>Show Lean's inlay hints in the text, such as implicit arguments it binds automatically.</summary>
     public bool InlayHints { get; set; } = true;
 
+    /// <summary>Pin the first line of the namespace, section and declaration being read at the top of the editor.</summary>
+    public bool StickyScroll { get; set; } = true;
+
+    /// <summary>Show the file's path and the scopes the cursor is in above the editor.</summary>
+    public bool Breadcrumbs { get; set; } = true;
+
+    /// <summary>Show the whole file in miniature beside the editor.</summary>
+    public bool Minimap { get; set; } = true;
+
+    /// <summary>
+    /// Suggest code as grey text at the cursor after a pause in typing, from the AI model in use (in a Lean file,
+    /// only what Lean accepts). Off until turned on: it needs a model, and asks it often.
+    /// </summary>
+    public bool AiCompletions { get; set; }
+
     /// <summary>Profile the active Lean file as it is edited (the Profiler's Live switch).</summary>
     public bool ProfileLive { get; set; }
 
@@ -204,4 +219,10 @@ public sealed class RemoteProject
 
     /// <summary>Where that folder is mounted here.</summary>
     public string LocalRoot { get; set; } = "";
+
+    /// <summary>
+    /// How Lean reaches it: <c>ssh</c> (the default), or <c>container</c> for a dev container, whose container is
+    /// looked up each time the project opens (its id changes when it is rebuilt).
+    /// </summary>
+    public string Kind { get; set; } = "ssh";
 }

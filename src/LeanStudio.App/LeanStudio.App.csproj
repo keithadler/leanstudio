@@ -24,6 +24,8 @@
     <PackageReference Include="Avalonia.AvaloniaEdit" Version="$(AvaloniaEditVersion)" />
     <PackageReference Include="AvaloniaEdit.TextMate" Version="$(AvaloniaEditVersion)" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Porta.Pty" Version="2.2.2" />
+    <PackageReference Include="XTerm.NET" Version="2.0.2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../LeanStudio.Mcp/LeanStudio.Mcp.csproj" />

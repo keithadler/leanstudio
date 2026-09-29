@@ -572,6 +572,178 @@ internal static class Scenario
         Check(await WaitFor(() => !vm.SourceControl.Unstaged.Any(c => c.FileName is "ModX.lean" or "ModY.lean" or "Scratch2.lean"), 10),
             "the Git panel forgets files that were deleted");
 
+        Console.WriteLine("sticky scroll, breadcrumbs, minimap, merge conflicts, Markdown preview");
+        {
+            LeanStudio.App.Editor.LeanEditor ed = window.GetVisualDescendants().OfType<LeanStudio.App.Editor.LeanEditor>().First(e => e.Name == "Editor");
+            string scopesFile = Path.Combine(proofsDir, "Scopes.lean");
+            string conflictFile = Path.Combine(proofsDir, "Conflict.lean");
+            try
+            {
+                File.WriteAllText(scopesFile, "namespace Demo\nsection Long\n\ntheorem long_one (n : Nat) : n + 0 = n := by\n"
+                    + string.Concat(Enumerable.Range(1, 80).Select(i => $"  -- step {i}\n")) + "  simp\n\nend Long\nend Demo\n");
+                DocumentViewModel sc = (await vm.OpenFileAsync(scopesFile))!;
+                window.UpdateLayout();
+                sc.Reveal(45, 2); // scrolls the theorem's first lines out of view
+                Check(await WaitFor(() => ed.Sticky.Shown.Select(x => x.Name).SequenceEqual(["Demo", "Long", "long_one"]) && ed.Sticky.IsVisible, 5),
+                    $"sticky scroll pins the namespace, section and theorem while their lines are out of view ({string.Join(" › ", ed.Sticky.Shown.Select(x => x.Name))})");
+                Check(await WaitFor(() => ed.Crumbs.Segments.SequenceEqual(["Proofs", "Scopes.lean", "Demo", "Long", "long_one"]), 5),
+                    $"the breadcrumbs name the file and the scopes the cursor is in ({string.Join(" › ", ed.Crumbs.Segments)})");
+                Check(ed.Minimap.IsEffectivelyVisible && ed.Minimap.Bounds.Width == LeanStudio.App.Editor.Minimap.MapWidth && ed.Minimap.Viewport().Top > 0,
+                    $"the minimap is beside the text, its frame where the editor has scrolled to ({ed.Minimap.Viewport().Top:F0} px down)");
+                Snap(window, outDir, "05b-sticky-breadcrumbs-minimap");
+                // Each file keeps where it was scrolled to when another is shown and it comes back.
+                await WaitFor(() => ed.TextEditor.VerticalOffset > 0, 5); // the scroll to the cursor lands at the next layout
+                double scrolledTo = ed.TextEditor.VerticalOffset;
+                vm.ActiveDocument = doc;
+                await WaitFor(() => ed.Document == doc, 5);
+                vm.ActiveDocument = sc;
+                Check(await WaitFor(() => Math.Abs(ed.TextEditor.VerticalOffset - scrolledTo) < 1, 5) && scrolledTo > 0,
+                    $"switching away and back keeps the file's scroll position ({scrolledTo:F0} px, now {ed.TextEditor.VerticalOffset:F0})");
+                ed.Minimap.ScrollTo(0);
+                Check(await WaitFor(() => ed.TextEditor.VerticalOffset == 0 && !ed.Sticky.IsVisible, 5),
+                    $"clicking the top of the minimap scrolls to the top, and nothing is pinned there ({ed.TextEditor.VerticalOffset:F0} px)");
+                await vm.CloseDocumentCommand.ExecuteAsync(sc);
+
+                File.WriteAllText(conflictFile, "theorem a : True := trivial\n<<<<<<< HEAD\ntheorem b : 1 = 1 := rfl\n=======\ntheorem b : 1 = 1 := by decide\n>>>>>>> feature\ntheorem c : True := trivial\n");
+                DocumentViewModel cf = (await vm.OpenFileAsync(conflictFile))!;
+                window.UpdateLayout();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                bool OnScreen()
+                {
+                    window.UpdateLayout();
+                    return ed.Conflicts.Children.Count == 1 && ed.Conflicts.Children[0] is Control bar && bar.IsEffectivelyVisible && bar.Bounds.Width > 100
+                        && bar.TranslatePoint(new Point(0, 0), window) is Point p && p.X > 300 && p.X < window.Bounds.Width && p.Y > 60 && p.Y < 400
+                        && window.GetVisualsAt(p + new Vector(bar.Bounds.Width / 6, bar.Bounds.Height / 2)).Any(v => v.FindAncestorOfType<Button>(true) is not null);
+                }
+                Check(ed.Conflicts.Blocks.Count == 1 && await WaitFor(OnScreen, 5),
+                    "a merge conflict is found, with Keep mine, Take theirs and Keep both on its first line, on screen");
+                Snap(window, outDir, "05c-merge-conflict");
+                ed.Conflicts.Resolve(0, LeanStudio.Core.Editing.ConflictChoice.Theirs);
+                Check(cf.Document.Text == "theorem a : True := trivial\ntheorem b : 1 = 1 := by decide\ntheorem c : True := trivial\n" && ed.Conflicts.Blocks.Count == 0,
+                    "Take theirs settles it: their side stays, the markers go");
+                cf.Document.UndoStack.Undo();
+                Check(ed.Conflicts.Blocks.Count == 1 && cf.Document.Text.Contains("<<<<<<< HEAD", StringComparison.Ordinal), "and one undo brings the conflict back");
+                await vm.CloseDocumentCommand.ExecuteAsync(cf);
+            }
+            finally
+            {
+                File.Delete(scopesFile);
+                File.Delete(conflictFile);
+            }
+
+            DocumentViewModel readme = (await vm.OpenFileAsync(Path.Combine(vm.Project!.Root, "README.md")))!;
+            vm.OpenMarkdownPreview();
+            window.UpdateLayout();
+            MarkdownView? preview = window.GetVisualDescendants().OfType<MarkdownView>().FirstOrDefault();
+            Check(vm.RightTab == MainViewModel.PreviewTab && vm.MarkdownPreview.Count > 0 && preview is { ElementCount: > 0 } && vm.MarkdownTitle == "README.md",
+                $"the Markdown preview draws the README ({vm.MarkdownPreview.Count} blocks)");
+            int blocks = vm.MarkdownPreview.Count;
+            readme.Document.Insert(readme.Document.TextLength, "\n\n## Added\n\nA new paragraph.\n");
+            Check(await WaitFor(() => vm.MarkdownPreview.Count == blocks + 2, 5), "and follows its edits");
+            Snap(window, outDir, "05d-markdown-preview");
+            readme.Document.UndoStack.Undo();
+            await vm.CloseDocumentCommand.ExecuteAsync(readme);
+            vm.RightTab = MainViewModel.GoalsTab;
+            vm.ActiveDocument = doc;
+
+            // A side-by-side diff of the file against its last commit, after one edit.
+            doc.Document.Insert(0, "-- a line added for the diff\n");
+            await vm.DiffActiveWithHeadAsync();
+            DiffWindow? diff = window.OwnedWindows.OfType<DiffWindow>().LastOrDefault();
+            Check(diff is not null && diff.View.Changes.Count == 1 && diff.View.Summary.Contains("+1 −0", StringComparison.Ordinal)
+                && diff.View.Request.LeftTitle.StartsWith("Basic.lean at HEAD (", StringComparison.Ordinal),
+                $"Compare with the Last Commit opens a side-by-side diff with the one change ({diff?.View.Summary})");
+            diff?.View.Step(1);
+            Check(diff?.View.CurrentChange == 0 && diff.View.Rows[0] == new LeanStudio.Core.Editing.DiffRow(LeanStudio.Core.Editing.DiffKind.Added, null, 0)
+                && diff.View.LeftEditor.Document.LineCount == diff.View.RightEditor.Document.LineCount,
+                "the two sides stay level, the added line blank on the left, and Next change goes to it");
+            if (diff is not null)
+            {
+                Snap(diff, outDir, "05e-side-by-side-diff");
+                diff.Close();
+            }
+            doc.Document.UndoStack.Undo();
+
+            // On a long file, the two sides scroll together.
+            string longLeft = string.Concat(Enumerable.Range(1, 300).Select(i => $"theorem t{i} : True := trivial\n"));
+            vm.ShowDiff(new DiffRequest("Long", "before", longLeft, "after", longLeft.Replace("theorem t250 ", "theorem t250' ", StringComparison.Ordinal), "Long.lean"));
+            DiffWindow? longDiff = window.OwnedWindows.OfType<DiffWindow>().LastOrDefault();
+            longDiff?.View.Step(1);
+            Check(longDiff is not null && await WaitFor(() => longDiff.View.RightEditor.VerticalOffset > 1000
+                    && Math.Abs(longDiff.View.RightEditor.VerticalOffset - longDiff.View.LeftEditor.VerticalOffset) < 1, 5),
+                $"on a long file, Next change scrolls both sides to it, together ({longDiff?.View.LeftEditor.VerticalOffset:F0} and {longDiff?.View.RightEditor.VerticalOffset:F0} px)");
+            longDiff?.Close();
+
+            // The integrated terminal: a real shell, started in the project's folder when the tab is first shown.
+            vm.BottomTab = MainViewModel.TerminalPanel;
+            Check(await WaitFor(() => vm.Terminal is not null, 20), $"showing the Terminal tab starts a shell ({vm.TerminalStatus})");
+            if (vm.Terminal is LeanStudio.App.Services.TerminalSession shell)
+            {
+                shell.Run("echo leanstudio-$((6*7)) && lake --version");
+                Check(await WaitFor(() => shell.ScreenText.Contains("leanstudio-42", StringComparison.Ordinal) && shell.ScreenText.Contains("Lake version", StringComparison.Ordinal), 30),
+                    "it runs commands, with lake on its path");
+                window.UpdateLayout();
+                TerminalView? tv = window.GetVisualDescendants().OfType<TerminalView>().FirstOrDefault();
+                Check(tv is { IsEffectivelyVisible: true } && shell.Term.Cols > 40 && shell.Term.Cols == tv.FitSize().Cols,
+                    $"its screen fits the panel ({shell.Term.Cols}×{shell.Term.Rows})");
+                Snap(window, outDir, "05f-terminal");
+                int pid = shell.Pid;
+                await vm.KillTerminalCommand.ExecuteAsync(null);
+                static bool Alive(int id)
+                {
+                    try
+                    {
+                        using var p = System.Diagnostics.Process.GetProcessById(id);
+                        return !p.HasExited;
+                    }
+                    catch (ArgumentException)
+                    {
+                        return false;
+                    }
+                }
+                Check(vm.Terminal is null && await WaitFor(() => !Alive(pid), 5), "Stop ends the shell");
+            }
+            vm.BottomTab = MainViewModel.ProblemsPanel;
+
+            // AI completion as you type, with a stand-in model: what Lean accepts is shown as grey text, Tab takes it.
+            string inlineFile = Path.Combine(proofsDir, "Inline.lean");
+            try
+            {
+                File.WriteAllText(inlineFile, "theorem comm_inline (a b : Nat) : a + b = b + a := by\n");
+                DocumentViewModel il = (await vm.OpenFileAsync(inlineFile))!;
+                await WaitFor(() => !il.IsProcessing, 60);
+                var good = new LeanStudio.Snapshot.ScriptedModel("```lean\nomega\n```");
+                vm.ModelOverride = good;
+                vm.Settings.AiCompletions = true;
+                ed.ApplySettings(vm.Settings);
+                il.Document.Insert(il.Document.TextLength, "  ");
+                ed.TextEditor.CaretOffset = il.Document.TextLength;
+                Check(await WaitFor(() => ed.Suggestion is { Text: "omega", Checked: true }, 90),
+                    $"after a pause, the model's suggestion is shown as grey text, once Lean has checked it ({good.Asked} asked)");
+                Snap(window, outDir, "05g-ai-inline");
+                Check(ed.AcceptSuggestion() && il.Document.Text.EndsWith("  omega", StringComparison.Ordinal) && ed.Suggestion is null,
+                    "Tab takes it into the text");
+                var bad = new LeanStudio.Snapshot.ScriptedModel("exact Nat.no_such_lemma");
+                vm.ModelOverride = bad;
+                il.Document.Insert(il.Document.TextLength, "\n  ");
+                ed.TextEditor.CaretOffset = il.Document.TextLength;
+                Check(await WaitFor(() => bad.Asked > 0, 30) && !await WaitFor(() => ed.Suggestion is not null, 8),
+                    "a suggestion Lean rejects is never shown");
+                il.Document.UndoStack.Undo();
+                il.Document.UndoStack.Undo();
+                il.Document.UndoStack.Undo();
+                await vm.CloseDocumentCommand.ExecuteAsync(il);
+            }
+            finally
+            {
+                vm.ModelOverride = null;
+                vm.Settings.AiCompletions = false;
+                ed.ApplySettings(vm.Settings);
+                File.Delete(inlineFile);
+            }
+            vm.ActiveDocument = doc;
+        }
+
         Console.WriteLine("prove it, why not proved, timing, walkthrough");
         vm.ActiveDocument = doc;
         vm.SidebarTab = MainViewModel.FilesTab;

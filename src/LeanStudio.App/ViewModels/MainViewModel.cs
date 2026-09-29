@@ -250,6 +250,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         FollowActiveDocument(value);
         ScheduleLiveProfile(value, 200);
+        PreviewFollow(value);
         if (value is null)
         {
             Info.Clear("No file open");
@@ -580,6 +581,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     private async Task StartServerAsync()
     {
         await StopServerAsync();
+        if (Project is not null)
+        {
+            await PrepareRemoteAsync(Project.Root);
+        }
         RemoteTarget? remote = Project is null ? null : RemoteTargets.For(Project.Root);
         if (Project is null || (!Elan.IsInstalled && remote is null))
         {
@@ -595,7 +600,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         ToolchainLabel = Project.Toolchain ?? (fallback is null ? "elan default" : fallback + " (not pinned)");
         if (remote is not null)
         {
-            ToolchainLabel += " on " + remote.Host;
+            ToolchainLabel += (remote.Kind == RemoteKind.Ssh ? " on " : " in ") + remote.Describe();
         }
         var server = new LeanServer(cmd);
         if (Settings.LogServerMessages)
@@ -876,6 +881,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ScheduleAutoSave(doc);
         ForgetToolProblems(doc.Path);
+        MarkdownEdited(doc);
         if (doc.IsC)
         {
             CEdited(doc);
@@ -1613,6 +1619,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         await StopServerAsync();
         await StopClangdAsync();
         await StopInfoviewAsync();
+        if (Terminal is TerminalSession shell)
+        {
+            await shell.DisposeAsync();
+        }
         // The on-device model's server, if Lean Studio started one.
         Core.Ai.AppleIntelligence.Shutdown();
         _tenet?.Dispose();

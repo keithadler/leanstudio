@@ -80,11 +80,12 @@ The same executable runs in several modes, chosen in [`Program.cs`](../src/LeanS
 LeanStudio.Plugins   (no dependencies beyond .NET)
 LeanStudio.Lsp       (no dependencies beyond .NET)
       ▲
-LeanStudio.Core  ──► LeanStudio.Plugins, Tenet.Olean ──► Tenet.Kernel (external/tenet)
+LeanStudio.Core  ──► LeanStudio.Plugins, Markdig (Markdown), Tenet.Olean ──► Tenet.Kernel (external/tenet)
       ▲
 LeanStudio.Mcp
       ▲
-LeanStudio.App   ──► Avalonia, Avalonia.Controls.WebView, AvaloniaEdit (+ TextMate), CommunityToolkit.Mvvm
+LeanStudio.App   ──► Avalonia, Avalonia.Controls.WebView, AvaloniaEdit (+ TextMate), CommunityToolkit.Mvvm,
+                     Porta.Pty (pseudo-terminals), XTerm.NET (the terminal emulator)
 
 tests/LeanStudio.Tests         ──► Mcp (and so Core, Lsp and Plugins); xUnit v3; builds samples/Plugins/HelloLean
 tools/LeanStudio.Snapshot      ──► App; Avalonia.Headless, Avalonia.Skia
@@ -112,7 +113,7 @@ build. [`global.json`](../global.json) pins the .NET SDK (10.0.100, rolling forw
 | [`EditorFeatures.cs`](../src/LeanStudio.Lsp/EditorFeatures.cs) | More of `LeanServer` (a partial class): semantic tokens, inlay hints, document highlights, the call hierarchy, user widgets (`Lean.Widget.getWidgets`), interactive diagnostics and trace trees fetched level by level. |
 | [`InteractiveGoals.cs`](../src/LeanStudio.Lsp/InteractiveGoals.cs) | Lean's `getInteractiveGoals` RPC. Goals arrive as `TaggedText`, flattened into a `TaggedString`: plain text plus the span of every subterm, with its RPC reference (for hovering subterms) and its diff status (for the green and struck-through before-and-after view). `GoalFilter` is the Tactic State's ⋯ menu (hide types, instances, inaccessible names, let values). |
 | [`CLanguageServer.cs`](../src/LeanStudio.Lsp/CLanguageServer.cs) | clangd, for the C files of a project's FFI code. Lean's headers are passed as fallback flags, so `#include <lean/lean.h>` resolves without writing anything into the project. It reuses `LeanServer`'s hover, definition and completion parsing. |
-| [`Remote.cs`](../src/LeanStudio.Lsp/Remote.cs) | `RemoteTarget`: a project on another machine, reached through a local mount, with Lean's tools run there over `ssh`. Paths are rewritten both ways, so everything in the editor names local files. `RemoteTargets` is the registry that `LeanServer` and `ProcessRunner` look a working folder up in. |
+| [`Remote.cs`](../src/LeanStudio.Lsp/Remote.cs) | `RemoteTarget`: a project whose Lean runs elsewhere, on another machine over `ssh` (through a local mount), in a container, or in WSL. Paths are rewritten both ways, so everything in the editor names local files. `RemoteTargets` is the registry that `LeanServer` and `ProcessRunner` look a working folder up in. |
 | [`Protocol.cs`](../src/LeanStudio.Lsp/Protocol.cs) | The LSP and Lean records: `Position`, `Range`, `Diagnostic`, `ProofMark`, file progress, goals, hover, completion, code actions and so on. |
 
 Positions follow LSP everywhere: 0-based lines and UTF-16 columns. Code converts to 1-based numbers only when it
@@ -205,9 +206,9 @@ generators.
 | Folder | What it holds |
 |---|---|
 | [`ViewModels/`](../src/LeanStudio.App/ViewModels) | `MainViewModel` is the window's state: the open project, its Lean server, the open documents and every panel. It is one partial class split by area, listed below. Each panel has its own view model: `InfoViewModel` (Tactic State, with `ProofSearchViewModel` for the Prove It card), `NavigatorViewModel` (Library), `VerificationViewModel` (Tenet), `SourceControlViewModel` (Git), `ToolchainsViewModel` and `LearnViewModel`. `DocumentViewModel` is one open file; `FileNode` is one entry in the file tree. |
-| [`Views/`](../src/LeanStudio.App/Views) | XAML views and their code-behind: `MainWindow`, `WelcomeView`, `InfoView`, `NavigatorView`, `VerificationView`, `SourceControlView`, `ToolchainsView`, `LearnView`, `BuildDashboard` and `ProfilerView`. Some are built in code: `Dialogs` (prompts, confirmations, Preferences), `Picker` (Go to File, the command palette and the other pickers), `ProjectMapView` and `ProjectMapWindow`, `FlameGraph` (the profiler's trace, drawn), `ProofStatesWindow`, `AiChatWindow` and `AiDialogs`, `InfoviewPane` (the platform's web view) and `SubtermText` (goal text you can hover into). |
-| [`Editor/`](../src/LeanStudio.App/Editor) | The AvaloniaEdit-based editor: `LeanEditor` (Unicode input, completion, hovers, brackets, go to definition), `EditorVimHost` (the host for Core's Vim and Emacs engines), `MultiCursorLayer`, `SemanticColorizer`, `OccurrenceHighlighter` and `InlayHintGenerator` (what Lean knows about the text), and the renderers and margins for diagnostics, inline `#eval` results, timing tints, proof-end marks and the gutter badges (`StatusMargin`). |
-| [`Services/`](../src/LeanStudio.App/Services) | `Settings` (persisted preferences and window state), `PluginHost`, `InfoviewAssets` (the vendored infoview page, embedded from `Infoview/`), `LeanRegistryOptions` (TextMate grammar for Lean in `Assets/lean4.tmLanguage.json`), `TaskbarProgress` (progress on the Dock icon and the Windows taskbar), `MacQuitEvent` (answering macOS's quit Apple Event) and `Credits` (version and author). |
+| [`Views/`](../src/LeanStudio.App/Views) | XAML views and their code-behind: `MainWindow`, `WelcomeView`, `InfoView`, `NavigatorView`, `VerificationView`, `SourceControlView`, `ToolchainsView`, `LearnView`, `BuildDashboard` and `ProfilerView`. Some are built in code: `DiffWindow` (side-by-side diffs, from Core's `TextDiff`), `MarkdownView` (the preview, from Core's `MarkdownModel`), `TerminalView` (the terminal's screen), `Dialogs` (prompts, confirmations, Preferences), `Picker` (Go to File, the command palette and the other pickers), `ProjectMapView` and `ProjectMapWindow`, `FlameGraph` (the profiler's trace, drawn), `ProofStatesWindow`, `AiChatWindow` and `AiDialogs`, `InfoviewPane` (the platform's web view) and `SubtermText` (goal text you can hover into). |
+| [`Editor/`](../src/LeanStudio.App/Editor) | The AvaloniaEdit-based editor: `LeanEditor` (Unicode input, completion, hovers, brackets, go to definition), `EditorVimHost` (the host for Core's Vim and Emacs engines), `MultiCursorLayer`, `SemanticColorizer`, `OccurrenceHighlighter` and `InlayHintGenerator` (what Lean knows about the text), the renderers and margins for diagnostics, inline `#eval` results, timing tints, proof-end marks and the gutter badges (`StatusMargin`), and around the text: `StickyScroll` and `Breadcrumbs` (in `EditorChrome.cs`, from Core's `LeanScopes`), `Minimap`, `ConflictLayer` (merge conflicts, from Core's `MergeConflicts`), `GhostText` (AI completion as you type) and `EditorScroll` (scrolling to a pixel offset, which AvaloniaEdit's own method does not do). |
+| [`Services/`](../src/LeanStudio.App/Services) | `Settings` (persisted preferences and window state), `PluginHost`, `InfoviewAssets` (the vendored infoview page, embedded from `Infoview/`), `LeanRegistryOptions` (TextMate grammar for Lean in `Assets/lean4.tmLanguage.json`), `TaskbarProgress` (progress on the Dock icon and the Windows taskbar), `TerminalSession` (a shell on a pseudo-terminal, fed to xterm's emulator), `MacQuitEvent` (answering macOS's quit Apple Event) and `Credits` (version and author). |
 
 `MainViewModel`'s parts:
 
@@ -229,7 +230,10 @@ generators.
 | [`.BuildView.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.BuildView.cs) | Modules compiling now, marks in the file tree, module timings, re-checking files after a build |
 | [`.Infoview.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Infoview.cs) | Lean's own infoview in the tab or the browser |
 | [`.Split.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Split.cs) | The split editor |
-| [`.Remote.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Remote.cs) | Projects on another machine |
+| [`.Remote.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Remote.cs) | Projects on another machine, in a dev container or in WSL |
+| [`.Terminal.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Terminal.cs) | The integrated terminal |
+| [`.Diff.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Diff.cs) | Side-by-side diffs |
+| [`.Markdown.cs`](../src/LeanStudio.App/ViewModels/MainViewModel.Markdown.cs) | The Markdown preview |
 
 The view model never touches a window directly. What it needs from the UI (file pickers, prompts, confirmations,
 revealing a file) goes through the `IDialogs` interface, which `MainWindow` implements, and it raises events (such
@@ -474,7 +478,12 @@ version, and so does every edit Replace in Files makes to a file that isn't open
 **Remote projects.** A `RemoteTarget` pairs an SSH host and folder with a local mount. Once it is registered,
 `LeanServer` and `ProcessRunner` run Lean's tools (`lake`, `lean`, `elan` and the rest, `RemoteTarget.IsLeanTool`)
 there over `ssh`, and every path in and out is rewritten, so the rest of the app only ever sees local files.
-Remote projects are kept in `Settings.RemoteProjects`.
+Remote projects are kept in `Settings.RemoteProjects`. A target's `Kind` says how the tools get there: SSH, a
+container (`docker exec -i`, for a dev container, which `DevContainer` finds by the `devcontainer.local_folder` label
+or starts with `devcontainer up`, and whose mount of the folder takes the place of sshfs), or WSL (`wsl.exe -d`,
+set up by itself for a `\\wsl.localhost\…` folder by `RemoteTarget.ForWslPath`). The command inside is the same
+`sh -c` line for all three. A dev container's id is looked up each time the project opens, since it changes when the
+container is rebuilt.
 
 **Updates.** While update checks are on (`Settings.CheckForUpdates`), the window asks `UpdateChecker` for the
 latest GitHub release at most every 20 hours, and it offers the build for this runtime (`CurrentRuntime`; the

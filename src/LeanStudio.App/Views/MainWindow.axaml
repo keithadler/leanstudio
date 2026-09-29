@@ -50,6 +50,8 @@
         <MenuItem Header="Save All" Command="{Binding SaveAllCommand}" InputGesture="{OnPlatform Default='Ctrl+Shift+S', macOS='Cmd+Shift+S'}" />
         <MenuItem Header="Auto Save" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoSave}" Click="OnApplySettings" />
         <MenuItem Header="Local History…" Click="OnLocalHistory" />
+        <MenuItem Header="Compare with a Saved Version…" Click="OnCompareWithVersion" />
+        <MenuItem Header="Compare with the Last Commit" Command="{Binding DiffActiveWithHeadCommand}" />
         <Separator />
         <MenuItem Header="Export Proof Walkthrough…" Command="{Binding ExportWalkthroughCommand}" />
         <MenuItem Header="Open in the Lean 4 Web Editor" Command="{Binding OpenInWebEditorCommand}" />
@@ -80,6 +82,11 @@
         <MenuItem Header="Smaller Font" Click="OnFontSmaller" InputGesture="{OnPlatform Default='Ctrl+OemMinus', macOS='Cmd+OemMinus'}" />
         <MenuItem Header="Line Numbers" ToggleType="CheckBox" IsChecked="{Binding Settings.ShowLineNumbers}" Click="OnApplySettings" />
         <MenuItem Header="Word Wrap" ToggleType="CheckBox" IsChecked="{Binding Settings.WordWrap}" Click="OnApplySettings" InputGesture="Alt+Z" />
+        <MenuItem Header="Sticky Scroll" ToggleType="CheckBox" IsChecked="{Binding Settings.StickyScroll}" Click="OnApplySettings" />
+        <MenuItem Header="Breadcrumbs" ToggleType="CheckBox" IsChecked="{Binding Settings.Breadcrumbs}" Click="OnApplySettings" />
+        <MenuItem Header="Minimap" ToggleType="CheckBox" IsChecked="{Binding Settings.Minimap}" Click="OnApplySettings" />
+        <MenuItem Header="Markdown Preview" Command="{Binding OpenMarkdownPreviewCommand}" />
+        <MenuItem Header="Terminal" Command="{Binding ShowTerminalCommand}" InputGesture="Ctrl+OemTilde" />
         <MenuItem Header="Vim Mode" ToggleType="CheckBox" IsChecked="{Binding Settings.VimMode}" Click="OnApplySettings" />
         <MenuItem Header="Emacs Keys" ToggleType="CheckBox" IsChecked="{Binding Settings.EmacsMode}" Click="OnApplySettings" />
         <MenuItem Header="Keyboard Shortcuts File (keybindings.json)" Click="OnEditKeybindings" />
@@ -330,6 +337,7 @@
                   <Separator />
                   <MenuItem Header="Reveal in File Manager" Click="OnTreeReveal" />
                   <MenuItem Header="Open in Terminal" Click="OnTreeTerminal" />
+                  <MenuItem Header="Open in External Terminal" Click="OnTreeExternalTerminal" />
                   <MenuItem Header="Copy Path" Click="OnTreeCopyPath" />
                   <MenuItem Header="Copy Relative Path" Click="OnTreeCopyRelative" />
                 </ContextMenu>
@@ -592,6 +600,18 @@
               </Panel>
             </DockPanel>
           </TabItem>
+          <TabItem Header="Terminal" ToolTip.Tip="Your shell, in the project's folder, with lake and lean on its path (⌃`)">
+            <DockPanel Margin="8,4">
+              <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,4">
+                <TextBlock Text="{Binding TerminalStatus}" Classes="dim" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <Button Grid.Column="1" Classes="chip" Content="New" Command="{Binding NewTerminalCommand}" Margin="6,0,0,0"
+                        ToolTip.Tip="Stop this shell and start another in the project's folder" />
+                <Button Grid.Column="2" Classes="chip" Content="Stop" Command="{Binding KillTerminalCommand}" Margin="6,0,0,0"
+                        ToolTip.Tip="Stop the shell and everything it runs" />
+              </Grid>
+              <v:TerminalView x:Name="Terminal" Session="{Binding Terminal}" />
+            </DockPanel>
+          </TabItem>
         </TabControl>
       </Grid>
 
@@ -612,6 +632,12 @@
         <TabItem Header="Infoview" ToolTip.Tip="Lean's own infoview, the one VS Code uses: ProofWidgets and every other widget">
           <!-- Where the infoview goes; the pane itself is laid over it (below), so it isn't reloaded on each tab switch. -->
           <Border x:Name="InfoviewSlot" Background="{DynamicResource PanelBackground}" />
+        </TabItem>
+        <TabItem Header="Preview" ToolTip.Tip="The Markdown file being edited, as it will read (View ▸ Markdown Preview)">
+          <DockPanel Background="{DynamicResource PanelBackground}">
+            <TextBlock DockPanel.Dock="Top" Text="{Binding MarkdownTitle}" Classes="dim" FontSize="12" Margin="18,8,18,0" TextTrimming="CharacterEllipsis" />
+            <v:MarkdownView x:Name="MarkdownPreview" Blocks="{Binding MarkdownPreview}" BaseFolder="{Binding MarkdownFolder}" />
+          </DockPanel>
         </TabItem>
       </TabControl>
       <v:InfoviewPane x:Name="InfoviewHost" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" />

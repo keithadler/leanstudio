@@ -67,6 +67,50 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>A model to use instead of looking for one (for the snapshot run, which has none).</summary>
+    public IChatModel? ModelOverride { get; set; }
+
+    /// <summary>
+    /// A suggestion to show at <paramref name="offset"/> of <paramref name="text"/> (the document's text now), from
+    /// the model in use; in a Lean file only when Lean accepts it. Null when there is no model or nothing to suggest.
+    /// Model errors are logged once and otherwise ignored: completion as you type must never get in the way.
+    /// </summary>
+    public async Task<InlineSuggestion?> SuggestInlineAsync(DocumentViewModel doc, string text, int offset, CancellationToken ct = default)
+    {
+        IChatModel? model = ModelOverride ?? (await AiModelAsync(ct)).Model;
+        if (model is null)
+        {
+            return null;
+        }
+        string suggestion;
+        try
+        {
+            suggestion = await InlineCompletion.SuggestAsync(model, text, offset, Path.GetFileName(doc.Path), ct);
+        }
+        catch (AiException e)
+        {
+            if (!_inlineWarned)
+            {
+                _inlineWarned = true;
+                Log("AI completion: " + e.Message);
+            }
+            return null;
+        }
+        if (suggestion.Length == 0)
+        {
+            return null;
+        }
+        if (!doc.IsLean || _server is not { State: LeanServerState.Running } server)
+        {
+            return new InlineSuggestion(offset, suggestion, false);
+        }
+        return await InlineCompletion.CheckWithLeanAsync(server, doc.Path, text, offset, suggestion, ct)
+            ? new InlineSuggestion(offset, suggestion, true)
+            : null;
+    }
+
+    private bool _inlineWarned;
+
     /// <summary>Look for the model again next time: the settings changed, or the model stopped answering.</summary>
     public void ForgetAiModel()
     {

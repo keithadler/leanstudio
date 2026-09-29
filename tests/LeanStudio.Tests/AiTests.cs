@@ -304,6 +304,28 @@ public sealed class AiLeanTests
         }
     }
 
+    [Fact]
+    public async Task SuggestsAsYouTypeOnlyWhatLeanAccepts()
+    {
+        Lean.RequireLean();
+        var ct = TestContext.Current.CancellationToken;
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        await server.StartAsync(ct);
+        string path = Path.Combine(dir, "Inline.lean");
+        const string text = "theorem comm (a b : Nat) : a + b = b + a := by\n  \n";
+        int offset = text.IndexOf("  \n", StringComparison.Ordinal) + 2;
+
+        // The model echoes the line and wraps its answer in a fence; the suggestion is the tactic alone.
+        var model = new Scripted("```lean\nomega\n```");
+        string suggestion = await InlineCompletion.SuggestAsync(model, text, offset, "Inline.lean", ct);
+        Assert.Equal("omega", suggestion);
+        Assert.Contains("<CURSOR>", model.Prompts[0], StringComparison.Ordinal);
+        Assert.True(await InlineCompletion.CheckWithLeanAsync(server, path, text, offset, suggestion, ct).WaitAsync(Lean.Patience, ct));
+        // A suggestion Lean rejects is not offered.
+        Assert.False(await InlineCompletion.CheckWithLeanAsync(server, path, text, offset, "exact Nat.no_such_lemma", ct).WaitAsync(Lean.Patience, ct));
+    }
+
     private const string Text = """
         theorem comm (a b : Nat) : a + b = b + a := by
           sorry

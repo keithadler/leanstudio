@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window, IDialogs
         DataContext = _vm;
         _vm.ProjectMapReady += map => ShowProjectMap(map);
         _vm.ProofStatesReady += result => ShowProofStates(result);
+        _vm.DiffRequested += request => new DiffWindow(request).Show(this);
         _vm.AiChatRequested += question => _ = ShowAiChatAsync(question);
         this.FindControl<OutputView>("OutputView")!.DataContext = _vm;
         this.FindControl<CodeView>("CView")!.DataContext = _vm;
@@ -129,6 +130,7 @@ public sealed partial class MainWindow : Window, IDialogs
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(Avalonia.Input.DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
         InfoviewHost.DataContext = _vm;
         InfoviewSlot.SizeChanged += (_, _) => PlaceInfoview();
+        MarkdownPreview.LinkClicked += url => _ = _vm.OpenMarkdownLinkAsync(url);
         InfoviewSlot.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(PlaceInfoview, DispatcherPriority.Loaded);
         InfoviewSlot.DetachedFromVisualTree += (_, _) => PlaceInfoview();
         _vm.PropertyChanged += (_, e) =>
@@ -560,6 +562,7 @@ public sealed partial class MainWindow : Window, IDialogs
             (Key.OemMinus, false, false) when OperatingSystem.IsMacOS() && e.KeyModifiers == KeyModifiers.Control => () => _vm.GoBackCommand.Execute(null),
             (Key.OemMinus, false, true) when OperatingSystem.IsMacOS() && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) => () => _vm.GoForwardCommand.Execute(null),
             (Key.J, true, false) => () => TogglePanel(),
+            (Key.OemTilde, false, false) when e.KeyModifiers == KeyModifiers.Control => () => ToggleTerminal(),
             (Key.B, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleSidebar(),
             (Key.I, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => ToggleInfo(),
             (Key.Z, true, false) when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => () => Zen(),
@@ -577,6 +580,8 @@ public sealed partial class MainWindow : Window, IDialogs
     private void OnRunTask(object? sender, RoutedEventArgs e) => _ = RunTaskAsync();
     private void OnRunShell(object? sender, RoutedEventArgs e) => _ = RunShellAsync();
     private void OnLocalHistory(object? sender, RoutedEventArgs e) => _ = LocalHistoryAsync();
+
+    private void OnCompareWithVersion(object? sender, RoutedEventArgs e) => _ = CompareWithVersionAsync();
     private void OnToggleSidebar(object? sender, RoutedEventArgs e) => ToggleSidebar();
     private void OnTogglePanel(object? sender, RoutedEventArgs e) => TogglePanel();
     private void OnToggleInfo(object? sender, RoutedEventArgs e) => ToggleInfo();
@@ -699,6 +704,23 @@ public sealed partial class MainWindow : Window, IDialogs
         }
     }
 
+    /// <summary>⌃`: show the terminal (starting a shell if needed) and put the keyboard in it, or go back to the editor.</summary>
+    private void ToggleTerminal()
+    {
+        TerminalView? view = this.FindControl<TerminalView>("Terminal");
+        if (_vm.BottomTab == MainViewModel.TerminalPanel && view?.IsFocused == true)
+        {
+            EditorControl.TextEditor.TextArea.Focus();
+            return;
+        }
+        if (Hidden(CenterGrid.RowDefinitions[3].Height))
+        {
+            TogglePanel();
+        }
+        _ = _vm.ShowTerminalAsync();
+        Dispatcher.UIThread.Post(() => view?.Focus(), DispatcherPriority.Background);
+    }
+
     /// <summary>Hide the bottom panel (problems, output), or show it again at the height it had.</summary>
     public void TogglePanel()
     {
@@ -779,6 +801,20 @@ public sealed partial class MainWindow : Window, IDialogs
             _vm.Settings.LastShellCommand = command;
             await _vm.RunTaskAsync(Core.Workflow.ProjectTasks.Shell(command));
         }
+    }
+
+    private Task CompareWithVersionAsync()
+    {
+        IReadOnlyList<Core.Workflow.HistoryEntry> versions = _vm.VersionsOfActive();
+        if (versions.Count == 0)
+        {
+            _vm.Log("No saved versions of this file yet: each save keeps one.");
+            return Task.CompletedTask;
+        }
+        return Picker.ShowAsync(this, "Compare with a saved version, side by side", (q, _) => Task.FromResult<IReadOnlyList<PickerItem>>(
+            versions.Where(v => v.Label.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Select(v => new PickerItem(v.Label, $"{new FileInfo(v.SnapshotFile).Length:N0} bytes", () => { _vm.DiffWithVersion(v); return Task.CompletedTask; }))
+                .ToList()));
     }
 
     private Task LocalHistoryAsync()
@@ -904,6 +940,14 @@ public sealed partial class MainWindow : Window, IDialogs
     }
 
     private void OnTreeTerminal(object? sender, RoutedEventArgs e)
+    {
+        if (TargetFolder is string folder)
+        {
+            _ = _vm.OpenTerminalInAsync(folder);
+        }
+    }
+
+    private void OnTreeExternalTerminal(object? sender, RoutedEventArgs e)
     {
         if (TargetFolder is string folder && !Core.Workflow.FileOps.OpenTerminal(folder))
         {
@@ -1062,12 +1106,22 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Refactor: Replace in Files…", "", Act(() => { _vm.ShowSearch(null); }));
         yield return ("Lean: Run Shell Command…", "", RunShellAsync);
         yield return ("File: Local History…", "", LocalHistoryAsync);
+        yield return ("File: Compare with a Saved Version (side by side)…", "", CompareWithVersionAsync);
+        yield return ("Git: Compare with the Last Commit (side by side)", "", Cmd(_vm.DiffActiveWithHeadCommand));
         yield return ("File: Toggle Auto Save", "", Act(() => { _vm.Settings.AutoSave = !_vm.Settings.AutoSave; ApplySettings(); _vm.Log("Auto save " + (_vm.Settings.AutoSave ? "on" : "off")); }));
         yield return ("View: Toggle Sidebar", m + "⌥B", Act(ToggleSidebar));
         yield return ("View: Toggle Bottom Panel", m + "J", Act(TogglePanel));
         yield return ("View: Toggle Tactic State", m + "⌥I", Act(ToggleInfo));
         yield return ("View: Zen Mode", m + "⌥Z", Act(Zen));
         yield return ("View: Toggle Word Wrap", "⌥Z", Act(() => { _vm.Settings.WordWrap = !_vm.Settings.WordWrap; ApplySettings(); }));
+        yield return ("View: Toggle Sticky Scroll", "", Act(() => { _vm.Settings.StickyScroll = !_vm.Settings.StickyScroll; ApplySettings(); }));
+        yield return ("View: Toggle Breadcrumbs", "", Act(() => { _vm.Settings.Breadcrumbs = !_vm.Settings.Breadcrumbs; ApplySettings(); }));
+        yield return ("View: Toggle Minimap", "", Act(() => { _vm.Settings.Minimap = !_vm.Settings.Minimap; ApplySettings(); }));
+        yield return ("Markdown: Open Preview", "", Cmd(_vm.OpenMarkdownPreviewCommand));
+        yield return ("View: Terminal", "⌃`", Act(ToggleTerminal));
+        yield return ("AI: Toggle Completion as You Type", "", Act(() => { _vm.Settings.AiCompletions = !_vm.Settings.AiCompletions; ApplySettings(); _vm.Log($"AI completion as you type is {(_vm.Settings.AiCompletions ? "on" : "off")}."); }));
+        yield return ("Terminal: New Terminal", "", Cmd(_vm.NewTerminalCommand));
+        yield return ("Terminal: Stop the Shell", "", Cmd(_vm.KillTerminalCommand));
         yield return ("View: Toggle Vim Mode", "", Act(() => { _vm.Settings.VimMode = !_vm.Settings.VimMode; ApplySettings(); _vm.Log("Vim mode " + (_vm.Settings.VimMode ? "on" : "off")); }));
         yield return ("View: Sorries & TODOs", "", Act(() => { _vm.BottomTab = MainViewModel.MarkersPanel; _ = _vm.RefreshMarkersAsync(); }));
         yield return ("Library: Search Mathlib with Loogle", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
@@ -1134,6 +1188,7 @@ public sealed partial class MainWindow : Window, IDialogs
             yield return (title, "", run);
         }
         yield return ("Remote: Open a Project on Another Machine (SSH)…", "", OpenRemoteProjectAsync);
+        yield return ("Remote: Use the Dev Container (run Lean inside it)", "", Cmd(_vm.UseDevContainerCommand));
         yield return ("Remote: Run This Project's Lean Here Again", "", Cmd(_vm.ForgetRemoteCommand));
         yield return ("Plugins: Open the Plugins Folder", "", OpenPluginsFolderAsync);
         yield return ("Plugins: List Loaded Plugins", "", Act(ListPlugins));

@@ -7,4 +7,7 @@
     <ProjectReference Include="../LeanStudio.Plugins/LeanStudio.Plugins.csproj" />
     <ProjectReference Include="../../external/tenet/src/Tenet.Olean/Tenet.Olean.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="1.4.0" />
+  </ItemGroup>
 </Project>

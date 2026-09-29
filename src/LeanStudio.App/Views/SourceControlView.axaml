@@ -40,6 +40,13 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:ChangeView">
                 <Grid ColumnDefinitions="18,*,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Compare Side by Side" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).CompareChangeCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Show Diff" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).OpenChangeCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Open File" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).OpenChangedFileCommand}" CommandParameter="{Binding}" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
                   <TextBlock Text="{Binding Letter}" Foreground="#3FB950" FontWeight="SemiBold" FontSize="12" />
                   <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                     <TextBlock Text="{Binding FileName}" FontSize="12" />
@@ -63,6 +70,13 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:ChangeView">
                 <Grid ColumnDefinitions="18,*,Auto,Auto" ToolTip.Tip="{Binding Tip}" Background="Transparent" DoubleTapped="OnChangeDoubleTapped" Tapped="OnChangeTapped">
+                  <Grid.ContextMenu>
+                    <ContextMenu>
+                      <MenuItem Header="Compare Side by Side" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).CompareChangeCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Show Diff" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).OpenChangeCommand}" CommandParameter="{Binding}" />
+                      <MenuItem Header="Open File" Command="{Binding $parent[UserControl].((vm:SourceControlViewModel)DataContext).OpenChangedFileCommand}" CommandParameter="{Binding}" />
+                    </ContextMenu>
+                  </Grid.ContextMenu>
                   <TextBlock Text="{Binding Letter}" Foreground="#E59E2C" FontWeight="SemiBold" FontSize="12" />
                   <Grid Grid.Column="1" ColumnDefinitions="Auto,*">
                     <TextBlock Text="{Binding FileName}" FontSize="12" />

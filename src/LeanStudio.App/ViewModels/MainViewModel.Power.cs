@@ -14,7 +14,7 @@ public sealed partial class MainViewModel
     /// The right-hand panels' indices in <see cref="RightTab"/>: the Tactic State, the C that Lean emits, and Lean's
     /// own infoview (with widgets).
     /// </summary>
-    public const int GoalsTab = 0, CodeTab = 1, InfoviewTab = 2;
+    public const int GoalsTab = 0, CodeTab = 1, InfoviewTab = 2; // PreviewTab = 3 is in MainViewModel.Markdown.cs
 
     // ---- the C that Lean emits, beside the definition at the cursor ----
 
