@@ -178,7 +178,7 @@ public sealed class McpTests
         Assert.DoesNotContain("simp?", File.ReadAllText(file), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Fact(Timeout = 600_000)]
     public async Task VerifyReadsABuildMadeOutsideTheServer()
     {
         // Issue #2: verify kept returning the declarations of the build it first read, after `lake build` in a terminal.

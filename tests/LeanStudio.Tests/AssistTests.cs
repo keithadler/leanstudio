@@ -432,7 +432,7 @@ public sealed class AssistTests
         Assert.Contains("| 100 ms | −300 ms (−75%) | `a` | 1 |", md, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Fact(Timeout = 600_000)]
     public async Task LiveProfilerFollowsEdits()
     {
         Lean.RequireLean();

@@ -231,7 +231,7 @@ public sealed class RemoteLeanTests : IDisposable
         }
     }
 
-    [Theory]
+    [Theory(Timeout = 600_000)]
     [InlineData(RemoteKind.Container)]
     [InlineData(RemoteKind.Wsl)]
     public async Task LeanRunsInAContainerOrWslWithLocalPaths(RemoteKind kind)

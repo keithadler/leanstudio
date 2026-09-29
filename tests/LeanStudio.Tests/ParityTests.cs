@@ -6,7 +6,7 @@ namespace LeanStudio.Tests;
 /// <summary>What an editor is expected to do (sticky scroll, breadcrumbs, merge conflicts…), on the Core side.</summary>
 public sealed class ParityTests
 {
-    private const string Nested = """
+    private const string NestedRaw = """
         import Mathlib
 
         /-! A module doc: `namespace Fake` in here is not code. -/
@@ -34,6 +34,23 @@ public sealed class ParityTests
 
         example : True := trivial
         """;
+
+    // Checked out on Windows, this file's text blocks have CRLF line endings: the tests use LF, and CRLF on purpose.
+    private static readonly string Nested = NestedRaw.Replace("\r\n", "\n", StringComparison.Ordinal);
+    private static readonly string Conflicted = ConflictedRaw.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+    [Fact]
+    public void ReadsCrlfTextsTheSame()
+    {
+        string crlf = Nested.Replace("\n", "\r\n", StringComparison.Ordinal);
+        int omega = Nested.Split('\n').ToList().FindIndex(l => l.Trim() == "omega");
+        Assert.Equal(LeanScopes.At(Nested, omega), LeanScopes.At(crlf, omega));
+        // A conflict in a CRLF file is found, and settling it keeps the file's line endings.
+        string conflicted = Conflicted.Replace("\n", "\r\n", StringComparison.Ordinal);
+        IReadOnlyList<ConflictBlock> blocks = MergeConflicts.Find(conflicted);
+        Assert.Equal(MergeConflicts.Find(Conflicted), blocks);
+        Assert.StartsWith("theorem a : True := trivial\r\ntheorem b : 1 = 1 := rfl\r\ntheorem d", MergeConflicts.Resolve(conflicted, blocks[0], ConflictChoice.Mine), StringComparison.Ordinal);
+    }
 
     [Fact]
     public void FindsTheScopesAroundALine()
@@ -68,7 +85,7 @@ public sealed class ParityTests
         Assert.Empty(LeanScopes.Sticky(Nested, 0));
     }
 
-    private const string Conflicted = """
+    private const string ConflictedRaw = """
         theorem a : True := trivial
         <<<<<<< HEAD
         theorem b : 1 = 1 := rfl

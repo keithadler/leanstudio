@@ -78,7 +78,7 @@ public sealed class ProfileCheckTests
         }
     }
 
-    [Fact]
+    [Fact(Timeout = 600_000)]
     public async Task CatchesASlowdownInAFileThatDidNotChange()
     {
         Lean.RequireLean();
@@ -149,7 +149,7 @@ public sealed class ProfileCheckTests
         }
     }
 
-    [Fact]
+    [Fact(Timeout = 600_000)]
     public async Task ChecksAChangeAgainstGitFromTheCommandLine()
     {
         Lean.RequireLean();

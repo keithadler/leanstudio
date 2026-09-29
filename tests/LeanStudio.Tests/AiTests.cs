@@ -304,7 +304,7 @@ public sealed class AiLeanTests
         }
     }
 
-    [Fact]
+    [Fact(Timeout = 600_000)]
     public async Task SuggestsAsYouTypeOnlyWhatLeanAccepts()
     {
         Lean.RequireLean();
