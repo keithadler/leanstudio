@@ -248,6 +248,10 @@ public sealed class McpTests
             (profile, perr) = await CallAsync(server, "profile", new JsonObject { ["path"] = "P.lean", ["content"] = slow, ["declaration"] = "nope" });
             Assert.True(perr);
             Assert.Contains("no declaration named nope", profile, StringComparison.Ordinal);
+            // The regression check needs git to compare with.
+            var (check, cerr) = await CallAsync(server, "profile_check", new JsonObject());
+            Assert.True(cerr);
+            Assert.Contains("not in a git repository", check, StringComparison.Ordinal);
 
             File.WriteAllText(file, "theorem u (a b : Nat) (h : a < b) : a + 1 ≤ b := by\n  sorry\n");
             var (ext, eerr) = await CallAsync(server, "extract_lemma", new JsonObject { ["path"] = "P.lean", ["line"] = 2, ["name"] = "step" });

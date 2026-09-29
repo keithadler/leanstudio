@@ -432,6 +432,68 @@ public sealed class AssistTests
         Assert.Contains("| 100 ms | −300 ms (−75%) | `a` | 1 |", md, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task LiveProfilerFollowsEdits()
+    {
+        Lean.RequireLean();
+        string dir = Lean.Sample("Demo");
+        await using var server = new LeanServer(new LeanServerCommand(Lean.Executable!, ["--server"], dir));
+        await server.StartAsync(TestContext.Current.CancellationToken);
+        string path = Path.Combine(dir, "LiveSlow.lean");
+        string text = """
+            /-- A doc comment: the theorem's figures belong to the theorem below it. -/
+            @[simp]
+            theorem slow (x y z w : Int) (h1 : 3*x + 5*y - 7*z + 11*w = 13) (h2 : 2*x - 9*y + 4*z - w = 8)
+                (h3 : x + y + z + w = 1) (h4 : 6*x - 2*y + 3*z - 5*w = 21) : 17*x + 3*y - 2*z + w ≠ 1000 := by
+              omega
+
+            theorem quick (a b : Nat) : a + b = b + a := by
+              simp [Nat.add_comm]
+            """;
+        await using var live = new LiveProfiler(server, path);
+        ProfileReport first = await live.UpdateAsync(text, TestContext.Current.CancellationToken).WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.True(first.Live);
+        Assert.False(File.Exists(path));
+        DeclarationTiming slow = first.Declarations[0];
+        Assert.Equal(2, slow.Line);
+        Assert.Equal("slow", slow.Name);
+        Assert.Single(first.Declarations, d => d.Name == "slow");
+        Assert.Equal("omega", slow.HotPath()[^1].Label);
+        Assert.Equal(4, slow.LineCosts.MaxBy(kv => kv.Value).Key);
+        Assert.Contains(slow.Steps, st => st.What == "tactic execution of omega");
+
+        // An edit below it: Lean re-checks only the edited theorem, and the slow one's tree is kept, not fetched again.
+        ProfileReport second = await live.UpdateAsync(text.Replace("simp [Nat.add_comm]", "omega", StringComparison.Ordinal), TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        DeclarationTiming again = second.Declarations.Single(d => d.Name == "slow");
+        Assert.All(again.Trace, n => Assert.Contains(slow.Trace, m => ReferenceEquals(m, n)));
+        Assert.Equal(slow.Value, again.Value, 9);
+
+        // An edit above it moves it down a line; its figures move with it.
+        ProfileReport third = await live.UpdateAsync("-- a new first line\n" + text, TestContext.Current.CancellationToken)
+            .WaitAsync(Lean.Patience, TestContext.Current.CancellationToken);
+        Assert.Equal(3, third.Declarations.Single(d => d.Name == "slow").Line);
+        await live.DisposeAsync();
+        Assert.False(server.IsOpen(live.Uri));
+    }
+
+    [Fact]
+    public void ProfilerGivesDocCommentsAndAttributesToTheirDeclaration()
+    {
+        string[] lines = ["import Foo", "", "/-- Doc", "over two lines. -/", "@[simp, norm_cast]", "@[ext] -- a comment", "theorem t : p := by", "  simp", "", "/-- one line -/ def f := 1", "@[simp] theorem u : q := rfl"];
+        Assert.Equal(6, Profiler.OwnerOf(lines, 2));
+        Assert.Equal(6, Profiler.OwnerOf(lines, 4));
+        Assert.Equal(6, Profiler.OwnerOf(lines, 7));
+        Assert.Equal(9, Profiler.OwnerOf(lines, 9));
+        Assert.Equal(10, Profiler.OwnerOf(lines, 10));
+        Assert.Equal(0, Profiler.OwnerOf(lines, 0));
+
+        (string instrumented, int inserted) = LiveProfiler.Instrument(string.Join('\n', lines));
+        Assert.Equal(1, inserted);
+        Assert.Equal(LiveProfiler.Options, instrumented.Split('\n')[1]);
+        Assert.Equal((LiveProfiler.Options + "\ntheorem x : True := trivial", 0), LiveProfiler.Instrument("theorem x : True := trivial"));
+    }
+
     [Theory]
     [InlineData("theorem foo (n : Nat) : n = n := rfl", "foo")]
     [InlineData("@[simp] private lemma Nat.bar : True := trivial", "Nat.bar")]

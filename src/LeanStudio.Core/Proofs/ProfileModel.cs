@@ -229,6 +229,12 @@ public sealed record ProfileReport(IReadOnlyList<DeclarationTiming> Declarations
     /// <summary>How many errors Lean reported. Declarations after an error may be cheaper than they would be.</summary>
     public int Errors { get; init; }
 
+    /// <summary>
+    /// From the running server as the file is edited (<see cref="LiveProfiler"/>), rather than a separate run of
+    /// Lean: the figures are from the check the editor just did.
+    /// </summary>
+    public bool Live { get; init; }
+
     /// <summary>Only the declaration at this 0-based line was profiled; null for the whole file.</summary>
     public int? OnlyLine { get; init; }
 

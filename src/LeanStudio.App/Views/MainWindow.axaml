@@ -136,11 +136,15 @@
           <MenuItem Header="Profile File (where the time goes)" Command="{Binding ProfileFileCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+T', macOS='Cmd+Alt+T'}" />
           <MenuItem Header="Profile Declaration at Cursor" Command="{Binding ProfileDeclarationCommand}" />
           <MenuItem Header="Profile Whole Project" Command="{Binding ProfileProjectCommand}" />
+          <MenuItem Header="Profile as You Edit (live)" ToggleType="CheckBox" IsChecked="{Binding ProfileLive}" />
           <Separator />
           <MenuItem Header="Measure Heartbeats (deterministic)" ToggleType="CheckBox" IsChecked="{Binding ProfileHeartbeats}" />
           <MenuItem Header="Count simp Lemmas, Instances and Unfoldings" ToggleType="CheckBox" IsChecked="{Binding ProfileCounters}" />
           <Separator />
           <MenuItem Header="Set Profile as Baseline" Command="{Binding SetProfileBaselineCommand}" />
+          <MenuItem Header="Compare with the Last Commit" Command="{Binding CompareWithHeadCommand}" />
+          <MenuItem Header="Compare with a Branch or Commit…" Command="{Binding CompareWithRevisionPromptCommand}" />
+          <MenuItem Header="Check for Regressions…" Command="{Binding CheckRegressionsCommand}" />
           <MenuItem Header="Clear Baseline" Command="{Binding ClearProfileBaselineCommand}" />
           <MenuItem Header="Copy Profile as Markdown" Command="{Binding CopyProfileReportCommand}" />
           <MenuItem Header="Save for the Firefox Profiler…" Command="{Binding ExportFirefoxProfileCommand}" />

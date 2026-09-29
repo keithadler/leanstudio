@@ -45,7 +45,7 @@ public static class LeanTools
         - search_declarations, declaration and axioms read the compiled library (Mathlib included once built).
           search_mathlib finds Mathlib results from a description in plain English when you do not know a name.
         - If verify says a theorem rests on sorry, why_not_proved shows the chain of lemmas down to the one to fix.
-        - profile shows which declarations make a file slow to check, and the step inside each that costs most.
+        - profile shows which declarations make a file slow to check, and the step inside each that costs most; profile_check says whether a change made any declaration costlier than at a revision.
         - For code that calls C (@[extern]), ffi_bindings checks each binding against the C files and writes stubs.
         - If the person has Lean Studio open, studio_context tells you which file, line and goal they are looking
           at, and studio_show opens a file at a line in their window so they can review your change.
@@ -626,6 +626,31 @@ public static class LeanTools
                     before = b;
                 }
                 return FormatProfile(report, before);
+            }),
+
+        new("profile_check",
+            "A regression check of Lean's cost, as CI would run it: every Lean file changed since a revision (committed or not) is profiled in heartbeats as it is now and as it was at that revision, and each declaration is compared. Heartbeats are the same on every run, so any change is real. A declaration fails when it costs more than max_regression percent extra (and at least min_delta heartbeats more), or uses more than max_share percent of its maxHeartbeats. Use it before finishing a change to a slow file. The project must be built and in git.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("against", "string", "The branch, tag or commit to compare with (default main).", false),
+                   ("max_regression", "number", "Percent more heartbeats a declaration may take before it fails (default 10).", false),
+                   ("min_delta", "number", "Heartbeats (maxHeartbeats units) a declaration may grow by before it can fail (default 1000).", false),
+                   ("max_share", "number", "Percent of its maxHeartbeats a declaration may use (default 50).", false),
+                   ("all", "boolean", "Check every file of the project, not only the changed ones (default false).", false)),
+            async (a, ct) =>
+            {
+                ProjectSession s = bench.Session(OptStr(a, "project"));
+                double Num(string name, double fallback) => a[name] is JsonValue v && v.TryGetValue(out double d) ? d : fallback;
+                var options = new CheckOptions(OptStr(a, "against") ?? "main", Num("max_regression", 10) / 100, Num("min_delta", 1000), Num("max_share", 50) / 100, OptBool(a, "all") ?? false);
+                CheckReport report;
+                try
+                {
+                    report = await ProfileCheck.RunAsync(s.Project, options, null, ct);
+                }
+                catch (InvalidOperationException e)
+                {
+                    throw new ToolException(e.Message);
+                }
+                return ProfileCheck.ToMarkdown(report, s.Project.Root).TrimEnd();
             }),
 
         new("unused_imports",

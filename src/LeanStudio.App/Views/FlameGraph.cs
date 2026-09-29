@@ -39,18 +39,29 @@ public sealed class FlameGraph : Control
     /// <summary>What the values count, for the labels.</summary>
     public static readonly StyledProperty<ProfileUnit> UnitProperty = AvaloniaProperty.Register<FlameGraph, ProfileUnit>(nameof(Unit));
 
-    /// <summary>The tree drawn; setting it zooms all the way out.</summary>
+    /// <summary>
+    /// The tree drawn. Setting it zooms all the way out, unless the new tree has the same root and the steps zoomed
+    /// into: then it stays zoomed on them.
+    /// </summary>
     public ProfileNode? Root
     {
         get => _root;
         set
         {
+            // The steps zoomed into, by what they are, to zoom into the same ones in the new tree (a live profile
+            // replaces the tree after every edit).
+            var path = _zoom.Skip(1).Select(n => (n.Category, n.Text)).ToList();
+            bool sameRoot = _root is not null && value is not null && _root.Category == value.Category && _root.Text == value.Text;
             if (SetAndRaise(RootProperty, ref _root, value))
             {
                 _zoom.Clear();
                 if (value is not null)
                 {
                     _zoom.Add(value);
+                    for (int i = 0; sameRoot && i < path.Count && _zoom[^1].Children.FirstOrDefault(c => (c.Category, c.Text) == path[i]) is ProfileNode next; i++)
+                    {
+                        _zoom.Add(next);
+                    }
                 }
                 _hover = null;
                 _depth = value is null ? 0 : Depth(value);

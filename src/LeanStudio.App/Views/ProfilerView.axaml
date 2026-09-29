@@ -30,6 +30,13 @@
               ToolTip.Tip="Run Lean's profilers over the file as it is in the editor (⌘⌥T, Ctrl+Alt+T)" />
       <Button Classes="chip" Content="This declaration" Command="{Binding ProfileDeclarationCommand}" IsEnabled="{Binding !IsProfiling}"
               ToolTip.Tip="Profile only the declaration at the cursor. Nothing below it is checked, so it is quick to repeat while you work on it." />
+      <ToggleButton Classes="chip" IsChecked="{Binding ProfileLive}"
+                    ToolTip.Tip="Profile as you edit: a moment after each change, the panel and the editor show every declaration's cost as it is now. Lean re-checks only from your edit down.">
+        <StackPanel Orientation="Horizontal" Spacing="5">
+          <Ellipse Width="7" Height="7" Fill="#4CAF50" IsVisible="{Binding ProfileLive}" VerticalAlignment="Center" />
+          <TextBlock Text="Live" />
+        </StackPanel>
+      </ToggleButton>
       <Button Classes="chip" Content="Stop" Command="{Binding StopProfilingCommand}" IsVisible="{Binding IsProfiling}" />
       <Border Width="1" Background="{DynamicResource Divider}" Margin="2,3" />
       <ToggleButton Classes="chip" Content="Heartbeats" IsChecked="{Binding ProfileHeartbeats}"
@@ -43,13 +50,17 @@
       <ToggleButton Classes="chip" Content="Counters" IsChecked="{Binding ProfileCounters}"
                     ToolTip.Tip="Also count what each declaration makes Lean do: the simp lemmas it tries, the instances it uses, the definitions it unfolds (one more run of Lean, so the counting does not skew the times)" />
       <Border Width="1" Background="{DynamicResource Divider}" Margin="2,3" />
-      <Button Classes="chip" Content="Set baseline" Command="{Binding SetProfileBaselineCommand}"
-              ToolTip.Tip="Remember this profile. The next profiles of the file show each declaration's change from it, so you can see what an edit did." />
+      <Button Classes="chip" Content="Baseline ▾" Classes.accent="{Binding HasBaseline}"
+              ToolTip.Tip="What to compare with: this profile, the file as last committed, a branch or commit, or a profile saved earlier. Each declaration then shows its change.">
+        <Button.Flyout>
+          <MenuFlyout Placement="BottomEdgeAlignedLeft" Opening="OnBaselineMenuOpening" />
+        </Button.Flyout>
+      </Button>
       <Button Classes="chip" Content="More ▾" ToolTip.Tip="Profile the whole project, clear the baseline, copy or export the profile">
         <Button.Flyout>
           <MenuFlyout Placement="BottomEdgeAlignedLeft">
             <MenuItem Header="Profile Whole Project" Command="{Binding ProfileProjectCommand}" IsEnabled="{Binding !IsProfiling}" />
-            <MenuItem Header="Clear Baseline" Command="{Binding ClearProfileBaselineCommand}" IsEnabled="{Binding HasBaseline}" />
+            <MenuItem Header="Check for Regressions…" Command="{Binding CheckRegressionsCommand}" IsEnabled="{Binding !IsProfiling}" />
             <Separator />
             <MenuItem Header="Copy as Markdown" Command="{Binding CopyProfileReportCommand}" />
             <MenuItem Header="Save for the Firefox Profiler…" Command="{Binding ExportFirefoxProfileCommand}" IsEnabled="{Binding !IsProfiling}" />
@@ -57,7 +68,10 @@
         </Button.Flyout>
       </Button>
     </StackPanel>
-    <ProgressBar DockPanel.Dock="Top" IsIndeterminate="True" Height="2" MinHeight="2" IsVisible="{Binding IsProfiling}" />
+    <Panel DockPanel.Dock="Top" Height="2">
+      <ProgressBar IsIndeterminate="True" Height="2" MinHeight="2" IsVisible="{Binding IsProfiling}" />
+      <ProgressBar IsIndeterminate="True" Height="2" MinHeight="2" IsVisible="{Binding IsLiveUpdating}" Opacity="0.5" />
+    </Panel>
     <SelectableTextBlock DockPanel.Dock="Top" Text="{Binding TimingStatus}" Classes="dim" FontSize="11" TextWrapping="Wrap" MaxLines="2" Margin="0,0,0,4"
                          ToolTip.Tip="{Binding TimingStatus}" />
 

@@ -125,7 +125,7 @@ shows them to a person or an assistant.
 | [`Projects/`](../src/LeanStudio.Core/Projects) | `LeanProject` (a Lake project, a folder pinned to a toolchain, or a bare folder; the kind decides how Lean starts and what "build" means), `Lake` (build, clean, update, fetch Mathlib's cache, new projects from templates), `ImportGraph` (Imports and Imported By) and `LibraryRoot` (the root file that imports every module, like `lake exe mk_all`). |
 | [`Toolchains/`](../src/LeanStudio.Core/Toolchains) | `Elan`: finds elan, lists, installs and removes toolchains, and sets the default. Every Lean executable runs through elan's proxies, so a project's `lean-toolchain` file picks the version. `LeanProcesses` lists Lean's file workers with their memory. `LeanReleases` decides whether a newer stable Lean is worth offering (only to a project with no dependencies, pinned to a plain release). |
 | [`Verification/`](../src/LeanStudio.Core/Verification) | `TenetWorkspace`: opens a project's `.olean` files (and everything they import) with Tenet. It re-checks declarations, computes axioms, finds why a theorem is not fully proved, builds the Project Map, checks blueprint nodes, and serves the declaration navigator. See [Tenet's workspace](#how-the-main-features-work) below. |
-| [`Proofs/`](../src/LeanStudio.Core/Proofs) | Features that ask Lean about proofs: `ProofSteps` (the tactic block around a line, read by layout), `ProofSearch` (Prove It and counterexamples) and `Scratch` (scratch documents in the running server), `ExtractLemma`, `Profiler` (Lean's profilers read into a `ProfileReport`: trees, categories, counters, per-line costs; its records are in `ProfileModel`), `Heartbeats`, `ProofStates` (the Proof-State Map), `Walkthrough` (the HTML export) and `LeanRepl`. |
+| [`Proofs/`](../src/LeanStudio.Core/Proofs) | Features that ask Lean about proofs: `ProofSteps` (the tactic block around a line, read by layout), `ProofSearch` (Prove It and counterexamples) and `Scratch` (scratch documents in the running server), `ExtractLemma`, `Profiler` (Lean's profilers read into a `ProfileReport`: trees, categories, counters, per-line costs; its records are in `ProfileModel`), `LiveProfiler` (the same, from the running server as the file is edited), `ProfileCheck` (saved profiles in `ProfileStore`, and the heartbeat regression check), `Heartbeats`, `ProofStates` (the Proof-State Map), `Walkthrough` (the HTML export) and `LeanRepl`. |
 | [`Ai/`](../src/LeanStudio.Core/Ai) | The AI in the editor: `IChatModel` and the clients behind it (`AppleIntelligence` and `AppleFmCliModel` for the `fm` command, `OllamaModel`, `OpenAiCompatibleModel`, `AnthropicModel`), `AiDiscovery` (what is running, and which model to use), `AiProver` (proofs from a model, checked by Lean), `AiAssistant` (explanations and chat), `AiText` (token estimates and trimming) and `SecretStore` (API keys). |
 | [`Editing/`](../src/LeanStudio.Core/Editing) | Text-level engines with no UI: `Abbreviations` (Unicode input), `LeanText` (comments, strings and declarations in Lean source), `LatexText` (docstring math as text), `Fuzzy` (picker matching), `ProjectSearch` (find and replace across files), `MultiCursor`, `VimEngine`, `EmacsEngine` and `KeyBindingsFile` (keybindings.json). The editor in the app is a thin host over them. |
 | [`Workflow/`](../src/LeanStudio.Core/Workflow) | Project-wide tools. `Workflow.cs` holds `Markers` (sorries and TODOs), `LakeOutput` (build problems), `LocalHistory`, `Loogle`, `LeanSearch`, `DocLinks`, `Blame` and `ProjectTasks`. Beside it: `Refactor` and `EmittedC` (module rename, replace across files, Compiled C), `Ffi` (`@[extern]` bindings checked against the project's C files, and C stubs), `ImportCheck` (unused imports), `Lint`, `Instances`, `Deprecation` (deprecated aliases for renames), `DependencyBump` (Update Mathlib and see what broke), `Blueprint`, `ProjectCommands` (`.leanstudio/commands.json`), `ProgressReader` (progress read from what a task prints), `LeanCli` (the `lean` command line on a mirror copy) and `Essentials.cs` (`ElanInstaller`, `FileOps`, `ImportFinder`). |
@@ -431,7 +431,20 @@ median. In heartbeats, `trace.profiler.useHeartbeats` is on and `profiler` is of
 heartbeats too, and Lean would crawl). The counters are one more run with `diagnostics` on, so the counting does not
 skew the times. `Compare` matches two profiles by declaration name. The app shows all this in the Profiler panel
 (`ProfilerView`, with its `FlameGraph` control) and, per declaration and per tactic line, in the editor
-(`TimingRenderer`). `Heartbeats` (Lean ▸ Count Heartbeats) wraps each top-level declaration of a mirror copy in a
+(`TimingRenderer`).
+
+`LiveProfiler` keeps a copy of the file (`LeanStudioLive_` beside it, never written) open in the project's server, with
+one line after the header switching the profilers on, and sends it each new version as an edit, so Lean re-checks
+only from the first changed command. In the server a trace arrives as "(trace)" in the plain diagnostics, so it reads
+`Lean.Widget.getInteractiveDiagnostics`: each root carries its total, and `lazyTraceChildrenToInteractive` expands
+the children. Expanded trees are kept per declaration (its text and its root), so an edit only costs the declarations
+it changed. `ProfileStore` saves every whole-file profile under `.lake/leanstudio/profiles`, with the commit and the
+toolchain. `ProfileCheck` profiles each file changed since a revision (`git diff` and untracked files) in heartbeats,
+now and at that revision (`git show`), with the same toolchain and imports, and judges each declaration against the
+thresholds and its `maxHeartbeats` (`LimitAt` reads `set_option maxHeartbeats`). `leanstudio --profile-check` runs
+it from `Program.Main` without a window.
+
+`Heartbeats` (Lean ▸ Count Heartbeats) wraps each top-level declaration of a mirror copy in a
 small counting command, so it works in core Lean without Mathlib's `#count_heartbeats`.
 
 **Extract Goal as Lemma.** In a scratch document, the `sorry` becomes a tactic that asks Lean which hypotheses the

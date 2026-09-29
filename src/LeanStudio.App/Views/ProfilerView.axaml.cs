@@ -50,6 +50,40 @@ public sealed partial class ProfilerView : UserControl
         }
     }
 
+    /// <summary>The Baseline menu, built as it opens: its list of saved profiles changes with every profile.</summary>
+    private void OnBaselineMenuOpening(object? sender, EventArgs e)
+    {
+        if (sender is not MenuFlyout menu || Vm is not MainViewModel vm)
+        {
+            return;
+        }
+        var items = new List<Control>
+        {
+            new MenuItem { Header = "Set to This Profile", Command = vm.SetProfileBaselineCommand, IsEnabled = vm.Profile is not null },
+            new MenuItem { Header = "Compare with the Last Commit (HEAD)", Command = vm.CompareWithHeadCommand },
+            new MenuItem { Header = "Compare with a Branch or Commit…", Command = vm.CompareWithRevisionPromptCommand },
+        };
+        IReadOnlyList<Core.Proofs.SavedProfile> saved = vm.SavedProfiles();
+        if (saved.Count > 0)
+        {
+            var sub = new MenuItem { Header = "Compare with a Saved Profile" };
+            foreach (Core.Proofs.SavedProfile p in saved.Take(15))
+            {
+                var item = new MenuItem { Header = p.Describe() };
+                item.Click += (_, _) => _ = vm.CompareWithSavedAsync(p);
+                sub.Items.Add(item);
+            }
+            items.Add(sub);
+        }
+        items.Add(new Separator());
+        items.Add(new MenuItem { Header = "Clear Baseline", Command = vm.ClearProfileBaselineCommand, IsEnabled = vm.HasBaseline });
+        menu.Items.Clear();
+        foreach (Control c in items)
+        {
+            menu.Items.Add(c);
+        }
+    }
+
     private void OnModuleTimingTapped(object? sender, TappedEventArgs e)
     {
         if (sender is ListBox { SelectedItem: ModuleTiming t })

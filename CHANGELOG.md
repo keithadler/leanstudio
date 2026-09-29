@@ -15,6 +15,13 @@
 - Copy a profile as a Markdown table; save Lean's trace for the Firefox Profiler.
 - The `profile` MCP tool gets all of it: `declaration`, `measure` (time or heartbeats), `runs`, `counters`, and `compare_content` to check that a change made a file faster.
 
+**Profiling as you edit, and regressions caught before they land**:
+- **Live**: the profile follows the file as you type. A copy with Lean's profilers on stays open in the running Lean server and is re-checked only from each edit down; a moment after you stop, every declaration's cost, its flame graph and its tactic lines are up to date in the panel and the editor.
+- **Baseline** compares with the file as last committed, with any branch or commit (profiled with today's toolchain and imports, so only the file's own change counts), or with any earlier profile: every profile is now saved, with the commit it was taken at.
+- **A heartbeat regression check** for CI: `leanstudio --profile-check --against main` profiles every Lean file changed since `main`, now and then, and fails (exit code 1, with a Markdown report, also written to the GitHub Actions job summary) when a declaration costs 10% more, or uses more than half its `maxHeartbeats`, which it reads from `set_option maxHeartbeats … in`. In the app, *Profiler ▸ Check for Regressions*; for assistants, the `profile_check` MCP tool.
+- A declaration's doc comment and attributes now count as part of it: Lean reports some of its work there, which showed up as a separate row.
+- Declarations too quick for Lean's trace are still listed, from Lean's own profiler lines.
+
 ## 0.10.0
 
 **A newer Lean, when it's safe to say so.** The Toolchains panel says when a stable Lean newer than the project's is out, e.g. "Lean v4.34.1 is out. This project uses v4.34.0.", and *Use it for this project* installs it, pins it in `lean-toolchain` and restarts Lean. It stays quiet for a project that requires Mathlib or any other package, whose Lean has to follow its dependencies, and for one pinned to a release candidate, a nightly or the `stable` channel. The latest release is looked up on GitHub once per run, only while update checks are on (the same switch as Lean Studio's own).

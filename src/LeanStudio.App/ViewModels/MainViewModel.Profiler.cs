@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LeanStudio.Core.Projects;
 using LeanStudio.Core.Proofs;
+using LeanStudio.Lsp;
 
 namespace LeanStudio.App.ViewModels;
 
@@ -12,7 +13,9 @@ namespace LeanStudio.App.ViewModels;
 /// <param name="Path">The file it is in, to go to it.</param>
 /// <param name="ShowFile">The list spans files (a project profile), so each row names its file.</param>
 /// <param name="Change">The change from the baseline, as <c>−120 ms (−35%)</c>; empty without one.</param>
-public sealed record TimingItem(DeclarationTiming Timing, double Slowest, string Path, bool ShowFile = false, string Change = "")
+/// <param name="Note">Said in place of the hot spot, such as why it fails a regression check; empty for none.</param>
+/// <param name="Fails">It fails a regression check.</param>
+public sealed record TimingItem(DeclarationTiming Timing, double Slowest, string Path, bool ShowFile = false, string Change = "", string Note = "", bool Fails = false)
 {
     /// <summary>Where it is: <c>line 12</c>, or <c>File.lean:12</c> in a project profile.</summary>
     public string Where => ShowFile ? $"{System.IO.Path.GetFileName(Path)}:{Timing.Line + 1}" : $"line {Timing.Line + 1}";
@@ -21,7 +24,8 @@ public sealed record TimingItem(DeclarationTiming Timing, double Slowest, string
     /// <summary>The declaration's first line.</summary>
     public string Declaration => Timing.Declaration;
     /// <summary>The step inside the declaration that costs most, and its cost; empty when the profile names none.</summary>
-    public string HotSpot => Timing.HotSpot is string h ? $"slowest part: {h} ({DeclarationTiming.Format(Timing.HotSpotValue, Timing.Unit)})" : "";
+    public string HotSpot => Note.Length > 0 ? Note
+        : Timing.HotSpot is string h ? $"slowest part: {h} ({DeclarationTiming.Format(Timing.HotSpotValue, Timing.Unit)})" : "";
     /// <summary>With several runs, how much its time varied, as <c>± 12 ms</c>.</summary>
     public string Spread => Timing.SpreadText;
     /// <summary>In heartbeats, its share of Lean's default <c>maxHeartbeats</c>; empty in time.</summary>
@@ -29,7 +33,7 @@ public sealed record TimingItem(DeclarationTiming Timing, double Slowest, string
     /// <summary>In heartbeats, it uses half the default limit or more: a small change could push it over.</summary>
     public bool NearLimit => Timing.Unit == ProfileUnit.Heartbeats && Timing.Value >= DeclarationHeartbeats.DefaultLimit / 2;
     /// <summary>It costs more than it did in the baseline (or is new there).</summary>
-    public bool IsSlower => Change.StartsWith('+') || Change == "new";
+    public bool IsSlower => Fails || Change.StartsWith('+') || Change == "new";
     /// <summary>It costs less than it did in the baseline.</summary>
     public bool IsFaster => Change.StartsWith('−');
     /// <summary>The cost is hot (see <see cref="DeclarationTiming.Heat"/>).</summary>
@@ -128,6 +132,13 @@ public sealed partial class MainViewModel
     /// <summary>A baseline is pinned.</summary>
     public bool HasBaseline => ProfileBaseline is not null;
 
+    /// <summary>What the baseline is, for the status: <c>HEAD (abc1234)</c>, <c>the profile of 18:40</c>.</summary>
+    [ObservableProperty]
+    private string _baselineLabel = "";
+
+    /// <summary>The last regression check, as Markdown, while the panel shows it (Copy as Markdown copies it).</summary>
+    private string? _checkMarkdown;
+
     /// <summary>The declaration picked in the list; the details show it, or the whole file when null.</summary>
     [ObservableProperty]
     private TimingItem? _selectedTiming;
@@ -175,6 +186,116 @@ public sealed partial class MainViewModel
 
     private ProfileOptions CurrentProfileOptions(int? line = null) =>
         new(ProfileHeartbeats ? ProfileUnit.Heartbeats : ProfileUnit.Seconds, ProfileRuns, ProfileCounters, line);
+
+    // ---- live: profiling as you edit ----
+
+    /// <summary>How long after the last edit the live profile is brought up to date, in milliseconds.</summary>
+    public const int LiveProfileDelay = 1200;
+
+    private LiveProfiler? _live;
+    private CancellationTokenSource? _liveCts;
+
+    /// <summary>
+    /// Profile the active file as it is edited: a copy with Lean's profilers on is kept in the running server, and
+    /// a moment after each edit the panel and the editor show every declaration's cost as it is now. Lean
+    /// re-checks the copy only from the edit down, so this costs about what the edit does. Kept for next time.
+    /// </summary>
+    [ObservableProperty]
+    private bool _profileLive;
+
+    /// <summary>The live profile is being brought up to date.</summary>
+    [ObservableProperty]
+    private bool _isLiveUpdating;
+
+    partial void OnProfileLiveChanged(bool value)
+    {
+        Settings.ProfileLive = value;
+        Settings.Save();
+        if (value)
+        {
+            BottomTab = TimingPanel;
+            TimingStatus = "Live: the profile follows the file as you edit it.";
+            ScheduleLiveProfile(ActiveDocument, 0);
+        }
+        else
+        {
+            _liveCts?.Cancel();
+            _ = StopLiveAsync();
+            TimingStatus = "Live profiling is off. Profile file runs Lean's profilers once.";
+        }
+    }
+
+    /// <summary>Close the live copy in the server.</summary>
+    private async Task StopLiveAsync()
+    {
+        LiveProfiler? live = _live;
+        _live = null;
+        if (live is not null)
+        {
+            await live.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// With live profiling on, bring the profile of <paramref name="d"/> up to date after <paramref name="delayMs"/>
+    /// (an edit or a switch of file within that time starts the wait again).
+    /// </summary>
+    private void ScheduleLiveProfile(DocumentViewModel? d, int delayMs)
+    {
+        if (!ProfileLive || d is not { IsLean: true } || _server is not { State: LeanServerState.Running } server)
+        {
+            return;
+        }
+        _liveCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _liveCts = cts;
+        _ = LiveProfileAsync(server, d, delayMs, cts.Token);
+    }
+
+    private async Task LiveProfileAsync(LeanServer server, DocumentViewModel d, int delayMs, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delayMs, ct);
+            if (_live is null || _live.SourcePath != d.Path || _live.Server != server)
+            {
+                await StopLiveAsync();
+                _live = new LiveProfiler(server, d.Path);
+                TimingStatus = $"Live: Lean is checking {Path.GetFileName(d.Path)} with its profilers on…";
+            }
+            string text = d.Document.Text;
+            IsLiveUpdating = true;
+            ProfileReport report = await _live.UpdateAsync(text, ct);
+            if (ct.IsCancellationRequested || !ProfileLive || ActiveDocument != d)
+            {
+                return;
+            }
+            if (d.Document.Text == text)
+            {
+                d.Timings = report.Declarations;
+            }
+            string? keep = SelectedTiming?.Timing.Name;
+            ShowProfile(report);
+            if (keep is not null && TimingItems.FirstOrDefault(t => t.Timing.Name == keep) is TimingItem again)
+            {
+                SelectedTiming = again;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e) when (e is JsonRpcException or IOException or InvalidOperationException or ObjectDisposedException)
+        {
+            Log("Live profile: " + e.Message);
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                IsLiveUpdating = false;
+            }
+        }
+    }
 
     /// <summary>
     /// Run the active Lean file's current text through Lean's profilers (separate <c>lean</c> processes, not the
@@ -225,6 +346,10 @@ public sealed partial class MainViewModel
                     : [.. d.Timings.Where(t => t.Line != report.OnlyLine && t.Unit == report.Unit), .. report.Declarations];
             }
             ShowProfile(report);
+            if (Project is LeanProject saveIn && line is null)
+            {
+                _ = SaveProfileAsync(saveIn, report, text);
+            }
             if (line is not null && TimingItems.Count > 0)
             {
                 SelectedTiming = TimingItems[0];
@@ -311,6 +436,7 @@ public sealed partial class MainViewModel
             return;
         }
         ProfileBaseline = p;
+        BaselineLabel = $"the profile of {DateTime.Now:HH:mm}";
         TimingStatus = $"Baseline set: {Path.GetFileName(p.Path)} at {DeclarationTiming.Format(p.Total, p.Unit)}. Change the file and profile it again to see what the change did.";
     }
 
@@ -319,6 +445,7 @@ public sealed partial class MainViewModel
     private void ClearProfileBaseline()
     {
         ProfileBaseline = null;
+        BaselineLabel = "";
         if (Profile is ProfileReport p)
         {
             ShowProfile(p);
@@ -329,7 +456,12 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private async Task CopyProfileReportAsync()
     {
-        if (Profile is ProfileReport p)
+        if (_checkMarkdown is string check)
+        {
+            await _dialogs.CopyTextAsync(check);
+            TimingStatus = "Copied the regression check as Markdown.";
+        }
+        else if (Profile is ProfileReport p)
         {
             await _dialogs.CopyTextAsync(Profiler.ToMarkdown(p, BaselineFor(p)));
             TimingStatus = "Copied the profile as Markdown.";
@@ -382,6 +514,174 @@ public sealed partial class MainViewModel
             _profileCts.Dispose();
             _profileCts = null;
         }
+    }
+
+    private async Task SaveProfileAsync(LeanProject project, ProfileReport report, string text)
+    {
+        try
+        {
+            await ProfileStore.SaveAsync(project, report, text);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log("Profile: could not save it: " + e.Message);
+        }
+    }
+
+    /// <summary>The profiles saved for the active file, newest first (for the Baseline menu).</summary>
+    public IReadOnlyList<SavedProfile> SavedProfiles() =>
+        Project is LeanProject p && ActiveDocument is { IsLean: true } d ? ProfileStore.List(p, d.Path) : [];
+
+    /// <summary>Make a saved profile of the active file the baseline, and profile the file now to compare.</summary>
+    public async Task CompareWithSavedAsync(SavedProfile saved)
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        if (saved.Toolchain != ProfileStore.Toolchain(ProjectFor(d)))
+        {
+            Log($"Profile: that profile was taken with {saved.Toolchain}; the project now uses {ProfileStore.Toolchain(ProjectFor(d))}, so the figures may differ for that reason too.");
+        }
+        ProfileHeartbeats = saved.Unit == ProfileUnit.Heartbeats;
+        ProfileBaseline = saved.ToReport(d.Path);
+        BaselineLabel = "the saved profile of " + saved.Describe();
+        await ProfileFileAsync();
+    }
+
+    /// <summary>
+    /// Profile the active file as it is at a git revision (<c>HEAD</c>, a branch, a commit), with today's toolchain
+    /// and imports, make that the baseline, and profile the file as it is now: each declaration's change is then
+    /// what the edits since that revision did.
+    /// </summary>
+    /// <param name="rev">The revision; null asks for one.</param>
+    public async Task CompareWithRevisionAsync(string? rev)
+    {
+        if (ActiveDocument is not { IsLean: true } d || IsProfiling)
+        {
+            return;
+        }
+        rev ??= await _dialogs.PromptAsync("Compare with a revision", "Profile the file as it is at this branch, tag or commit, and compare:", "main");
+        if (string.IsNullOrWhiteSpace(rev))
+        {
+            return;
+        }
+        rev = rev.Trim();
+        if (Core.Git.GitRepository.Find(d.Path) is not Core.Git.GitRepository git)
+        {
+            TimingStatus = "This file is not in a git repository, so there is no other version to compare with.";
+            return;
+        }
+        string? hash = await git.ShortHashAsync(rev);
+        string? then = hash is null ? null : await git.FileAtAsync(hash, d.Path);
+        if (then is null)
+        {
+            TimingStatus = hash is null ? $"git has no revision named {rev}." : $"{Path.GetFileName(d.Path)} is not in {rev} ({hash}).";
+            return;
+        }
+        BottomTab = TimingPanel;
+        IsProfiling = true;
+        _profileCts = new CancellationTokenSource();
+        TimingStatus = $"Profiling {Path.GetFileName(d.Path)} as it is at {rev} ({hash})…";
+        try
+        {
+            var (before, error) = await Profiler.RunAsync(ProjectFor(d), d.Path, then.Replace("\r\n", "\n", StringComparison.Ordinal), CurrentProfileOptions() with { Counters = false }, null, _profileCts.Token);
+            if (error is not null)
+            {
+                TimingStatus = $"Lean could not profile the file as it is at {rev}. " + error.Split('\n')[0];
+                return;
+            }
+            ProfileBaseline = before with { Path = d.Path };
+            BaselineLabel = $"{rev} ({hash})";
+        }
+        catch (OperationCanceledException)
+        {
+            TimingStatus = "Profiling stopped.";
+            return;
+        }
+        finally
+        {
+            IsProfiling = false;
+            _profileCts?.Dispose();
+            _profileCts = null;
+        }
+        await ProfileFileAsync();
+    }
+
+    /// <summary>Compare the active file with its last commit: what the uncommitted edits did.</summary>
+    [RelayCommand]
+    private Task CompareWithHeadAsync() => CompareWithRevisionAsync("HEAD");
+
+    /// <summary>Compare the active file with its text at a branch, tag or commit the person names.</summary>
+    [RelayCommand]
+    private Task CompareWithRevisionPromptAsync() => CompareWithRevisionAsync(null);
+
+    /// <summary>
+    /// The regression check CI runs (see <see cref="ProfileCheck"/>): every Lean file changed since a revision,
+    /// profiled in heartbeats now and then, each declaration compared; failures first in the panel.
+    /// </summary>
+    /// <param name="rev">The revision; null asks for one.</param>
+    [RelayCommand]
+    public async Task<CheckReport?> CheckRegressionsAsync(string? rev = null)
+    {
+        if (Project is not LeanProject project || IsProfiling)
+        {
+            return null;
+        }
+        rev ??= await _dialogs.PromptAsync("Check for regressions", "Compare every Lean file changed since this branch, tag or commit, in heartbeats:", "main");
+        if (string.IsNullOrWhiteSpace(rev))
+        {
+            return null;
+        }
+        BottomTab = TimingPanel;
+        IsProfiling = true;
+        _profileCts = new CancellationTokenSource();
+        TimingStatus = $"Checking the files changed since {rev}…";
+        var progress = new Progress<(int Done, int Total, string Path)>(p =>
+            TimingStatus = $"Checking against {rev}: {p.Done + 1} of {p.Total}, {Path.GetRelativePath(project.Root, p.Path)} now and then…");
+        try
+        {
+            CheckReport report = await ProfileCheck.RunAsync(project, new CheckOptions(rev.Trim()), progress, _profileCts.Token);
+            ShowCheck(project, report);
+            return report;
+        }
+        catch (OperationCanceledException)
+        {
+            TimingStatus = "Check stopped.";
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+        {
+            TimingStatus = "Could not run the check: " + e.Message;
+        }
+        finally
+        {
+            IsProfiling = false;
+            _profileCts?.Dispose();
+            _profileCts = null;
+        }
+        return null;
+    }
+
+    /// <summary>Show a regression check: its declarations (failures first) and its files.</summary>
+    private void ShowCheck(LeanProject project, CheckReport report)
+    {
+        var files = report.Files.Select(f => new ProfiledFile(f.Path, new ProfileReport([], ProfileUnit.Heartbeats) { Path = f.Path }, f.Error, 2)).ToList();
+        var items = report.Declarations.Select(c => new TimingItem(
+            new DeclarationTiming(Math.Max(0, c.Line), c.Name, c.After ?? 0, null, 0) { Unit = ProfileUnit.Heartbeats },
+            Math.Max(1, report.Declarations.Max(x => x.After ?? 0)), c.Path, ShowFile: true, Change: c.Change,
+            Note: c.Problem ?? (c.ShareOfLimit is double s ? $"{s:P0} of its maxHeartbeats" : ""), Fails: c.Problem is not null)).ToList();
+        ShowProfile(new ProfileReport(items.Select(i => i.Timing).ToList(), ProfileUnit.Heartbeats) { Path = project.Root }, keepFiles: true);
+        ProfiledFiles.Reset(files);
+        TimingItems.Reset(items);
+        ShowProfileDetail();
+        _checkMarkdown = ProfileCheck.ToMarkdown(report, project.Root);
+        int failed = report.Failures.Count;
+        TimingStatus = (report.Passed ? "Passed" : $"Failed: {failed} declaration{(failed == 1 ? "" : "s")} over the limits") +
+            $". Against {report.Against} ({report.Commit}), in heartbeats: {report.Files.Count} changed file{(report.Files.Count == 1 ? "" : "s")}, "
+            + $"{report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")} changed or near a limit. "
+            + "A declaration fails when it costs 10% more (and 1,000 heartbeats more), or uses more than half its maxHeartbeats. "
+            + "CI runs the same with leanstudio --profile-check.";
+        Log("Regression check: " + TimingStatus);
     }
 
     /// <summary>Go to a profiled declaration.</summary>
@@ -439,6 +739,7 @@ public sealed partial class MainViewModel
     /// <summary>Show a file's profile in the panel.</summary>
     private void ShowProfile(ProfileReport report, bool keepFiles = false)
     {
+        _checkMarkdown = null;
         Profile = report;
         ProfileUnit = report.Unit;
         ProfileReport? baseline = BaselineFor(report);
@@ -452,13 +753,14 @@ public sealed partial class MainViewModel
         string imports = report.ImportSeconds > 0 ? $" Loading the imports took {DeclarationTiming.Format(report.ImportSeconds)} more." : "";
         string errors = report.Errors > 0 ? $" The file has {report.Errors} error{(report.Errors == 1 ? "" : "s")}: what follows one may not have been fully checked." : "";
         string compared = baseline is null ? ""
-            : $" Baseline {DeclarationTiming.Format(baseline.Total, baseline.Unit)} → now {DeclarationTiming.Format(report.Total, report.Unit)} ({new TimingChange("", baseline.Total, report.Total).Describe(report.Unit)}).";
+            : $" Against {(BaselineLabel.Length > 0 ? BaselineLabel : "the baseline")}: {DeclarationTiming.Format(baseline.Total, baseline.Unit)} → now {DeclarationTiming.Format(report.Total, report.Unit)} ({new TimingChange("", baseline.Total, report.Total).Describe(report.Unit)}).";
         string gone = changes.Values.Where(c => c.After is null).Select(c => c.Name).Take(5) is var g && g.Any() ? $" No longer measurable: {string.Join(", ", g)}." : "";
-        TimingStatus = report.Declarations.Count == 0
+        string live = report.Live ? "Live, as you edit. " : "";
+        TimingStatus = live + (report.Declarations.Count == 0
             ? (report.OnlyLine is not null ? "That declaration" : "Nothing in this file") + $" takes Lean more than {(report.Unit == ProfileUnit.Heartbeats ? "20 heartbeats" : "a few milliseconds")} to check.{imports}{errors}"
             : report.OnlyLine is not null
                 ? $"{file}, {report.Declarations[0].Name} alone: {report.Declarations[0].Time}{unit}{runs}. Only the lines above it were checked with it.{compared}{errors}"
-                : $"{file}: {DeclarationTiming.Format(report.Total, report.Unit)} across {report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")}{unit}{runs}, costliest first.{compared}{gone}{imports}{errors}";
+                : $"{file}: {DeclarationTiming.Format(report.Total, report.Unit)} across {report.Declarations.Count} declaration{(report.Declarations.Count == 1 ? "" : "s")}{unit}{runs}, costliest first.{compared}{gone}{imports}{errors}");
         double catMax = report.Categories.Where(c => c.Name is not ("import" or "initialization")).Select(c => c.Seconds).DefaultIfEmpty(1).Max();
         double catTotal = report.Categories.Where(c => c.Name is not ("import" or "initialization")).Sum(c => c.Seconds);
         ProfileCategories.Reset(report.Categories.Where(c => c.Name is not ("import" or "initialization") && c.Seconds >= 0.0005)

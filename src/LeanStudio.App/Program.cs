@@ -5,7 +5,8 @@ using LeanStudio.Mcp;
 namespace LeanStudio.App;
 
 /// <summary>
-/// The entry point: opens the IDE window, or with <c>--mcp</c> runs as an MCP server over standard input and output.
+/// The entry point: opens the IDE window, or with <c>--mcp</c> runs as an MCP server over standard input and output,
+/// or with <c>--profile-check</c> runs the profiler's regression check and exits.
 /// </summary>
 internal static class Program
 {
@@ -19,7 +20,7 @@ internal static class Program
     public static int Main(string[] args)
     {
         // Answered here, before any window: from a terminal, `leanstudio --help` must print, not open the IDE.
-        if (args.Contains("--help") || args.Contains("-h"))
+        if ((args.Contains("--help") || args.Contains("-h")) && !args.Contains("--profile-check"))
         {
             Console.Out.Write(Usage);
             return 0;
@@ -35,6 +36,11 @@ internal static class Program
         {
             return RunMcp(args);
         }
+        // `LeanStudio --profile-check [--against REV] …` fails when a declaration got costlier: for CI.
+        if (args.Contains("--profile-check"))
+        {
+            return Core.Proofs.ProfileCheck.RunCommandLineAsync(args, Console.Out, Console.Error).GetAwaiter().GetResult();
+        }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -46,6 +52,8 @@ internal static class Program
           leanstudio [PATH]                   open the IDE, with a project folder or a .lean file
           leanstudio --new-window [PATH]      open a new window instead of restoring the last session
           leanstudio --mcp [--project DIR]    run the MCP server for AI assistants on standard input and output
+          leanstudio --profile-check [...]    fail when a declaration got costlier than at a revision (for CI;
+                                              --profile-check --help for its options)
           leanstudio --version                print the version
           leanstudio --help                   print this
 

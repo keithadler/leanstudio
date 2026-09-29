@@ -223,17 +223,26 @@ public static partial class Profiler
         IEnumerable<(int Line, string Text)> steps,
         IEnumerable<(int Line, string Text)> diagnostics,
         IReadOnlyList<string> lines,
+        ProfileUnit unit) =>
+        Build(traces.Where(t => t.Line >= 0).Select(t => (t.Line, ParseTree(t.Text, unit))).Where(t => t.Item2 is not null).Select(t => (t.Line, t.Item2!)),
+            steps, diagnostics, lines, unit);
+
+    /// <summary>
+    /// Declarations from trace trees already read (each at the 0-based line Lean reported it), Lean's profiler lines
+    /// and its diagnostics counters, costliest first.
+    /// </summary>
+    public static IReadOnlyList<DeclarationTiming> Build(
+        IEnumerable<(int Line, ProfileNode Root)> roots,
+        IEnumerable<(int Line, string Text)> steps,
+        IEnumerable<(int Line, string Text)> diagnostics,
+        IReadOnlyList<string> lines,
         ProfileUnit unit)
     {
         var trees = new Dictionary<int, List<ProfileNode>>();
         var lineCosts = new Dictionary<int, Dictionary<int, double>>();
         var cursors = new Dictionary<int, int>();
-        foreach ((int line, string text) in traces)
+        foreach ((int line, ProfileNode root) in roots)
         {
-            if (line < 0 || ParseTree(text, unit) is not ProfileNode root)
-            {
-                continue;
-            }
             // Some work is reported where it happened (the kernel checking a proof, at its tactic): it belongs
             // to the declaration around it.
             int owner = OwnerOf(lines, line);
@@ -244,7 +253,9 @@ public static partial class Profiler
             }
             list.Add(root);
             int end = NextTopLevel(lines, owner);
-            int? at = line != owner && line < lines.Count ? line : null;
+            // Work reported inside the declaration (below its first line) is that line's; at the doc comment or the
+            // attributes above it, the declaration's own.
+            int? at = line > owner && line < lines.Count ? line : null;
             if (at is int a)
             {
                 lineCosts[owner][a] = lineCosts[owner].GetValueOrDefault(a) + root.Value;
@@ -286,19 +297,33 @@ public static partial class Profiler
             AddCounters(text, c);
         }
         var result = new List<DeclarationTiming>();
-        foreach ((int owner, List<ProfileNode> roots) in trees)
+        foreach ((int owner, List<ProfileNode> trace) in trees)
         {
-            double total = roots.Sum(r => r.Value);
-            (string? hot, double hotValue) = HotSpot(roots, total);
+            double total = trace.Sum(r => r.Value);
+            (string? hot, double hotValue) = HotSpot(trace, total);
             result.Add(new DeclarationTiming(owner, NameAt(lines, owner), total, hot, hotValue)
             {
                 Unit = unit,
-                Trace = roots,
+                Trace = trace,
                 Steps = stepsBy.TryGetValue(owner, out var s)
                     ? s.Select(kv => new ProfileStep(kv.Key, kv.Value.S, kv.Value.N)).OrderByDescending(x => x.Seconds).ToList()
                     : [],
                 Counters = countersBy.TryGetValue(owner, out var c) ? Counters(c) : [],
                 LineCosts = lineCosts[owner].Where(kv => kv.Key != owner && kv.Value > 1e-9).ToDictionary(kv => kv.Key, kv => kv.Value),
+            });
+        }
+        // A declaration under the trace's threshold can still have Lean's profiler lines: they give its cost.
+        foreach ((int owner, Dictionary<string, (double S, int N)> st) in stepsBy)
+        {
+            if (unit != ProfileUnit.Seconds || trees.ContainsKey(owner))
+            {
+                continue;
+            }
+            var list = st.Select(kv => new ProfileStep(kv.Key, kv.Value.S, kv.Value.N)).OrderByDescending(x => x.Seconds).ToList();
+            result.Add(new DeclarationTiming(owner, NameAt(lines, owner), list.Sum(x => x.Seconds), list[0].What, list[0].Seconds)
+            {
+                Steps = list,
+                Counters = countersBy.TryGetValue(owner, out var c) ? Counters(c) : [],
             });
         }
         return result.OrderByDescending(t => t.Value).ToList();
@@ -457,17 +482,87 @@ public static partial class Profiler
         };
     }
 
-    /// <summary>The line of the top-level command containing <paramref name="line"/>: the nearest one at column 0.</summary>
+    /// <summary>
+    /// The line of the declaration containing <paramref name="line"/>: the nearest top-level line at or above it,
+    /// moved past a doc comment or attributes there to the declaration they belong to (Lean reports some of a
+    /// declaration's work at its doc comment, and some at the keyword).
+    /// </summary>
     public static int OwnerOf(IReadOnlyList<string> lines, int line)
     {
         for (int i = Math.Min(line, lines.Count - 1); i >= 0; i--)
         {
             if (IsTopLevel(lines[i]))
             {
-                return i;
+                return DeclarationAt(lines, i);
             }
         }
         return line;
+    }
+
+    /// <summary>
+    /// From a top-level line, the line the declaration itself starts on: past a doc comment (<c>/-- … -/</c>) and
+    /// lines holding only attributes (<c>@[simp]</c>). The line itself when it is neither.
+    /// </summary>
+    private static int DeclarationAt(IReadOnlyList<string> lines, int i)
+    {
+        int j = i;
+        while (j < lines.Count)
+        {
+            string t = lines[j].Trim();
+            if (t.StartsWith("/--", StringComparison.Ordinal))
+            {
+                int k = j, at = t.IndexOf("-/", 3, StringComparison.Ordinal);
+                while (at < 0 && ++k < lines.Count)
+                {
+                    at = lines[k].IndexOf("-/", StringComparison.Ordinal);
+                }
+                if (k >= lines.Count)
+                {
+                    return i;
+                }
+                string rest = (k == j ? t : lines[k])[(at + 2)..].Trim();
+                if (rest.Length > 0 && !rest.StartsWith("--", StringComparison.Ordinal))
+                {
+                    return k; // `/-- doc -/ theorem x …`
+                }
+                j = k + 1;
+            }
+            else if (t.StartsWith("@[", StringComparison.Ordinal) && AttributesOnly(t))
+            {
+                j++;
+            }
+            else if (t.Length == 0 && j > i)
+            {
+                j++; // a blank line between a doc comment and its declaration
+            }
+            else
+            {
+                return j;
+            }
+        }
+        return i;
+    }
+
+    /// <summary>A line of nothing but attributes: <c>@[simp]</c>, <c>@[simp, norm_cast] @[ext]</c>.</summary>
+    private static bool AttributesOnly(string t)
+    {
+        int depth = 0;
+        for (int c = 0; c < t.Length; c++)
+        {
+            if (t[c] == '[')
+            {
+                depth++;
+            }
+            else if (t[c] == ']')
+            {
+                depth--;
+            }
+            else if (depth == 0 && !char.IsWhiteSpace(t[c]) && t[c] != '@')
+            {
+                return t.AsSpan(c).TrimStart().StartsWith("--", StringComparison.Ordinal);
+            }
+        }
+        return true;
     }
 
     /// <summary>The line after the command starting at <paramref name="owner"/>: the next top-level line, or the end.</summary>

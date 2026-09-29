@@ -343,6 +343,44 @@ public sealed partial class GitRepository
         return r.Success ? r.Output.Trim() : null;
     }
 
+    /// <summary>
+    /// The text of <paramref name="path"/> at the revision <paramref name="rev"/> (a commit, branch or tag), or
+    /// <see langword="null"/> when the file is not in that revision or the revision does not exist.
+    /// </summary>
+    public async Task<string?> FileAtAsync(string rev, string path, CancellationToken ct = default)
+    {
+        string rel = Path.GetRelativePath(Root, Path.GetFullPath(path)).Replace('\\', '/');
+        ProcessResult r = await RunAsync(["show", $"{rev}:{rel}"], ct: ct).ConfigureAwait(false);
+        return r.Success ? r.Output : null;
+    }
+
+    /// <summary>
+    /// The files that differ between <paramref name="rev"/> and the working tree (committed or not), and the new
+    /// files git does not ignore, as full paths. Deleted files are left out. Throws when git fails (an unknown revision).
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ChangedSinceAsync(string rev, CancellationToken ct = default)
+    {
+        ProcessResult diff = await RunAsync(["diff", "--name-only", "--diff-filter=d", rev, "--"], ct: ct).ConfigureAwait(false);
+        if (!diff.Success)
+        {
+            throw new InvalidOperationException(diff.Output.Trim());
+        }
+        ProcessResult untracked = await RunAsync(["ls-files", "--others", "--exclude-standard"], ct: ct).ConfigureAwait(false);
+        return diff.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Concat(untracked.Success ? untracked.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [])
+            .Select(f => Path.GetFullPath(Path.Combine(Root, f)))
+            .Where(File.Exists)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>The short hash a revision names, or <see langword="null"/> when it names none.</summary>
+    public async Task<string?> ShortHashAsync(string rev, CancellationToken ct = default)
+    {
+        ProcessResult r = await RunAsync(["rev-parse", "--short", "--verify", "--quiet", rev + "^{commit}"], ct: ct).ConfigureAwait(false);
+        return r.Success && r.Output.Trim().Length > 0 ? r.Output.Trim() : null;
+    }
+
     /// <summary>The full hash of HEAD, or <see langword="null"/> when there is none (no commits yet).</summary>
     public async Task<string?> HeadCommitAsync(CancellationToken ct = default)
     {

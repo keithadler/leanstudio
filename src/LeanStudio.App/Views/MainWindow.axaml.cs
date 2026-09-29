@@ -1108,9 +1108,13 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Profiler: Profile File (where the time goes)", m + "⌥T", Cmd(_vm.ProfileFileCommand));
         yield return ("Profiler: Profile Declaration at Cursor", "", Cmd(_vm.ProfileDeclarationCommand));
         yield return ("Profiler: Profile Whole Project", "", Cmd(_vm.ProfileProjectCommand));
+        yield return ("Profiler: Profile as You Edit (live, on or off)", "", Act(() => _vm.ProfileLive = !_vm.ProfileLive));
         yield return ("Profiler: Measure Heartbeats Instead of Time", "", Act(() => _vm.ProfileHeartbeats = !_vm.ProfileHeartbeats));
         yield return ("Profiler: Set Profile as Baseline", "", Cmd(_vm.SetProfileBaselineCommand));
         yield return ("Profiler: Clear Baseline", "", Cmd(_vm.ClearProfileBaselineCommand));
+        yield return ("Profiler: Compare with the Last Commit (HEAD)", "", Cmd(_vm.CompareWithHeadCommand));
+        yield return ("Profiler: Compare with a Branch or Commit…", "", Cmd(_vm.CompareWithRevisionPromptCommand));
+        yield return ("Profiler: Check for Regressions (what CI checks)…", "", Cmd(_vm.CheckRegressionsCommand));
         yield return ("Profiler: Copy Profile as Markdown", "", Cmd(_vm.CopyProfileReportCommand));
         yield return ("Profiler: Save for the Firefox Profiler…", "", Cmd(_vm.ExportFirefoxProfileCommand));
         yield return ("Tenet: Why Isn't This Proved?", "", Cmd(_vm.WhyNotProvedAtCaretCommand));

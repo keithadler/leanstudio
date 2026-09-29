@@ -120,6 +120,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             HideLetValues = settings.HideLetValues,
             TargetFirst = settings.GoalBeforeAssumptions,
         };
+        _profileLive = settings.ProfileLive;
         Info.PropertyChanged += (_, e) =>
         {
             // The Tactic State's view choices are kept for next time.
@@ -248,6 +249,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     partial void OnActiveDocumentChanged(DocumentViewModel? value)
     {
         FollowActiveDocument(value);
+        ScheduleLiveProfile(value, 200);
         if (value is null)
         {
             Info.Clear("No file open");
@@ -610,6 +612,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             if (s == LeanServerState.Running && _server == server)
             {
+                Dispatcher.UIThread.Post(() => ScheduleLiveProfile(ActiveDocument, 0));
                 _infoviewBridge?.ServerRestarted();
             }
         };
@@ -881,6 +884,10 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (doc.Timings.Count > 0)
         {
             doc.Timings = []; // they describe the text as it was
+        }
+        if (doc == ActiveDocument)
+        {
+            ScheduleLiveProfile(doc, LiveProfileDelay);
         }
         if (!doc.IsLean || _server is not { State: LeanServerState.Running } server)
         {

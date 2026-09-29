@@ -638,7 +638,7 @@ internal static class Scenario
             sd.Document.Replace(sd.Document.Text.IndexOf("  omega", StringComparison.Ordinal), "  omega".Length, "  sorry");
             await vm.ProfileFileAsync();
             TimingItem? after = vm.TimingItems.FirstOrDefault(t => t.Timing.Name == "slow");
-            Check(vm.TimingStatus.Contains("Baseline ", StringComparison.Ordinal)
+            Check(vm.TimingStatus.Contains("Against the profile of ", StringComparison.Ordinal)
                 && (after?.IsFaster == true || vm.TimingStatus.Contains("No longer measurable: slow", StringComparison.Ordinal)),
                 $"with a baseline, a profile after an edit says what changed ({after?.Change}; {vm.TimingStatus})");
             sd.Document.UndoStack.Undo();
@@ -659,6 +659,24 @@ internal static class Scenario
                 $"profiling the project lists its files and the costliest declaration of all ({vm.TimingStatus})");
             vm.ShowProfiledFileCommand.Execute(vm.ProfiledFiles.First(f => f.Name == "Basic.lean"));
             Check(vm.Profile?.Path.EndsWith("Basic.lean", StringComparison.Ordinal) == true, "and one file of it can be looked at alone");
+
+            // Profiling as you edit, from the running server.
+            vm.ActiveDocument = sd;
+            vm.ProfileLive = true;
+            Check(await WaitFor(() => vm.Profile is { Live: true } p && p.Declarations.Any(x => x.Name == "slow" && x.Value > 0.1), 90) && sd.Timings.Any(t => t.Name == "slow"),
+                $"live profiling shows the slow theorem, in the panel and the editor ({vm.TimingStatus})");
+            int omegaAt = sd.Document.Text.IndexOf("  omega", StringComparison.Ordinal);
+            sd.Document.Replace(omegaAt, "  omega".Length, "  sorry");
+            Check(await WaitFor(() => vm.Profile is { Live: true } p && !p.Declarations.Any(x => x.Name == "slow" && x.Value > 0.1), 60),
+                $"and follows an edit that makes it cheap ({vm.TimingStatus})");
+            sd.Document.UndoStack.Undo();
+            string liveUri = Scratch.UriFor(sd.Path, "Live");
+            vm.ProfileLive = false;
+            Check(await WaitFor(() => vm.Server?.IsOpen(liveUri) == false, 10), "turning it off closes Lean's copy of the file");
+
+            CheckReport? check = await vm.CheckRegressionsAsync("HEAD");
+            Check(check is { Passed: true } && check.Files.Any(f => f.Path == slowFile) && vm.TimingItems.Any(t => t.Timing.Name == "slow" && t.Change == "new"),
+                $"the regression check profiles the files changed since HEAD, now and then ({vm.TimingStatus})");
             await vm.CloseDocumentCommand.ExecuteAsync(sd);
         }
         finally
@@ -667,6 +685,12 @@ internal static class Scenario
             File.Delete(walkFile);
         }
         vm.ActiveDocument = doc;
+
+        await vm.CompareWithRevisionAsync("HEAD");
+        Check(vm.BaselineLabel.StartsWith("HEAD (", StringComparison.Ordinal) && vm.TimingStatus.Contains("Against HEAD (", StringComparison.Ordinal),
+            $"a file can be compared with its last commit ({vm.TimingStatus})");
+        Check(await WaitFor(() => vm.SavedProfiles().Count > 0, 10), $"profiles are saved, to compare with later ({vm.SavedProfiles().FirstOrDefault()?.Describe()})");
+        vm.ClearProfileBaselineCommand.Execute(null);
 
         Console.WriteLine("counterexamples, extract as lemma, the REPL, the project map");
         string falseFile = Path.Combine(proofsDir, "Falsehood.lean");

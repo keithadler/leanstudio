@@ -92,7 +92,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Extract a goal as a lemma, with the hypotheses it needs | | ✓ |
 | Independent re-checking of every declaration by a second kernel (Tenet) | | ✓ |
 | Why a theorem isn't fully proved, and a map of what rests on `sorry` | | ✓ |
-| A profiler: flame graphs, cost per tactic line, heartbeats, baselines, simp and instance counters | | ✓ |
+| A profiler: live as you edit, flame graphs, cost per tactic line, heartbeats, simp and instance counters, and a heartbeat regression check for CI | | ✓ |
 | Search Mathlib in plain English, and Loogle, built in | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
@@ -147,7 +147,7 @@ The Outline also shows, live, which theorems Lean accepts (✓), which still use
    - **Lean's profiler**: Lean's time per category (elaboration, type class inference, `simp`, type checking, compilation) and per tactic;
    - **counters**: what it made Lean do, from `set_option diagnostics true`: the `simp` lemmas it tried and how many of those worked, the instances it used, the definitions it unfolded.
 
-   **This declaration** profiles only the one at the cursor, so it is quick to repeat while you tune a proof. **Heartbeats** measures Lean's heartbeats instead of time: the unit of `maxHeartbeats`, the same on every run, with each declaration's share of the limit. Times vary a little between runs, so **Median of 3** or **5** runs Lean again and shows how much each time varied. **Set baseline** remembers a profile; after an edit, the next profile shows what changed for each declaration. Under **More**, **Profile Whole Project** profiles every file and lists the costliest declarations of all of them, **Copy as Markdown** gives a table for an issue or Zulip, and **Save for the Firefox Profiler** saves Lean's trace for [profiler.firefox.com](https://profiler.firefox.com). The last build's slowest modules are under **Build**. It profiles unsaved text, and your file is never modified.
+   **This declaration** profiles only the one at the cursor, so it is quick to repeat while you tune a proof. **Heartbeats** measures Lean's heartbeats instead of time: the unit of `maxHeartbeats`, the same on every run, with each declaration's share of the limit. Times vary a little between runs, so **Median of 3** or **5** runs Lean again and shows how much each time varied. **Live** profiles as you edit: a copy of the file with Lean's profilers on stays open in the running Lean server, and a moment after each change the panel and the editor show every declaration's cost as it is now. Lean re-checks only from your edit down, so this costs about what the edit does. **Baseline** sets what to compare with: this profile, the file as last committed, any branch or commit (profiled with today's toolchain and imports, so only the file's own change counts), or a profile saved earlier (every profile is kept, with the commit it was taken at). Each declaration then shows its change, live too. Under **More**, **Check for Regressions** runs the same check as CI (below), **Profile Whole Project** profiles every file and lists the costliest declarations of all of them, **Copy as Markdown** gives a table for an issue or Zulip, and **Save for the Firefox Profiler** saves Lean's trace for [profiler.firefox.com](https://profiler.firefox.com). The last build's slowest modules are under **Build**. It profiles unsaved text, and your file is never modified.
 
    ![The Profiler panel: the slow theorem, with omega as the step that costs the most, and its flame graph](docs/images/timing.png)
 
@@ -324,6 +324,15 @@ What CI and reviewers check, before you push:
 - **Renames keep the old name working.** After Rename Symbol on a declaration, Lean Studio offers to add `@[deprecated (since := "…")] alias old := new` after it, as Mathlib asks. Without Batteries it writes the core Lean equivalent.
 - **The library root stays complete.** A new file is added to its library's root file when that imports every module (as `Mathlib.lean` does), and a deleted one is taken out. *Import Every Module in the Library Root* adds any that are missing, like `lake exe mk_all`.
 - **In the Mathlib repository,** *Get Mathlib Cache for Open Files* fetches only what the open files need.
+- **Heartbeat regressions fail CI, not review.** `leanstudio --profile-check --against main` profiles every Lean file changed since `main`, in heartbeats, as it is now and as it was on `main`, and fails when a declaration costs more than 10% extra (and at least 1,000 heartbeats more) or uses more than half its `maxHeartbeats` (its own `set_option maxHeartbeats … in`, or the default). Heartbeats are the same on every run and machine, so a failure is a real change, never noise. It prints a Markdown table, and adds it to the job summary on GitHub Actions. The thresholds are options (`--profile-check --help`); **Profiler ▸ Check for Regressions** runs it in the app, and AI assistants have it as `profile_check`.
+
+  ```yaml
+  - uses: actions/checkout@v5
+    with:
+      fetch-depth: 0   # the check reads main's version of each file
+  - run: lake build
+  - run: leanstudio --profile-check --against origin/main
+  ```
 
 ### Editing like a pro
 
@@ -447,6 +456,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. When nothing works, it looks for a counterexample. |
 | `why_not_proved` | For a theorem that rests on `sorry` or an axiom, the chain of lemmas down to it, with file and line. |
 | `profile` | How long each declaration takes Lean (or how many heartbeats), costliest first: the costliest step in each, the path down Lean's trace to it, the tactic lines the time is spent on, Lean's categories, and optionally the simp lemmas, instances and unfoldings it uses. It can profile one declaration, take the median of several runs, and compare with another version of the file. |
+| `profile_check` | The regression check CI runs: every file changed since a revision, profiled in heartbeats now and then, and each declaration that got costlier or is near its `maxHeartbeats`. |
 | `search_mathlib` | Finds Mathlib results from a plain-English description (LeanSearch). |
 | `export_walkthrough` | Writes a step-by-step proof walkthrough web page, and returns a Lean 4 web editor link. |
 | `extract_lemma` | Turns the goal at a `sorry` into a lemma of its own, with the hypotheses it needs, and uses it there. |

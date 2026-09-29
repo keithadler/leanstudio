@@ -39,6 +39,9 @@ public sealed class Settings
     /// <summary>Show Lean's inlay hints in the text, such as implicit arguments it binds automatically.</summary>
     public bool InlayHints { get; set; } = true;
 
+    /// <summary>Profile the active Lean file as it is edited (the Profiler's Live switch).</summary>
+    public bool ProfileLive { get; set; }
+
     /// <summary>Edit with Vim's keys: normal, insert and visual modes, motions, operators and ex commands.</summary>
     public bool VimMode { get; set; }
 
