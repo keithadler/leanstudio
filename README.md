@@ -37,7 +37,7 @@
 
 A Lean proof is only as trustworthy as the kernel that accepted it. Lean Studio doesn't take one kernel's word for it. Every declaration you build is re-checked from the compiled `.olean` files by [Tenet](https://github.com/keithadler/tenet), a separate implementation of Lean's type checker. If Lean's kernel had a bug, Tenet would have to repeat the same bug to agree. Each theorem then shows, in the gutter, whether it is really proved, rests on `sorry`, or rests on an axiom, and **Why?** takes you to the lemma responsible.
 
-Around that sits a complete IDE built only for Lean. It is a native app, not a plugin or a web view inside another editor. The tactic state gets a full panel, every step of a proof is listed with what it changed, **Prove It** tries a dozen tactics on any `sorry` at once, and a tutorial, plain-English goals and explained errors make it the place to start if you are new to Lean.
+Around that sits a complete IDE built only for Lean. It is a native app, not a plugin or a web view inside another editor. The tactic state gets a full panel, every step of a proof is listed with what it changed, **Prove It** tries 17 tactics on any `sorry` at once, and a tutorial, plain-English goals and explained errors make it the place to start if you are new to Lean.
 
 ```bash
 brew install --cask keithadler/tap/lean-studio    # macOS
@@ -47,7 +47,7 @@ Windows and Linux: download from [Releases](https://github.com/keithadler/leanst
 
 <table>
   <tr>
-    <td width="33%" valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/prove-it.png" alt="Prove It"></a><br><b>Prove It.</b> A dozen tactics tried on a <code>sorry</code> at once; one click puts the winner in.</td>
+    <td width="33%" valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/prove-it.png" alt="Prove It"></a><br><b>Prove It.</b> 17 tactics tried on a <code>sorry</code> at once; one click puts the winner in.</td>
     <td width="33%" valign="top"><a href="#five-things-other-lean-editors-dont-do"><img src="docs/images/why-not-proved.png" alt="Why isn't this proved?"></a><br><b>Why isn't this proved?</b> The chain of lemmas from a theorem down to the <code>sorry</code> or axiom under it.</td>
     <td width="33%" valign="top"><a href="#and-five-more-for-real-proof-work"><img src="docs/images/counterexample.png" alt="A counterexample"></a><br><b>Is this even true?</b> When no tactic works, it looks for values that make the goal false.</td>
   </tr>
