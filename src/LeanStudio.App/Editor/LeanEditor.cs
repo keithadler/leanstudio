@@ -409,7 +409,8 @@ public sealed class LeanEditor : UserControl
     {
         if (_current is not null)
         {
-            _scroll[_current] = new Vector(_editor.HorizontalOffset, _editor.VerticalOffset);
+            // What the text view shows: the editor's own offset can lag behind it until the next layout.
+            _scroll[_current] = _editor.TextArea.TextView.ScrollOffset;
             // Forget closed files: this held on to every document ever shown, and with it its whole text and undo.
             foreach (DocumentViewModel gone in _scroll.Keys.Where(k => Main is not null && !Main.Documents.Contains(k)).ToList())
             {

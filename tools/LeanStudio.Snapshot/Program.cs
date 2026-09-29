@@ -592,16 +592,16 @@ internal static class Scenario
                     $"the minimap is beside the text, its frame where the editor has scrolled to ({ed.Minimap.Viewport().Top:F0} px down)");
                 Snap(window, outDir, "05b-sticky-breadcrumbs-minimap");
                 // Each file keeps where it was scrolled to when another is shown and it comes back.
-                await WaitFor(() => ed.TextEditor.VerticalOffset > 0, 5); // the scroll to the cursor lands at the next layout
-                double scrolledTo = ed.TextEditor.VerticalOffset;
+                double Shown() => ed.TextEditor.TextArea.TextView.ScrollOffset.Y;
+                double scrolledTo = Shown();
                 vm.ActiveDocument = doc;
                 await WaitFor(() => ed.Document == doc, 5);
                 vm.ActiveDocument = sc;
-                Check(await WaitFor(() => Math.Abs(ed.TextEditor.VerticalOffset - scrolledTo) < 1, 5) && scrolledTo > 0,
-                    $"switching away and back keeps the file's scroll position ({scrolledTo:F0} px, now {ed.TextEditor.VerticalOffset:F0})");
+                Check(await WaitFor(() => Math.Abs(Shown() - scrolledTo) < 1, 5) && scrolledTo > 0,
+                    $"switching away and back keeps the file's scroll position ({scrolledTo:F0} px, now {Shown():F0})");
                 ed.Minimap.ScrollTo(0);
-                Check(await WaitFor(() => ed.TextEditor.VerticalOffset == 0 && !ed.Sticky.IsVisible, 5),
-                    $"clicking the top of the minimap scrolls to the top, and nothing is pinned there ({ed.TextEditor.VerticalOffset:F0} px)");
+                Check(await WaitFor(() => Shown() == 0 && !ed.Sticky.IsVisible, 5),
+                    $"clicking the top of the minimap scrolls to the top, and nothing is pinned there ({Shown():F0} px)");
                 await vm.CloseDocumentCommand.ExecuteAsync(sc);
 
                 File.WriteAllText(conflictFile, "theorem a : True := trivial\n<<<<<<< HEAD\ntheorem b : 1 = 1 := rfl\n=======\ntheorem b : 1 = 1 := by decide\n>>>>>>> feature\ntheorem c : True := trivial\n");
@@ -669,9 +669,10 @@ internal static class Scenario
             vm.ShowDiff(new DiffRequest("Long", "before", longLeft, "after", longLeft.Replace("theorem t250 ", "theorem t250' ", StringComparison.Ordinal), "Long.lean"));
             DiffWindow? longDiff = window.OwnedWindows.OfType<DiffWindow>().LastOrDefault();
             longDiff?.View.Step(1);
-            Check(longDiff is not null && await WaitFor(() => longDiff.View.RightEditor.VerticalOffset > 1000
-                    && Math.Abs(longDiff.View.RightEditor.VerticalOffset - longDiff.View.LeftEditor.VerticalOffset) < 1, 5),
-                $"on a long file, Next change scrolls both sides to it, together ({longDiff?.View.LeftEditor.VerticalOffset:F0} and {longDiff?.View.RightEditor.VerticalOffset:F0} px)");
+            double LeftAt() => longDiff!.View.LeftEditor.TextArea.TextView.ScrollOffset.Y;
+            double RightAt() => longDiff!.View.RightEditor.TextArea.TextView.ScrollOffset.Y;
+            Check(longDiff is not null && await WaitFor(() => RightAt() > 1000 && Math.Abs(RightAt() - LeftAt()) < 1, 5),
+                $"on a long file, Next change scrolls both sides to it, together ({(longDiff is null ? 0 : LeftAt()):F0} and {(longDiff is null ? 0 : RightAt()):F0} px)");
             longDiff?.Close();
 
             // The integrated terminal: a real shell, started in the project's folder when the tab is first shown.

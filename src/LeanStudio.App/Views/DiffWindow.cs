@@ -173,7 +173,8 @@ public sealed class DiffView : UserControl
             return;
         }
         _syncing = true;
-        to.ScrollToOffset(from.VerticalOffset, from.HorizontalOffset);
+        Vector at = from.TextArea.TextView.ScrollOffset;
+        to.ScrollToOffset(at.Y, at.X);
         _syncing = false;
     }
 
