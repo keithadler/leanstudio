@@ -130,6 +130,13 @@ public sealed class ProfileCheckTests
             Assert.False(quick.Built);
             Assert.Equal([basePath], quick.Files.Select(f => f.Path));
             Assert.True(quick.Passed);
+
+            // Opened as "dir/" (a path from Finder or a shell can end so), it is the same project: it found no
+            // changed file at all, as every path was compared with "dir//".
+            var slashed = new LeanProject(dir + Path.DirectorySeparatorChar);
+            Assert.Equal(project.Root, slashed.Root);
+            CheckReport again = await ProfileCheck.RunAsync(slashed, new CheckOptions("main", MinDelta: 10, Dependents: 0), null, ct).WaitAsync(Lean.Patience, ct);
+            Assert.Equal([basePath], again.Files.Select(f => f.Path));
         }
         finally
         {

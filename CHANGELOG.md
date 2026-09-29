@@ -18,6 +18,7 @@
 - `verify` over MCP kept returning the declarations of the build it first read after the project was built again outside it (`lake build` in a terminal), until the server restarted ([#2](https://github.com/keithadler/leanstudio/issues/2)). Tenet now notes the build it opened (each `.olean`'s size and time, the manifest and the toolchain) and reads the new one when it has changed; the window's Verify, Why?, the project map and the blueprint check do the same.
 - A request to Lean left waiting when its server stopped could surface later as an error no one caught; the error now also names the request.
 - An answer from Lean nested more than 64 levels deep was dropped unread, and its request waited forever: the goals of a long sum (sixty `+ 1`s) never showed, and a live profile could stall on a deep trace. Answers may now nest 1,024 levels, and one that cannot be read fails its request instead.
+- A project opened with a trailing slash (`open -a "Lean Studio" Proofs/`, or a path pasted from a shell) made *Check for Regressions* find no changed files, and put the project in Recent twice. Its folder is now kept without the slash, and the doubles are merged.
 - A goals request cancelled as the cursor moved on, while the file's connection to Lean was still being made, cancelled that connection for the request that replaced it too, so the Goals panel stayed empty until the cursor moved again.
 
 **A first-class profiler** (Lean ▸ Profiler, ⌘⌥T / Ctrl+Alt+T; the Timing panel is now the Profiler panel):

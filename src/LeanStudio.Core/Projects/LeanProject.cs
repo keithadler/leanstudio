@@ -14,12 +14,13 @@ public sealed class LeanProject
     private static readonly string[] Lakefiles = ["lakefile.lean", "lakefile.toml"];
 
     /// <summary>
-    /// A project rooted at <paramref name="root"/>, made absolute. Nothing is read or checked here; use
-    /// <see cref="FindEnclosing"/> to locate the project a file belongs to.
+    /// A project rooted at <paramref name="root"/>, made absolute and without a trailing separator (a folder opened as
+    /// <c>Proofs/</c> is the same project as <c>Proofs</c>, and paths inside it are compared with its root). Nothing
+    /// is read or checked here; use <see cref="FindEnclosing"/> to locate the project a file belongs to.
     /// </summary>
     public LeanProject(string root)
     {
-        Root = Path.GetFullPath(root);
+        Root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
     }
 
     /// <summary>The absolute path of the project folder.</summary>

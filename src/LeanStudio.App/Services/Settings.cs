@@ -198,7 +198,9 @@ public sealed class Settings
     /// </summary>
     public void RememberProject(string root)
     {
-        RecentProjects.RemoveAll(p => string.Equals(p, root, StringComparison.Ordinal));
+        // Proofs/ and Proofs are one project: older settings may hold both.
+        root = Path.TrimEndingDirectorySeparator(root);
+        RecentProjects.RemoveAll(p => string.Equals(Path.TrimEndingDirectorySeparator(p), root, StringComparison.Ordinal));
         RecentProjects.Insert(0, root);
         if (RecentProjects.Count > 12)
         {
