@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
 
 **What VS Code had and Lean Studio didn't**:
 - **An integrated terminal** (⌃`, *View ▸ Terminal*): your shell in the bottom panel, in the project's folder, with `lake` and `lean` on its path. A real pseudo-terminal and xterm's emulator, so colours, full-screen programs and resizing work; a 5,000-line scrollback; copy and paste. *Open in Terminal* in Files now opens it there (*Open in External Terminal* is the old one).
