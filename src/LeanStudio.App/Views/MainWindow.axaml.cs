@@ -1079,6 +1079,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Instances of Class at Cursor…", "", InstancesOfClassAsync);
         yield return ("Lean: Lean's Processes (memory, stop a runaway file)…", "", LeanProcessesAsync);
         yield return ("Lean: Remove Unused Imports", "", Cmd(_vm.RemoveUnusedImportsCommand));
+        yield return ("Lean: Sort Imports", "", Cmd(_vm.SortImportsCommand));
         yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));
         yield return ("Lean: Import Every Module in the Library Root", "", Cmd(_vm.ImportAllModulesCommand));
         yield return ("Lean: Get Mathlib Cache for Open Files", "", Cmd(_vm.GetCacheForOpenFilesCommand));

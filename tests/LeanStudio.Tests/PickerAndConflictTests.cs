@@ -1,4 +1,5 @@
 using LeanStudio.Core.Editing;
+using LeanStudio.Core.Workflow;
 
 namespace LeanStudio.Tests;
 
@@ -73,5 +74,35 @@ public sealed class PickerAndConflictTests
         Assert.Equal(0, blocks[0].Start);
         Assert.Equal(6, blocks[1].Start);
         Assert.All(blocks, b => Assert.Equal(("HEAD", "topic"), (b.MineLabel, b.TheirsLabel)));
+    }
+}
+
+/// <summary>Sorting the imports of a file's header.</summary>
+public sealed class ImportOrderTests
+{
+    [Fact]
+    public void SortsTheRunByModuleNameAndDropsRepeats()
+    {
+        const string text = "import Mathlib.Data.Nat.Basic\nimport Batteries\nimport Mathlib.Data.Nat\nimport Batteries\n\ntheorem t : True := trivial\n";
+        Assert.Equal("import Batteries\nimport Mathlib.Data.Nat\nimport Mathlib.Data.Nat.Basic\n\ntheorem t : True := trivial\n", ImportOrder.Sort(text));
+    }
+
+    [Fact]
+    public void KeepsGroupsApartAndLeavesTheBodyAlone()
+    {
+        const string text = "/-\nCopyright (c) me\n-/\nimport B\nimport A\n\n-- the others\nimport D\nimport C\n\nimport Z\nimport Y -- keeps its comment\n";
+        Assert.Equal("/-\nCopyright (c) me\n-/\nimport A\nimport B\n\n-- the others\nimport C\nimport D\n\nimport Y -- keeps its comment\nimport Z\n", ImportOrder.Sort(text));
+        const string body = "import B\ndef f := 1\nimport A\n";
+        Assert.Equal(body, ImportOrder.Sort(body)); // an import after the header's end is not part of it
+    }
+
+    [Fact]
+    public void KeepsModifiersLineEndingsAndAnAlreadySortedFile()
+    {
+        Assert.Equal("module\n\npublic import A\nimport all B\n", ImportOrder.Sort("module\n\nimport all B\npublic import A\n"));
+        Assert.Equal("import A\r\nimport B\r\n", ImportOrder.Sort("import B\r\nimport A\r\n"));
+        const string sorted = "import A\nimport B\n";
+        Assert.Equal(sorted, ImportOrder.Sort(sorted));
+        Assert.Equal("", ImportOrder.Sort(""));
     }
 }

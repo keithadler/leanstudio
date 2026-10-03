@@ -14,6 +14,9 @@
 - **Dev containers and WSL**: *Remote: Use the Dev Container* runs a project's Lean in its dev container (found running, or started with `devcontainer up`), which mounts the folder, so no sshfs is needed. On Windows, a folder in WSL runs its Lean inside WSL by itself.
 - Each file came back scrolled to the top after switching to another and back: AvaloniaEdit's `ScrollToVerticalOffset` does nothing in the version used. It now keeps its place.
 
+**New**:
+- **Sort Imports** (*Lean ▸ Sort Imports*, and in the command palette): puts each run of `import` lines in the file's header in order by module name and drops repeats, as Mathlib's style asks. Blank lines and comments between runs stay, so a deliberate grouping is kept; nothing below the header moves. One undoable edit that touches only the lines that changed.
+
 **Fixes**:
 - `verify` over MCP kept returning the declarations of the build it first read after the project was built again outside it (`lake build` in a terminal), until the server restarted ([#2](https://github.com/keithadler/leanstudio/issues/2)). Tenet now notes the build it opened (each `.olean`'s size and time, the manifest and the toolchain) and reads the new one when it has changed; the window's Verify, Why?, the project map and the blueprint check do the same.
 - A request to Lean left waiting when its server stopped could surface later as an error no one caught; the error now also names the request.

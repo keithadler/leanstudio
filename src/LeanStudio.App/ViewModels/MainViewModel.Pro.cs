@@ -412,6 +412,38 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Put the active file's imports in order, as Mathlib's style asks: each run in the header sorted by module name,
+    /// repeats dropped. Only the changed lines are replaced, as one undoable edit, so the cursor and folds stay put.
+    /// </summary>
+    [RelayCommand]
+    public void SortImports()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string sorted = ImportOrder.Sort(text);
+        if (sorted == text)
+        {
+            Log("Imports: already in order.");
+            return;
+        }
+        int head = 0;
+        while (head < text.Length && head < sorted.Length && text[head] == sorted[head])
+        {
+            head++;
+        }
+        int tail = 0;
+        while (tail < text.Length - head && tail < sorted.Length - head && text[text.Length - 1 - tail] == sorted[sorted.Length - 1 - tail])
+        {
+            tail++;
+        }
+        d.Document.Replace(head, text.Length - head - tail, sorted.Substring(head, sorted.Length - head - tail));
+        Log("Imports: sorted. Undo brings the old order back.");
+    }
+
     // ---- linters ----
 
     /// <summary>
