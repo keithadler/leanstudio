@@ -699,6 +699,33 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Show how many <c>sorry</c>s the project had at each of its last 30 commits, as a sparkline with the commits that
+    /// changed the count. Read with <c>git grep</c>, so nothing is checked out or built.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowSorryBurndownAsync()
+    {
+        if (Project is null || Core.Git.GitRepository.Find(Project.Root) is not Core.Git.GitRepository repo)
+        {
+            Log("Burndown: open a project that is in a Git repository.");
+            return;
+        }
+        ProStatus = "Counting sorries through the history…";
+        try
+        {
+            IReadOnlyList<Core.Git.SorryPoint> points = await Core.Git.SorryHistory.ReadAsync(repo, 30);
+            foreach (string line in Core.Git.SorryHistory.ToText(points).Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- linters ----
 
     /// <summary>

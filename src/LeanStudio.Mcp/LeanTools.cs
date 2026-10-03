@@ -840,6 +840,20 @@ public static class LeanTools
                 return Task.FromResult(ProjectHealthReport.ToMarkdown(ProjectHealthReport.Scan(p.Root, DateOnly.FromDateTime(DateTime.Today), ct), p.Root).TrimEnd());
             }),
 
+        new("sorry_history",
+            "How a formalization is coming along: the number of sorry (and admit) words in the project's Lean files at each of its latest commits, oldest first, as a sparkline with the commits that changed the count. Read with git grep, so nothing is checked out or built; a sorry in a block comment still counts, one after -- does not.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("commits", "integer", "How many of the latest commits to read (default 30, at most 500).", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository, so there is no history to read");
+                }
+                return Core.Git.SorryHistory.ToText(await Core.Git.SorryHistory.ReadAsync(repo, OptInt(a, "commits") ?? 30, ct));
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

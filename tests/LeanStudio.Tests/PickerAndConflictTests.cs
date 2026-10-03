@@ -1,4 +1,5 @@
 using LeanStudio.Core.Editing;
+using LeanStudio.Core.Git;
 using LeanStudio.Core.Proofs;
 using LeanStudio.Core.Workflow;
 
@@ -580,6 +581,75 @@ public sealed class ProjectHealthTests
         }
         finally
         {
+            Directory.Delete(dir, true);
+        }
+    }
+}
+
+/// <summary>How many sorries a project had at each commit.</summary>
+public sealed class SorryHistoryTests
+{
+    [Fact]
+    public void CountsSorriesOutsideLineComments()
+    {
+        const string grep = "abc:A.lean:3:  sorry\nabc:A.lean:7:  exact foo  -- a sorry here is a comment\nabc:B.lean:2:theorem t : P := by sorry\nabc:B.lean:9:  admit; sorry\nabc:B.lean:12:def sorryNot := 1\n";
+        Assert.Equal(4, SorryHistory.Count(grep));
+        Assert.Equal(0, SorryHistory.Count(""));
+        Assert.Equal(1, SorryHistory.Count("abc:A.lean:3:  have : x := by sorry -- and: colons: here\r\n"));
+    }
+
+    [Fact]
+    public void ReadsTheLogAndDrawsASparkline()
+    {
+        Assert.Equal([("aaaaaaa1", "2026-10-02", "Add b"), ("bbbbbbb2", "2026-10-01", "Start")], SorryHistory.ParseLog("aaaaaaa1\t2026-10-02\tAdd b\nbbbbbbb2\t2026-10-01\tStart\n\nnot a commit\n"));
+        Assert.Equal("█▅▁", SorryHistory.Sparkline([10, 6, 2]));
+        Assert.Equal("▁▁▁", SorryHistory.Sparkline([4, 4, 4]));
+        Assert.Equal("", SorryHistory.Sparkline([]));
+        Assert.Equal("▁█", SorryHistory.Sparkline([0, 7]));
+    }
+
+    [Fact]
+    public void SummarizesWhatChanged()
+    {
+        SorryPoint[] points =
+        [
+            new("1111111aaa", "2026-09-01", "Start", 8), new("2222222bbb", "2026-09-02", "Prove a", 5),
+            new("3333333ccc", "2026-09-03", "Docs", 5), new("4444444ddd", "2026-09-04", "State c", 6),
+        ];
+        Assert.Equal("Sorries over the last 4 commits: █▁▁▃  8 → 6 (−2)\n  2026-09-02  2222222  −3  Prove a\n  2026-09-04  4444444  +1  State c", SorryHistory.ToText(points));
+        Assert.Equal("No commits to read.", SorryHistory.ToText([]));
+        Assert.EndsWith("(no change)", SorryHistory.ToText([new("1111111aaa", "2026-09-01", "Only", 3)]), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReadsARealRepository()
+    {
+        string dir = Directory.CreateTempSubdirectory("leanstudio-sorry-").FullName;
+        try
+        {
+            CancellationToken ct = TestContext.Current.CancellationToken;
+            Assert.NotNull((await Core.Git.GitRepository.InitAsync(dir, ct)).Path);
+            var repo = Core.Git.GitRepository.Find(dir)!;
+            async Task Commit(string lean, string message)
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "A.lean"), lean, ct);
+                Assert.True((await repo.RunAsync(["add", "-A"], ct: ct)).Success);
+                Assert.True((await repo.RunAsync(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-m", message], ct: ct)).Success);
+            }
+            await Commit("theorem a : P := by sorry\ntheorem b : Q := by sorry\n", "Two sorries");
+            await Commit("theorem a : P := by simp\ntheorem b : Q := by sorry\n", "Prove a");
+            await Commit("theorem a : P := by simp\ntheorem b : Q := by simp\n", "Prove b");
+            IReadOnlyList<SorryPoint> points = await SorryHistory.ReadAsync(repo, 10, ct);
+            Assert.Equal([2, 1, 0], points.Select(p => p.Sorries));
+            Assert.Equal(["Two sorries", "Prove a", "Prove b"], points.Select(p => p.Subject));
+            Assert.Equal(["Prove a", "Prove b"], (await SorryHistory.ReadAsync(repo, 2, ct)).Select(p => p.Subject));
+        }
+        finally
+        {
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(f, FileAttributes.Normal);
+            }
             Directory.Delete(dir, true);
         }
     }

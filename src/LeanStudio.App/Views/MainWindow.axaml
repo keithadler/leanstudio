@@ -138,6 +138,7 @@
         <MenuItem Header="Wrap Long Comment Lines" Command="{Binding WrapLongCommentsCommand}" />
         <MenuItem Header="Add Mathlib Copyright Header" Command="{Binding AddMathlibHeaderCommand}" />
         <MenuItem Header="Remove Deprecations Older Than Six Months" Command="{Binding RemoveStaleDeprecationsCommand}" />
+        <MenuItem Header="Sorry Burndown (last 30 commits)" Command="{Binding ShowSorryBurndownCommand}" />
         <MenuItem Header="Project Health Summary" Command="{Binding ShowProjectHealthCommand}" />
         <MenuItem Header="Find Duplicate Theorem Statements" Command="{Binding FindDuplicateStatementsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
