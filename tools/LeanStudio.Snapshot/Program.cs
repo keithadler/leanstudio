@@ -52,6 +52,8 @@ Dispatcher.UIThread.Post(async () =>
     {
         failures = args.Length > 2 && args[0] == "--validate"
             ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
+            : args.Length > 0 && args[0] == "--commands"
+            ? await LeanStudio.Snapshot.CommandChecks.RunAsync()
             : args.Length > 1 && args[0] == "--leak"
             ? await LeanStudio.Snapshot.Leak.RunAsync(Path.GetFullPath(args[1]))
             : args.Length > 3 && args[0] == "--scale-profiler"

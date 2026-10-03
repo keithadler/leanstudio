@@ -74,7 +74,14 @@ desktop session. It opens a real window, and checks that Lean's infoview renders
 dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll --native-infoview . snapshots
 ```
 
-CI runs the build and tests on Linux, macOS and Windows, and runs the snapshot on Linux and macOS. Please make sure
+The text, Mathlib and Git commands of the Lean menu (Sort Imports, Tidy File, Sorry Burndown…) are run in the real
+window on real documents by a check that needs git but not Lean:
+
+```bash
+dotnet tools/LeanStudio.Snapshot/bin/Release/net10.0/LeanStudio.Snapshot.dll --commands
+```
+
+CI runs the build and tests on Linux, macOS and Windows, and runs the snapshot and that command check on Linux and macOS. Please make sure
 they pass locally first.
 
 ## What a good change looks like
