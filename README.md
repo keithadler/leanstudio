@@ -94,6 +94,8 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Why a theorem isn't fully proved, and a map of what rests on `sorry` | | ✓ |
 | A profiler: live as you edit, flame graphs, cost per tactic line, heartbeats, simp and instance counters, and a heartbeat regression check for CI | | ✓ |
 | Search Mathlib in plain English, and Loogle, built in | | ✓ |
+| Sorry Burndown: the project's `sorry` count over its last commits, from Git, and a branch's added, removed and restated theorems with proofs ignored, as Markdown for the pull request | | ✓ |
+| Mathlib housekeeping: sort imports, tidy whitespace, wrap long comments, add the copyright header, delete old deprecations, a Mathlib-style name for a theorem, theorems that state the same thing, a project health summary | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
