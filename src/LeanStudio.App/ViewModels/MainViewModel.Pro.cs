@@ -671,6 +671,34 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Count the project's Lean files into a summary in Output: size, <c>sorry</c>s and TODOs, the share of definitions with a doc
+    /// comment, deprecations (and how many are old enough to delete) and style problems, then the files with the most still to do.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowProjectHealthAsync()
+    {
+        if (Project is null)
+        {
+            Log("Health: open a project first.");
+            return;
+        }
+        string root = Project.Root;
+        ProStatus = "Counting the project's files…";
+        try
+        {
+            ProjectHealth health = await Task.Run(() => ProjectHealthReport.Scan(root, DateOnly.FromDateTime(DateTime.Today)));
+            foreach (string line in ProjectHealthReport.ToMarkdown(health, root).Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- linters ----
 
     /// <summary>

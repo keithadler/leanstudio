@@ -174,6 +174,7 @@ public sealed class TextToolTests
             Assert.Equal("add_comm", await Call("suggest_name", new() { ["statement"] = "(a b : ℕ) : a + b = b + a" }));
             Assert.StartsWith("no name", await Call("suggest_name", new() { ["statement"] = "True" }), StringComparison.Ordinal);
 
+            Assert.Contains("1 files, 3 lines, 0 theorems, 1 definitions.", await Call("project_health", new()), StringComparison.Ordinal);
             Assert.Equal("no two theorems state the same thing", await Call("duplicate_statements", new()));
             await File.WriteAllTextAsync(Path.Combine(dir, "Q.lean"), "theorem q1 (a b : ℕ) : a + b = b + a := by omega\ntheorem q2 (x y : ℕ) : x + y = y + x := by omega\n", TestContext.Current.CancellationToken);
             string dupes = await Call("duplicate_statements", new());
@@ -525,6 +526,57 @@ public sealed class DuplicateStatementsTests
             await File.WriteAllTextAsync(Path.Combine(dir, "A.lean"), "theorem one (n : ℕ) : n + 0 = n := rfl\n", TestContext.Current.CancellationToken);
             await File.WriteAllTextAsync(Path.Combine(dir, "B.lean"), "theorem two (k : ℕ) : k + 0 = k := by simp\n", TestContext.Current.CancellationToken);
             Assert.Equal(["one", "two"], Assert.Single(DuplicateStatements.Scan(dir, TestContext.Current.CancellationToken)).Select(s => s.Name).Order());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+}
+
+/// <summary>A project's state at a glance.</summary>
+public sealed class ProjectHealthTests
+{
+    private static readonly DateOnly Today = new(2026, 10, 3);
+
+    private const string Text =
+        "/-- Documented. -/\ndef a := 1\n\ndef b := sorry\n\ntheorem t : a = 1 := by\n  sorry\n\n-- TODO: more\n"
+        + "@[deprecated (since := \"2024-01-01\")] alias old := a\n@[deprecated (since := \"2026-09-01\")] alias recent := a\nlemma l : True := trivial  \n";
+
+    [Fact]
+    public void CountsWhatAFileHolds()
+    {
+        FileHealth h = ProjectHealthReport.Count("F.lean", Text, Today);
+        Assert.Equal((2, 2, 2, 1), (h.Definitions, h.Theorems, h.Sorries, h.Todos));
+        Assert.Equal((1, 2, 1), (h.Undocumented, h.Deprecated, h.StaleDeprecated)); // b has no doc comment; only `old` is past six months
+        Assert.Equal(1, h.StyleProblems); // the trailing spaces after `lemma l`
+    }
+
+    [Fact]
+    public void ReadsADocCoveragePercentage()
+    {
+        var health = new ProjectHealth([new FileHealth("A", 10, 0, 4, 0, 0, 1, 0, 0, 0), new FileHealth("B", 10, 0, 4, 0, 0, 0, 0, 0, 0)]);
+        Assert.Equal(88, health.DocCoveragePercent); // 7 of 8, rounded
+        Assert.Equal(100, new ProjectHealth([]).DocCoveragePercent);
+    }
+
+    [Fact]
+    public async Task ScansAFolderAndSaysWhereMostIsLeft()
+    {
+        string dir = Directory.CreateTempSubdirectory("leanstudio-health-").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, "Clean.lean"), "/-- A. -/\ndef a := 1\n", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(dir, "Messy.lean"), "def b := sorry \ndef c := sorry\n", TestContext.Current.CancellationToken);
+            ProjectHealth health = ProjectHealthReport.Scan(dir, Today, TestContext.Current.CancellationToken);
+            Assert.Equal(2, health.Files.Count);
+            string report = ProjectHealthReport.ToMarkdown(health, dir);
+            Assert.Contains("2 files, 4 lines, 0 theorems, 3 definitions.", report, StringComparison.Ordinal);
+            Assert.Contains("| `sorry` / `admit` | 2 |", report, StringComparison.Ordinal);
+            Assert.Contains("| Definitions with a doc comment | 33% (2 without) |", report, StringComparison.Ordinal);
+            Assert.Contains("- `Messy.lean`: 5 (2 sorry, 2 undocumented, 0 old deprecations, 1 style)", report, StringComparison.Ordinal);
+            Assert.DoesNotContain("Clean.lean", report, StringComparison.Ordinal);
+            Assert.Contains("No Lean files found.", ProjectHealthReport.ToMarkdown(new ProjectHealth([]), dir), StringComparison.Ordinal);
         }
         finally
         {

@@ -831,6 +831,15 @@ public static class LeanTools
                 return Task.FromResult(sb.ToString().TrimEnd());
             }),
 
+        new("project_health",
+            "A project's state at a glance, counted from its Lean files without building anything: files, lines, theorems and definitions; sorry and TODO counts; the share of definitions with a doc comment; deprecated declarations and how many are old enough to delete; style problems; and the files with the most still to do. Markdown.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ProjectHealthReport.ToMarkdown(ProjectHealthReport.Scan(p.Root, DateOnly.FromDateTime(DateTime.Today), ct), p.Root).TrimEnd());
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),
