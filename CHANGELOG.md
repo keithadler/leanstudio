@@ -24,6 +24,7 @@
 - **Wrap Long Comment Lines** (*Lean ▸ Wrap Long Comment Lines*): breaks the `--` comment and docstring lines over 100 characters at a space, which Tidy cannot do for you, as one undoable edit. Code, code fences, indented code in a docstring and words longer than the limit (a URL) are never touched. `style_check` takes `wrap=true` with `apply`.
 - Structure, class and inductive names that start with a lowercase letter are now reported by the Mathlib conventions check.
 - **Copy as a Zulip Message** (*File ▸ Copy as a Zulip Message*, and under Share in the palette): the active file in a `lean` fence and, in a quote below it, what Lean says about it, errors first, ready to paste into the Lean Zulip chat. The fences grow when the code has backticks of its own.
+- **Suggest a Name for This Theorem** (*Lean ▸ Suggest a Name for This Theorem*): reads the statement of the theorem at the cursor and gives the name Mathlib's scheme would: the conclusion read left to right with each operation and relation as a word, then `_of_` before each assumption. `a + b = b + a` is `add_comm`, `0 + a = a` is `zero_add`, `a ≤ b → b < c → a < c` is `lt_of_le_of_lt`. It says whether the theorem's own name matches; *Rename Symbol* applies it. A starting point for statements about operations and relations, not an oracle. `suggest_name` does the same over MCP.
 - **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:

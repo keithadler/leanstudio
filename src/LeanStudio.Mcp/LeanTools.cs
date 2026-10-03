@@ -782,6 +782,11 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("suggest_name",
+            "A name for a theorem in Mathlib's naming scheme, worked out from its statement: the conclusion read left to right with each operation and relation as a word (a + b = b + a is add_comm, 0 + a = a is zero_add, a ≤ b → b < c → a < c is lt_of_le_of_lt), then _of_ before each assumption. A starting point only: it reads statements about operations and relations, and says so when it can't.",
+            Schema(("statement", "string", "What follows the theorem's name, up to :=, such as \"(a b : ℕ) : a + b = b + a\".", true)),
+            (a, ct) => Task.FromResult(TheoremNamer.Suggest(Str(a, "statement")) ?? "no name: the statement has no relation (=, ≤, <, ↔ …) to read")),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

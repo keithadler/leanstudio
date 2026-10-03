@@ -592,6 +592,28 @@ public sealed partial class MainViewModel
             + (wrapped == text ? "" : " Undo brings the old text back."));
     }
 
+    /// <summary>
+    /// Suggest a Mathlib-style name for the theorem at the cursor, worked out from its statement (<c>a + b = b + a</c> is
+    /// <c>add_comm</c>), and say whether it matches the one it has. The name is only a starting point; Rename Symbol applies it.
+    /// </summary>
+    [RelayCommand]
+    public void SuggestTheoremName()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        if (TheoremNamer.SuggestAt(d.Document.Text, d.CaretLine) is not var (current, statement, suggested))
+        {
+            Log("Name: put the cursor in a theorem whose statement is about operations and relations (like a + b = b + a).");
+            return;
+        }
+        string last = current.Split('.')[^1];
+        Log(last == suggested
+            ? $"Name: `{last}` is the name Mathlib's scheme gives {statement}."
+            : $"Name: Mathlib's scheme gives `{suggested}` for {statement}; this one is `{last}`. A suggestion only: use Rename Symbol (F2) to apply it.");
+    }
+
     // ---- linters ----
 
     /// <summary>

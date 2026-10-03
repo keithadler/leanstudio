@@ -170,6 +170,9 @@ public sealed class TextToolTests
                 return result["content"]![0]!["text"]!.GetValue<string>();
             }
 
+            Assert.Equal("add_comm", await Call("suggest_name", new() { ["statement"] = "(a b : ℕ) : a + b = b + a" }));
+            Assert.StartsWith("no name", await Call("suggest_name", new() { ["statement"] = "True" }), StringComparison.Ordinal);
+
             string preview = await Call("sort_imports", new() { ["path"] = file });
             Assert.Contains("import A \nimport B", preview, StringComparison.Ordinal);
             Assert.StartsWith("import B\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken), StringComparison.Ordinal); // not written
@@ -373,5 +376,48 @@ public sealed class ZulipPostTests
         string post = ZulipPost.Build("/-- Uses ``` fences. -/\ndef a := 1", [new ZulipMessage(1, 1, "error", "see ````x````")]);
         Assert.StartsWith("````lean\n", post, StringComparison.Ordinal);
         Assert.Contains("`````quote\n", post, StringComparison.Ordinal);
+    }
+}
+
+/// <summary>Naming a theorem the way Mathlib would, from its statement.</summary>
+public sealed class TheoremNamerTests
+{
+    [Theory]
+    [InlineData("(a b : ℕ) : a + b = b + a", "add_comm")]
+    [InlineData("(a b : ℕ) : a * b = b * a", "mul_comm")]
+    [InlineData("(a b c : ℕ) : a + b + c = a + (b + c)", "add_assoc")]
+    [InlineData("(a : ℕ) : a + 0 = a", "add_zero")]
+    [InlineData("(a : ℕ) : 0 + a = a", "zero_add")]
+    [InlineData("(a : ℕ) : a * 1 = a", "mul_one")]
+    [InlineData("(a : ℤ) : - -a = a", "neg_neg")]
+    [InlineData("(a : ℤ) : a - a = 0", "sub_self")]
+    [InlineData("(a b c d : ℕ) : a + b ≤ c + d", "add_le_add")]
+    [InlineData("(a b c : ℕ) : a ≤ b → b < c → a < c", "lt_of_le_of_lt")]
+    [InlineData("(a b : ℕ) (h : a < b) : a ≤ b", "le_of_lt")]
+    [InlineData("a ≤ a + b", "le_add_self")]
+    [InlineData("¬ a < b", "not_lt")]
+    public void NamesTheStatementTheMathlibWay(string statement, string name) => Assert.Equal(name, TheoremNamer.Suggest(statement));
+
+    [Fact]
+    public void FindsTheDeclarationAroundALine()
+    {
+        const string text = "def x := 1\n\n@[simp] theorem foo (a b : ℕ) :\n    a + b = b + a := by\n  omega\n\ntheorem bar : True := trivial\n";
+        Assert.Equal(("foo", "(a b : ℕ) : a + b = b + a", "add_comm"), TheoremNamer.SuggestAt(text, 3));
+        Assert.Equal(("foo", "(a b : ℕ) : a + b = b + a", "add_comm"), TheoremNamer.SuggestAt(text, 2));
+        Assert.Null(TheoremNamer.SuggestAt(text, 0)); // a def
+        Assert.Null(TheoremNamer.SuggestAt(text, 6)); // no relation to read
+        Assert.Null(TheoremNamer.SuggestAt(text, 5)); // between declarations: the one above ended
+    }
+
+    [Theory]
+    [InlineData("(a : ℕ) : True")]
+    [InlineData("")]
+    public void SaysNothingWhenThereIsNoRelationToRead(string statement) => Assert.Null(TheoremNamer.Suggest(statement));
+
+    [Fact]
+    public void KeepsAssumptionsInTheirOrderAndIgnoresBindersThatStateNothing()
+    {
+        Assert.Equal("add_le_add_of_le_of_lt", TheoremNamer.Suggest("{α : Type} (a b c d : α) (h₁ : a ≤ b) (h₂ : c < d) : a + c ≤ b + d"));
+        Assert.Equal("mul_comm", TheoremNamer.Suggest("∀ a b : ℕ, a * b = b * a"));
     }
 }
