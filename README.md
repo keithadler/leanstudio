@@ -331,6 +331,7 @@ What CI and reviewers check, before you push:
 - **Sort Imports** (*Lean ▸ Sort Imports*) puts each run of `import` lines in the header in order by module name and drops repeats, as Mathlib's style asks, leaving comments, blank-line groups and the body alone.
 - **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*) holds a file to Mathlib's text rules: trailing whitespace, tabs, CRLF and the final newline are fixed in one undoable edit, and lines over 100 characters are listed for you to break.
 - **Tidy File** does Sort Imports and the whitespace fixes in one edit; in a Mathlib project it also reports a missing copyright header or module docstring and theorem names that start with a capital, and **Add Mathlib Copyright Header** writes the header for you.
+- **What This Branch Changed Mathematically** lists the theorems a branch adds, removes and restates since `main`, with proofs ignored, as Markdown for the pull request: what a reviewer reads first.
 - **Sorry Burndown** draws the project's `sorry` count over its last 30 commits as a sparkline and names the commits that moved it, straight from Git, with nothing built.
 - **Project Health Summary** counts the project's files into a report: size, sorries and TODOs, doc-comment coverage, deprecations and style problems, and where the most is left to do.
 - **Find Duplicate Theorem Statements** lists theorems of the project that state the same thing under different names, with each one's file and line.

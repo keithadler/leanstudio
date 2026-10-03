@@ -654,3 +654,73 @@ public sealed class SorryHistoryTests
         }
     }
 }
+
+/// <summary>What a change did to the theorems a project states.</summary>
+public sealed class StatementDiffTests
+{
+    private static TheoremStatement T(string name, string statement) => new("F.lean", 0, name, statement);
+
+    [Fact]
+    public void FindsAddedRemovedAndRestatedTheorems()
+    {
+        StatementChanges changes = StatementDiff.Compare(
+            [T("keep", "(a : ℕ) : a = a"), T("gone", "True"), T("weaker", "(a : ℕ) : a ≤ a + 1"), T("renamed_var", "(a b : ℕ) : a + b = b + a")],
+            [T("keep", "(a : ℕ) : a = a"), T("fresh", "(n : ℕ) : n + 0 = n"), T("weaker", "(a : ℕ) : a < a + 1"), T("renamed_var", "(x y : ℕ)  : x + y = y + x")]);
+        Assert.Equal(["fresh"], changes.Added.Select(t => t.Name));
+        Assert.Equal(["gone"], changes.Removed.Select(t => t.Name));
+        ChangedStatement c = Assert.Single(changes.Changed); // the renamed variables and the spacing are no change
+        Assert.Equal(("weaker", "(a : ℕ) : a ≤ a + 1", "(a : ℕ) : a < a + 1"), (c.Name, c.Before, c.After));
+        Assert.False(changes.IsEmpty);
+        Assert.True(StatementDiff.Compare([T("a", "True")], [T("a", "True")]).IsEmpty);
+    }
+
+    [Fact]
+    public void WritesMarkdownForAPullRequest()
+    {
+        StatementChanges changes = new([T("fresh", "(n : ℕ) : n + 0 = n")], [T("gone", "True")], [new ChangedStatement("weaker", "a ≤ b", "a < b")]);
+        Assert.Equal("## Statements changed between `main` and `topic`\n\n**Added (1)**\n\n- `fresh` (n : ℕ) : n + 0 = n\n\n**Restated (1)**\n\n- `weaker`\n  - before: a ≤ b\n  - after: a < b\n\n**Removed (1)**\n\n- `gone` True\n",
+            StatementDiff.ToMarkdown(changes, "main", "topic"));
+        Assert.Contains("Only proofs and other code changed.", StatementDiff.ToMarkdown(new StatementChanges([], [], []), "a", "b"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ComparesTwoRefsOfARealRepositoryAndIgnoresProofs()
+    {
+        string dir = Directory.CreateTempSubdirectory("leanstudio-stmt-").FullName;
+        try
+        {
+            CancellationToken ct = TestContext.Current.CancellationToken;
+            Assert.NotNull((await GitRepository.InitAsync(dir, ct)).Path);
+            var repo = GitRepository.Find(dir)!;
+            async Task Commit(string lean, string message)
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "A.lean"), lean, ct);
+                Assert.True((await repo.RunAsync(["add", "-A"], ct: ct)).Success);
+                Assert.True((await repo.RunAsync(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-m", message], ct: ct)).Success);
+            }
+            await Commit("theorem a (n : ℕ) : n + 0 = n := by sorry\ntheorem b : 1 = 1 := rfl\n", "Start");
+            await Commit("theorem a (m : ℕ) : m + 0 = m := by simp\ntheorem c (n : ℕ) : 0 + n = n := by simp\n", "Prove a, drop b, add c");
+            StatementChanges? changes = await StatementDiff.ReadAsync(repo, "HEAD~1", "HEAD", ct);
+            Assert.NotNull(changes);
+            Assert.Equal(["c"], changes.Added.Select(t => t.Name));
+            Assert.Equal(["b"], changes.Removed.Select(t => t.Name));
+            Assert.Empty(changes.Changed); // `a` has a new proof and a renamed variable, the same statement
+            Assert.Null(await StatementDiff.ReadAsync(repo, "no-such-ref", "HEAD", ct));
+
+            Assert.Null(await StatementDiff.DefaultBaseAsync(repo, ct)); // on main itself there is nothing of its own
+            string mainTip = (await repo.RunAsync(["rev-parse", "HEAD"], ct: ct)).Output.Trim();
+            Assert.True((await repo.RunAsync(["checkout", "-q", "-b", "topic"], ct: ct)).Success);
+            await Commit("theorem a (m : ℕ) : m + 0 = m := by simp\ntheorem c (n : ℕ) : 0 + n = n := by simp\ntheorem d : True := trivial\n", "Add d");
+            Assert.Equal(mainTip, await StatementDiff.DefaultBaseAsync(repo, ct));
+            Assert.Equal(["d"], (await StatementDiff.ReadAsync(repo, mainTip, "HEAD", ct))!.Added.Select(t => t.Name));
+        }
+        finally
+        {
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(f, FileAttributes.Normal);
+            }
+            Directory.Delete(dir, true);
+        }
+    }
+}

@@ -726,6 +726,43 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Say what the current branch changed mathematically, as a pull request would be read: the theorems it adds, removes
+    /// and restates since it left <c>main</c>, with proofs ignored. Written to Output as Markdown to paste into the pull request.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowStatementChangesAsync()
+    {
+        if (Project is null || Core.Git.GitRepository.Find(Project.Root) is not Core.Git.GitRepository repo)
+        {
+            Log("Statements: open a project that is in a Git repository.");
+            return;
+        }
+        ProStatus = "Comparing theorem statements with main…";
+        try
+        {
+            if (await Core.Git.StatementDiff.DefaultBaseAsync(repo) is not string baseRef)
+            {
+                Log("Statements: this branch has no commits of its own since main, so there is nothing to compare.");
+                return;
+            }
+            Core.Git.StatementChanges? changes = await Core.Git.StatementDiff.ReadAsync(repo, baseRef, "HEAD");
+            if (changes is null)
+            {
+                Log("Statements: git could not compare the branch with main.");
+                return;
+            }
+            foreach (string line in Core.Git.StatementDiff.ToMarkdown(changes, baseRef[..Math.Min(7, baseRef.Length)], "HEAD").Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- linters ----
 
     /// <summary>

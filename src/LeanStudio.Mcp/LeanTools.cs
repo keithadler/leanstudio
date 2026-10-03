@@ -854,6 +854,29 @@ public static class LeanTools
                 return Core.Git.SorryHistory.ToText(await Core.Git.SorryHistory.ReadAsync(repo, OptInt(a, "commits") ?? 30, ct));
             }),
 
+        new("statement_changes",
+            "What a change means mathematically, the way a pull request is read: the theorems it adds, removes and restates, with proofs ignored (the names of bound variables and spacing do not count as a restatement). Compares two git refs of the project's Lean files; by default the current branch against where it left main. Markdown, ready to paste into a pull request.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("base", "string", "The ref to compare from (default: where the current branch left main).", false),
+                   ("head", "string", "The ref to compare to (default HEAD).", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository");
+                }
+                string head = OptStr(a, "head") ?? "HEAD";
+                string? baseRef = OptStr(a, "base") ?? await Core.Git.StatementDiff.DefaultBaseAsync(repo, ct);
+                if (baseRef is null)
+                {
+                    return "this branch has no commits of its own since main, so there is nothing to compare (pass base)";
+                }
+                Core.Git.StatementChanges changes = await Core.Git.StatementDiff.ReadAsync(repo, baseRef, head, ct)
+                    ?? throw new ToolException($"git could not compare {baseRef} with {head}");
+                return Core.Git.StatementDiff.ToMarkdown(changes, baseRef.Length >= 40 ? baseRef[..7] : baseRef, head).TrimEnd();
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),
