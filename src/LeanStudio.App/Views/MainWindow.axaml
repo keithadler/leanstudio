@@ -56,6 +56,7 @@
         <MenuItem Header="Export Proof Walkthrough…" Command="{Binding ExportWalkthroughCommand}" />
         <MenuItem Header="Open in the Lean 4 Web Editor" Command="{Binding OpenInWebEditorCommand}" />
         <MenuItem Header="Copy Share Link" Command="{Binding CopyShareLinkCommand}" />
+        <MenuItem Header="Copy as a Zulip Message" Command="{Binding CopyForZulipCommand}" />
         <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
         <Separator />
         <MenuItem Header="Preferences…" Click="OnPreferences" InputGesture="{OnPlatform Default='Ctrl+OemComma', macOS='Cmd+OemComma'}" />
@@ -122,6 +123,8 @@
         <MenuItem Header="Quick Fix / Try This…" Click="OnQuickFix" InputGesture="{OnPlatform Default='Ctrl+OemPeriod', macOS='Cmd+OemPeriod'}" />
         <MenuItem Header="Rename Symbol…" Command="{Binding RenameSymbolCommand}" InputGesture="F2" />
         <MenuItem Header="Rename This Module…" Click="OnRenameModule" />
+        <MenuItem Header="Suggest a Name for This Theorem" Command="{Binding SuggestTheoremNameCommand}" />
+        <MenuItem Header="Merge Consecutive rw / intro Steps" Command="{Binding MergeConsecutiveTacticsCommand}" />
         <MenuItem Header="Fix All in File" Command="{Binding FixAllInFileCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+OemPeriod', macOS='Cmd+Alt+OemPeriod'}" />
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
@@ -129,6 +132,16 @@
         <MenuItem Header="Imports and Imported By" Command="{Binding ShowImportGraphCommand}" />
         <MenuItem Header="Instances of Class at Cursor…" Click="OnInstancesOfClass" />
         <MenuItem Header="Remove Unused Imports" Command="{Binding RemoveUnusedImportsCommand}" />
+        <MenuItem Header="Sort Imports" Command="{Binding SortImportsCommand}" />
+        <MenuItem Header="Tidy Whitespace and Check Style" Command="{Binding TidyWhitespaceCommand}" />
+        <MenuItem Header="Tidy File (sort imports, fix whitespace)" Command="{Binding TidyFileCommand}" />
+        <MenuItem Header="Wrap Long Comment Lines" Command="{Binding WrapLongCommentsCommand}" />
+        <MenuItem Header="Add Mathlib Copyright Header" Command="{Binding AddMathlibHeaderCommand}" />
+        <MenuItem Header="Remove Deprecations Older Than Six Months" Command="{Binding RemoveStaleDeprecationsCommand}" />
+        <MenuItem Header="What This Branch Changed Mathematically" Command="{Binding ShowStatementChangesCommand}" />
+        <MenuItem Header="Sorry Burndown (last 30 commits)" Command="{Binding ShowSorryBurndownCommand}" />
+        <MenuItem Header="Project Health Summary" Command="{Binding ShowProjectHealthCommand}" />
+        <MenuItem Header="Find Duplicate Theorem Statements" Command="{Binding FindDuplicateStatementsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
         <Separator />

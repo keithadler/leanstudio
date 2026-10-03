@@ -695,6 +695,188 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("sort_imports",
+            "Put the imports in a Lean file's header in order, as Mathlib's style asks: each run of import lines sorted by module name, repeats dropped, comments and the body untouched. Returns the sorted header; with apply=true, writes the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Write the sorted file to disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                string sorted = ImportOrder.Sort(text);
+                if (sorted == text)
+                {
+                    return "the imports are already in order";
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, sorted, ct);
+                    return "sorted the imports of " + path;
+                }
+                return "would sort the imports (pass apply=true to write them):\n"
+                    + string.Join('\n', sorted.Split('\n').Where(l => l.TrimStart().StartsWith("import ", StringComparison.Ordinal)
+                        || l.TrimStart().StartsWith("public import ", StringComparison.Ordinal)));
+            }),
+
+        new("style_check",
+            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. In a project that uses Mathlib (or with mathlib=true) it also checks Mathlib's file conventions: the copyright header, a module docstring, theorem names in snake_case, type names in UpperCamelCase, and a doc comment on every public definition. With apply=true, fixes what has one obvious fix (the text rules, except long lines) on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Fix the fixable problems on disk (default false).", false),
+                   ("mathlib", "boolean", "Also check Mathlib's file conventions (default: when the project uses Mathlib).", false),
+                   ("wrap", "boolean", "With apply, also break comment and docstring lines over 100 characters at a space (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                bool conventions = OptBool(a, "mathlib") ?? bench.ProjectFor(path).DependsOnMathlib;
+                List<StyleProblem> problems = [.. StyleCheck.Find(text)];
+                if (conventions)
+                {
+                    problems.AddRange(MathlibConventions.Find(text));
+                    problems.AddRange(DocCoverage.Find(text));
+                }
+                if (problems.Count == 0)
+                {
+                    return "no style problems";
+                }
+                var sb = new StringBuilder();
+                foreach (StyleProblem p in problems)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{p.Line + 1}: {p.Rule}: {p.Message}\n");
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    string fixedText = StyleCheck.Fix(text);
+                    await File.WriteAllTextAsync(path, OptBool(a, "wrap") == true ? StyleCheck.WrapComments(fixedText) : fixedText, ct);
+                    string[] fixable = ["trailing-whitespace", "tab", "crlf", "final-newline"];
+                    int left = problems.Count(p => !fixable.Contains(p.Rule));
+                    sb.Append(CultureInfo.InvariantCulture, $"fixed {problems.Count - left} problem(s); {left} are left for you");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("stale_deprecations",
+            "The deprecated declarations of a Lean file that are old enough to delete: Mathlib removes a deprecated alias some months after the rename. Reads each (since := \"yyyy-mm-dd\") and lists those at least `months` old (default 6). With apply=true, deletes them, with their doc comments, from the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("months", "integer", "How old, in whole months, a deprecation must be (default 6).", false),
+                   ("apply", "boolean", "Delete them from the file on disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                IReadOnlyList<StaleDeprecation> stale = StaleDeprecations.Find(text, DateOnly.FromDateTime(DateTime.Today), OptInt(a, "months") ?? 6);
+                if (stale.Count == 0)
+                {
+                    return "no deprecation is that old";
+                }
+                var sb = new StringBuilder();
+                foreach (StaleDeprecation s in stale)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{s.StartLine + 1}: {s.Name}, deprecated {s.Since:yyyy-MM-dd} ({s.AgeMonths} months ago)\n");
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, StaleDeprecations.Remove(text, stale), ct);
+                    sb.Append(CultureInfo.InvariantCulture, $"removed {stale.Count} deprecation(s)");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("suggest_name",
+            "A name for a theorem in Mathlib's naming scheme, worked out from its statement: the conclusion read left to right with each operation and relation as a word (a + b = b + a is add_comm, 0 + a = a is zero_add, a ≤ b → b < c → a < c is lt_of_le_of_lt), then _of_ before each assumption. A starting point only: it reads statements about operations and relations, and says so when it can't.",
+            Schema(("statement", "string", "What follows the theorem's name, up to :=, such as \"(a b : ℕ) : a + b = b + a\".", true)),
+            (a, ct) => Task.FromResult(TheoremNamer.Suggest(Str(a, "statement")) ?? "no name: the statement has no relation (=, ≤, <, ↔ …) to read")),
+
+        new("merge_tactics",
+            "Merge the tactics of a Lean file that follow each other and say the same thing once, where that cannot change the proof: `rw [a]` then `rw [b]` become `rw [a, b]` (also simp_rw, and the same `at` location), and two `intro` lines become one. Only whole lines that do nothing else are merged. With apply=true, writes the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Write the merged file to disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                (string merged, int count) = TacticGolf.Merge(text);
+                if (count == 0)
+                {
+                    return "nothing to merge";
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, merged, ct);
+                    return $"merged {count} line(s) in {path}";
+                }
+                return $"{count} line(s) can be merged into the one before (pass apply=true to write them)";
+            }),
+
+        new("duplicate_statements",
+            "Theorems of the project that state the same thing under different names: the statements are compared with the names of the variables they bind and the white space left out, so (a b : ℕ) : a + b = b + a matches (x y : ℕ) : x + y = y + x. Mathlib asks that a result is stated once. Statements are compared as text, so two that are equal only by unfolding are not found.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                IReadOnlyList<IReadOnlyList<TheoremStatement>> groups = DuplicateStatements.Scan(p.Root, ct);
+                if (groups.Count == 0)
+                {
+                    return Task.FromResult("no two theorems state the same thing");
+                }
+                var sb = new StringBuilder();
+                foreach (IReadOnlyList<TheoremStatement> group in groups)
+                {
+                    sb.Append("same statement: ").Append(group[0].Statement).Append('\n');
+                    foreach (TheoremStatement t in group)
+                    {
+                        sb.Append(CultureInfo.InvariantCulture, $"  {t.Name}  {Path.GetRelativePath(p.Root, t.Path)}:{t.Line + 1}\n");
+                    }
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
+            }),
+
+        new("project_health",
+            "A project's state at a glance, counted from its Lean files without building anything: files, lines, theorems and definitions; sorry and TODO counts; the share of definitions with a doc comment; deprecated declarations and how many are old enough to delete; style problems; and the files with the most still to do. Markdown.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ProjectHealthReport.ToMarkdown(ProjectHealthReport.Scan(p.Root, DateOnly.FromDateTime(DateTime.Today), ct), p.Root).TrimEnd());
+            }),
+
+        new("sorry_history",
+            "How a formalization is coming along: the number of sorry (and admit) words in the project's Lean files at each of its latest commits, oldest first, as a sparkline with the commits that changed the count. Read with git grep, so nothing is checked out or built; a sorry in a block comment still counts, one after -- does not.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("commits", "integer", "How many of the latest commits to read (default 30, at most 500).", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository, so there is no history to read");
+                }
+                return Core.Git.SorryHistory.ToText(await Core.Git.SorryHistory.ReadAsync(repo, OptInt(a, "commits") ?? 30, ct));
+            }),
+
+        new("statement_changes",
+            "What a change means mathematically, the way a pull request is read: the theorems it adds, removes and restates, with proofs ignored (the names of bound variables and spacing do not count as a restatement). Compares two git refs of the project's Lean files; by default the current branch against where it left main. Markdown, ready to paste into a pull request.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("base", "string", "The ref to compare from (default: where the current branch left main).", false),
+                   ("head", "string", "The ref to compare to (default HEAD).", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository");
+                }
+                string head = OptStr(a, "head") ?? "HEAD";
+                string? baseRef = OptStr(a, "base") ?? await Core.Git.StatementDiff.DefaultBaseAsync(repo, ct);
+                if (baseRef is null)
+                {
+                    return "this branch has no commits of its own since main, so there is nothing to compare (pass base)";
+                }
+                Core.Git.StatementChanges changes = await Core.Git.StatementDiff.ReadAsync(repo, baseRef, head, ct)
+                    ?? throw new ToolException($"git could not compare {baseRef} with {head}");
+                return Core.Git.StatementDiff.ToMarkdown(changes, baseRef.Length >= 40 ? baseRef[..7] : baseRef, head).TrimEnd();
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

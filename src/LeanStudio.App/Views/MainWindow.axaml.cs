@@ -1079,6 +1079,18 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Instances of Class at Cursor…", "", InstancesOfClassAsync);
         yield return ("Lean: Lean's Processes (memory, stop a runaway file)…", "", LeanProcessesAsync);
         yield return ("Lean: Remove Unused Imports", "", Cmd(_vm.RemoveUnusedImportsCommand));
+        yield return ("Lean: Sort Imports", "", Cmd(_vm.SortImportsCommand));
+        yield return ("Lean: Project Health Summary", "", Cmd(_vm.ShowProjectHealthCommand));
+        yield return ("Lean: Sorry Burndown (last 30 commits)", "", Cmd(_vm.ShowSorryBurndownCommand));
+        yield return ("Lean: What This Branch Changed Mathematically", "", Cmd(_vm.ShowStatementChangesCommand));
+        yield return ("Lean: Find Duplicate Theorem Statements", "", Cmd(_vm.FindDuplicateStatementsCommand));
+        yield return ("Lean: Merge Consecutive rw / intro Steps", "", Cmd(_vm.MergeConsecutiveTacticsCommand));
+        yield return ("Lean: Suggest a Name for This Theorem", "", Cmd(_vm.SuggestTheoremNameCommand));
+        yield return ("Lean: Tidy Whitespace and Check Style", "", Cmd(_vm.TidyWhitespaceCommand));
+        yield return ("Lean: Tidy File (sort imports, fix whitespace)", "", Cmd(_vm.TidyFileCommand));
+        yield return ("Lean: Wrap Long Comment Lines", "", Cmd(_vm.WrapLongCommentsCommand));
+        yield return ("Lean: Add Mathlib Copyright Header", "", Cmd(_vm.AddMathlibHeaderCommand));
+        yield return ("Lean: Remove Deprecations Older Than Six Months", "", Cmd(_vm.RemoveStaleDeprecationsCommand));
         yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));
         yield return ("Lean: Import Every Module in the Library Root", "", Cmd(_vm.ImportAllModulesCommand));
         yield return ("Lean: Get Mathlib Cache for Open Files", "", Cmd(_vm.GetCacheForOpenFilesCommand));
@@ -1176,6 +1188,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("File: Export Proof Walkthrough…", "", Cmd(_vm.ExportWalkthroughCommand));
         yield return ("Share: Open in the Lean 4 Web Editor", "", Cmd(_vm.OpenInWebEditorCommand));
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
+        yield return ("Share: Copy as a Zulip Message", "", Cmd(_vm.CopyForZulipCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Profiler", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
         yield return ("Project: Edit This Project's Commands (commands.json)", "", Cmd(_vm.EditProjectCommandsCommand));

@@ -571,6 +571,25 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Copy the active file as a question for the Lean Zulip chat: the code in a <c>lean</c> fence and, in a quote, what Lean
+    /// said about it (errors first), ready to paste.
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyForZulipAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        IEnumerable<ZulipMessage> messages = d.Diagnostics.Where(x => x.Severity is not DiagnosticSeverity.Hint)
+            .Select(x => new ZulipMessage(x.Range.Start.Line + 1, x.Range.Start.Character + 1,
+                x.Severity switch { DiagnosticSeverity.Error => "error", DiagnosticSeverity.Warning => "warning", _ => "info" }, x.Message));
+        string post = ZulipPost.Build(d.Document.Text, messages);
+        await _dialogs.CopyTextAsync(post);
+        Log("Copied this file as a Zulip message: the code, then what Lean says about it. Paste it into the chat; trim it to the smallest example that still shows the problem first.");
+    }
+
     private async Task<string?> ShareUrlAsync()
     {
         if (ActiveDocument is not { IsLean: true } d)

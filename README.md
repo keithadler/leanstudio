@@ -94,6 +94,8 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Why a theorem isn't fully proved, and a map of what rests on `sorry` | | ✓ |
 | A profiler: live as you edit, flame graphs, cost per tactic line, heartbeats, simp and instance counters, and a heartbeat regression check for CI | | ✓ |
 | Search Mathlib in plain English, and Loogle, built in | | ✓ |
+| Sorry Burndown: the project's `sorry` count over its last commits, from Git, and a branch's added, removed and restated theorems with proofs ignored, as Markdown for the pull request | | ✓ |
+| Mathlib housekeeping: sort imports, tidy whitespace, wrap long comments, add the copyright header, delete old deprecations, a Mathlib-style name for a theorem, theorems that state the same thing, a project health summary | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
@@ -328,6 +330,18 @@ The infoview shares Lean Studio's Lean server, so nothing starts twice. "Try thi
 What CI and reviewers check, before you push:
 
 - **Remove Unused Imports** (*Lean ▸ Remove Unused Imports*) takes out the imports a file doesn't need, as one undoable edit, and says why for each: nothing uses it, or another import already brings it in. Lean elaborates the file, and every constant, tactic, macro and notation it uses is traced to its module, so an import needed only for `ring` or a notation stays. It works on any file, not only `module` files like `lake shake`. It takes seconds on Mathlib files.
+- **Sort Imports** (*Lean ▸ Sort Imports*) puts each run of `import` lines in the header in order by module name and drops repeats, as Mathlib's style asks, leaving comments, blank-line groups and the body alone.
+- **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*) holds a file to Mathlib's text rules: trailing whitespace, tabs, CRLF and the final newline are fixed in one undoable edit, and lines over 100 characters are listed for you to break.
+- **Tidy File** does Sort Imports and the whitespace fixes in one edit; in a Mathlib project it also reports a missing copyright header or module docstring and theorem names that start with a capital, and **Add Mathlib Copyright Header** writes the header for you.
+- **What This Branch Changed Mathematically** lists the theorems a branch adds, removes and restates since `main`, with proofs ignored, as Markdown for the pull request: what a reviewer reads first.
+- **Sorry Burndown** draws the project's `sorry` count over its last 30 commits as a sparkline and names the commits that moved it, straight from Git, with nothing built.
+- **Project Health Summary** counts the project's files into a report: size, sorries and TODOs, doc-comment coverage, deprecations and style problems, and where the most is left to do.
+- **Find Duplicate Theorem Statements** lists theorems of the project that state the same thing under different names, with each one's file and line.
+- **Merge Consecutive rw / intro Steps** turns `rw [a]` then `rw [b]` (or `simp_rw`, or two `intro`s) into one line, where that cannot change the proof.
+- **Suggest a Name for This Theorem** works out the name Mathlib's scheme would give a theorem from its statement (`a + b = b + a` is `add_comm`; `a ≤ b → b < c → a < c` is `lt_of_le_of_lt`) and says whether yours matches.
+- **Copy as a Zulip Message** (*File ▸ Copy as a Zulip Message*) puts the file in a `lean` fence with Lean's errors and warnings in a quote under it, ready to paste into the Lean Zulip chat.
+- **Wrap Long Comment Lines** breaks over-long `--` comments and docstring prose at a space, the one style problem Tidy leaves to you; code is never touched.
+- **Remove Deprecations Older Than Six Months** deletes the deprecated aliases whose `(since := "…")` is old enough, with their doc comments, in one undoable edit; Tidy File in a Mathlib project also lists public definitions with no doc comment.
 - **Lint File** runs the linters CI runs and lists what they find in Problems. In a Mathlib project that's Mathlib's standard set, its style linters among them. Wherever Batteries is available it also runs Batteries' environment linters: missing docstrings, `simp` normal form, unused arguments. Elsewhere it runs every linter Lean has.
 - **Renames keep the old name working.** After Rename Symbol on a declaration, Lean Studio offers to add `@[deprecated (since := "…")] alias old := new` after it, as Mathlib asks. Without Batteries it writes the core Lean equivalent.
 - **The library root stays complete.** A new file is added to its library's root file when that imports every module (as `Mathlib.lean` does), and a deleted one is taken out. *Import Every Module in the Library Root* adds any that are missing, like `lake exe mk_all`.
@@ -652,7 +666,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **0.10**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **0.11**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - User widgets render in the Infoview tab, not in the Tactic State panel, which shows Lean's interactive text. On Linux the tab needs WebKitGTK; without it, widgets open in the browser.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.

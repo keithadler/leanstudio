@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LeanStudio.Core.Projects;
+using LeanStudio.Core.Proofs;
 using LeanStudio.Core.Workflow;
 using LeanStudio.Lsp;
 
@@ -405,6 +406,356 @@ public sealed partial class MainViewModel
         {
             Log("Imports: Lean couldn't check them. Build the file's imports first (Build). " + e.Message.Split('\n')[0]);
             return null;
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
+    /// Put the active file's imports in order, as Mathlib's style asks: each run in the header sorted by module name,
+    /// repeats dropped. Only the changed lines are replaced, as one undoable edit, so the cursor and folds stay put.
+    /// </summary>
+    [RelayCommand]
+    public void SortImports()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string sorted = ImportOrder.Sort(text);
+        if (sorted == text)
+        {
+            Log("Imports: already in order.");
+            return;
+        }
+        int head = 0;
+        while (head < text.Length && head < sorted.Length && text[head] == sorted[head])
+        {
+            head++;
+        }
+        int tail = 0;
+        while (tail < text.Length - head && tail < sorted.Length - head && text[text.Length - 1 - tail] == sorted[sorted.Length - 1 - tail])
+        {
+            tail++;
+        }
+        d.Document.Replace(head, text.Length - head - tail, sorted.Substring(head, sorted.Length - head - tail));
+        Log("Imports: sorted. Undo brings the old order back.");
+    }
+
+    /// <summary>
+    /// Check the active file against Mathlib's text rules (trailing whitespace, lines over 100 characters, tabs, line
+    /// endings, the final newline), listing what is wrong in Output, and fix what has one obvious fix as one undoable edit.
+    /// </summary>
+    [RelayCommand]
+    public void TidyWhitespace()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        IReadOnlyList<StyleProblem> problems = StyleCheck.Find(text);
+        if (problems.Count == 0)
+        {
+            Log("Style: no problems.");
+            return;
+        }
+        string fixedText = StyleCheck.Fix(text);
+        if (fixedText != text)
+        {
+            d.Document.Replace(0, text.Length, fixedText);
+        }
+        foreach (StyleProblem p in problems.Where(p => p.Rule == "long-line"))
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        int left = problems.Count(p => p.Rule == "long-line");
+        Log($"Style: fixed {problems.Count - left} problem{(problems.Count - left == 1 ? "" : "s")}"
+            + (left > 0 ? $"; {left} long line{(left == 1 ? "" : "s")} left for you." : ".") + " Undo brings the old text back.");
+    }
+
+    /// <summary>
+    /// Put the whole file in Mathlib's shape in one undoable edit: the imports in order, then the text rules
+    /// (whitespace, tabs, line endings, the final newline). Long lines and the file conventions are listed in Output.
+    /// </summary>
+    [RelayCommand]
+    public void TidyFile()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string tidy = StyleCheck.Fix(ImportOrder.Sort(text));
+        if (tidy != text)
+        {
+            d.Document.Replace(0, text.Length, tidy);
+        }
+        List<StyleProblem> left = [.. StyleCheck.Find(tidy)];
+        if (ProjectFor(d).DependsOnMathlib)
+        {
+            left.AddRange(MathlibConventions.Find(tidy));
+            left.AddRange(DocCoverage.Find(tidy));
+        }
+        foreach (StyleProblem p in left)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log((tidy == text ? "Tidy: already tidy" : "Tidy: imports sorted and whitespace fixed")
+            + (left.Count > 0 ? $"; {left.Count} thing{(left.Count == 1 ? "" : "s")} left for you (above)." : ".")
+            + (tidy == text ? "" : " Undo brings the old text back."));
+    }
+
+    /// <summary>
+    /// Put Mathlib's copyright header at the top of the active file, with this year and the name git is set up with
+    /// (the Git user name, else the system user). A file that already starts with a comment is left alone.
+    /// </summary>
+    [RelayCommand]
+    public async Task AddMathlibHeaderAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string author = Environment.UserName;
+        if (Core.Git.GitRepository.Find(d.Path) is Core.Git.GitRepository git)
+        {
+            Core.Processes.ProcessResult r = await git.RunAsync(["config", "user.name"]);
+            if (r.Success && r.Output.Trim().Length > 0)
+            {
+                author = r.Output.Trim();
+            }
+        }
+        string text = d.Document.Text;
+        string withHeader = MathlibConventions.AddHeader(text, DateTime.Now.Year, author);
+        if (withHeader == text)
+        {
+            Log("Header: the file already starts with a comment, so it was left alone.");
+            return;
+        }
+        d.Document.Insert(0, withHeader[..^text.Length]);
+        Log($"Header: added Mathlib's copyright header for {author}. Check the name, then undo if it is wrong.");
+    }
+
+    /// <summary>
+    /// Delete the deprecated aliases and declarations of the active file that are more than six months old (by their
+    /// <c>(since := "…")</c>), with their doc comments, as one undoable edit. Each is named in Output.
+    /// </summary>
+    [RelayCommand]
+    public void RemoveStaleDeprecations()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        IReadOnlyList<StaleDeprecation> stale = StaleDeprecations.Find(text, DateOnly.FromDateTime(DateTime.Today));
+        if (stale.Count == 0)
+        {
+            Log("Deprecations: none is more than six months old.");
+            return;
+        }
+        d.Document.Replace(0, text.Length, StaleDeprecations.Remove(text, stale));
+        foreach (StaleDeprecation s in stale)
+        {
+            Log($"  removed {s.Name}, deprecated {s.Since:yyyy-MM-dd} ({s.AgeMonths} months ago)");
+        }
+        Log($"Deprecations: removed {stale.Count}. Undo brings them back.");
+    }
+
+    /// <summary>
+    /// Break the comment and docstring lines of the active file that are over 100 characters at a space, as one undoable
+    /// edit. Code is never touched; what still is too long is listed in Output.
+    /// </summary>
+    [RelayCommand]
+    public void WrapLongComments()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string wrapped = StyleCheck.WrapComments(text);
+        if (wrapped != text)
+        {
+            d.Document.Replace(0, text.Length, wrapped);
+        }
+        IReadOnlyList<StyleProblem> left = [.. StyleCheck.Find(wrapped).Where(p => p.Rule == "long-line")];
+        foreach (StyleProblem p in left)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log((wrapped == text ? "Wrap: no comment line to break" : "Wrap: broke the long comment lines")
+            + (left.Count > 0 ? $"; {left.Count} long line{(left.Count == 1 ? "" : "s")} of code left for you (above)." : ".")
+            + (wrapped == text ? "" : " Undo brings the old text back."));
+    }
+
+    /// <summary>
+    /// Suggest a Mathlib-style name for the theorem at the cursor, worked out from its statement (<c>a + b = b + a</c> is
+    /// <c>add_comm</c>), and say whether it matches the one it has. The name is only a starting point; Rename Symbol applies it.
+    /// </summary>
+    [RelayCommand]
+    public void SuggestTheoremName()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        if (TheoremNamer.SuggestAt(d.Document.Text, d.CaretLine) is not var (current, statement, suggested))
+        {
+            Log("Name: put the cursor in a theorem whose statement is about operations and relations (like a + b = b + a).");
+            return;
+        }
+        string last = current.Split('.')[^1];
+        Log(last == suggested
+            ? $"Name: `{last}` is the name Mathlib's scheme gives {statement}."
+            : $"Name: Mathlib's scheme gives `{suggested}` for {statement}; this one is `{last}`. A suggestion only: use Rename Symbol (F2) to apply it.");
+    }
+
+    /// <summary>
+    /// Merge the tactics of the active file that follow each other and say the same thing once: <c>rw [a]</c> then
+    /// <c>rw [b]</c> become <c>rw [a, b]</c> (also <c>simp_rw</c>, and the same <c>at</c>), and two <c>intro</c>s become one. As one undoable edit.
+    /// </summary>
+    [RelayCommand]
+    public void MergeConsecutiveTactics()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        (string merged, int count) = TacticGolf.Merge(text);
+        if (count == 0)
+        {
+            Log("Merge: no rw, simp_rw or intro lines in a row to merge.");
+            return;
+        }
+        d.Document.Replace(0, text.Length, merged);
+        Log($"Merge: {count} line{(count == 1 ? "" : "s")} merged into the one before. Undo brings them back.");
+    }
+
+    /// <summary>
+    /// Look through the project's Lean files for theorems that state the same thing under different names (the names of
+    /// the variables they bind and the spacing do not count), and list each group in Output.
+    /// </summary>
+    [RelayCommand]
+    public async Task FindDuplicateStatementsAsync()
+    {
+        if (Project is null)
+        {
+            Log("Duplicates: open a project first.");
+            return;
+        }
+        string root = Project.Root;
+        ProStatus = "Comparing the project's theorem statements…";
+        try
+        {
+            IReadOnlyList<IReadOnlyList<TheoremStatement>> groups = await Task.Run(() => DuplicateStatements.Scan(root));
+            foreach (IReadOnlyList<TheoremStatement> group in groups)
+            {
+                Log("Same statement: " + group[0].Statement);
+                foreach (TheoremStatement t in group)
+                {
+                    Log($"  {t.Name}  ({Path.GetRelativePath(root, t.Path)}:{t.Line + 1})");
+                }
+            }
+            Log(groups.Count == 0 ? "Duplicates: no two theorems state the same thing."
+                : $"Duplicates: {groups.Count} statement{(groups.Count == 1 ? " is" : "s are")} made by more than one theorem. Keep one and deprecate or delete the rest.");
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
+    /// Count the project's Lean files into a summary in Output: size, <c>sorry</c>s and TODOs, the share of definitions with a doc
+    /// comment, deprecations (and how many are old enough to delete) and style problems, then the files with the most still to do.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowProjectHealthAsync()
+    {
+        if (Project is null)
+        {
+            Log("Health: open a project first.");
+            return;
+        }
+        string root = Project.Root;
+        ProStatus = "Counting the project's files…";
+        try
+        {
+            ProjectHealth health = await Task.Run(() => ProjectHealthReport.Scan(root, DateOnly.FromDateTime(DateTime.Today)));
+            foreach (string line in ProjectHealthReport.ToMarkdown(health, root).Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
+    /// Show how many <c>sorry</c>s the project had at each of its last 30 commits, as a sparkline with the commits that
+    /// changed the count. Read with <c>git grep</c>, so nothing is checked out or built.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowSorryBurndownAsync()
+    {
+        if (Project is null || Core.Git.GitRepository.Find(Project.Root) is not Core.Git.GitRepository repo)
+        {
+            Log("Burndown: open a project that is in a Git repository.");
+            return;
+        }
+        ProStatus = "Counting sorries through the history…";
+        try
+        {
+            IReadOnlyList<Core.Git.SorryPoint> points = await Core.Git.SorryHistory.ReadAsync(repo, 30);
+            foreach (string line in Core.Git.SorryHistory.ToText(points).Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
+    /// Say what the current branch changed mathematically, as a pull request would be read: the theorems it adds, removes
+    /// and restates since it left <c>main</c>, with proofs ignored. Written to Output as Markdown to paste into the pull request.
+    /// </summary>
+    [RelayCommand]
+    public async Task ShowStatementChangesAsync()
+    {
+        if (Project is null || Core.Git.GitRepository.Find(Project.Root) is not Core.Git.GitRepository repo)
+        {
+            Log("Statements: open a project that is in a Git repository.");
+            return;
+        }
+        ProStatus = "Comparing theorem statements with main…";
+        try
+        {
+            if (await Core.Git.StatementDiff.DefaultBaseAsync(repo) is not string baseRef)
+            {
+                Log("Statements: this branch has no commits of its own since main, so there is nothing to compare.");
+                return;
+            }
+            Core.Git.StatementChanges? changes = await Core.Git.StatementDiff.ReadAsync(repo, baseRef, "HEAD");
+            if (changes is null)
+            {
+                Log("Statements: git could not compare the branch with main.");
+                return;
+            }
+            foreach (string line in Core.Git.StatementDiff.ToMarkdown(changes, baseRef[..Math.Min(7, baseRef.Length)], "HEAD").Split('\n'))
+            {
+                Log(line);
+            }
         }
         finally
         {
