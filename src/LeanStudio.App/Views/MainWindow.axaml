@@ -230,6 +230,26 @@
         <MenuItem Header="Famous Theorems and Symbols" Click="OnShowLearn" />
         <MenuItem Header="Insert a Snippet…" Click="OnInsertSnippet" />
         <Separator />
+        <MenuItem Header="Hint for This Goal" Command="{Binding HintForGoalCommand}" />
+        <MenuItem Header="Explain This Declaration in Plain English" Command="{Binding ExplainDeclarationCommand}" />
+        <MenuItem Header="Is This Lean 3?" Command="{Binding CheckForLean3Command}" />
+        <MenuItem Header="Surprises in This File" Command="{Binding ShowGotchasCommand}" />
+        <MenuItem Header="My Cheat Sheet" Command="{Binding MakeCheatSheetCommand}" />
+        <Separator />
+        <MenuItem Header="New Puzzle" Command="{Binding NewPuzzleCommand}" />
+        <MenuItem Header="Puzzle Hint" Command="{Binding PuzzleHintCommand}" />
+        <MenuItem Header="Show Puzzle Solution" Command="{Binding ShowPuzzleSolutionCommand}" />
+        <MenuItem Header="Practice Typing Symbols" Command="{Binding PracticeSymbolsCommand}" />
+        <MenuItem Header="Check My Symbol Practice" Command="{Binding CheckSymbolPracticeCommand}" />
+        <MenuItem Header="My Badges and What's Next" Command="{Binding ShowBadgesCommand}" />
+        <MenuItem Header="Coming From…">
+          <MenuItem Header="Python" Command="{Binding ShowRosettaCommand}" CommandParameter="python" />
+          <MenuItem Header="Haskell" Command="{Binding ShowRosettaCommand}" CommandParameter="haskell" />
+          <MenuItem Header="JavaScript" Command="{Binding ShowRosettaCommand}" CommandParameter="javascript" />
+          <MenuItem Header="Rust" Command="{Binding ShowRosettaCommand}" CommandParameter="rust" />
+        </MenuItem>
+        <MenuItem Header="Tip of the Day" Command="{Binding ShowTipCommand}" />
+        <Separator />
         <MenuItem Header="Show Goals in Plain English" ToggleType="CheckBox" IsChecked="{Binding Info.ShowEnglish}" />
         <MenuItem Header="Explain Lean's Messages" ToggleType="CheckBox" IsChecked="{Binding Settings.ExplainErrors}" Click="OnApplySettings" />
         <MenuItem Header="Show #eval Results at the End of the Line" ToggleType="CheckBox" IsChecked="{Binding Settings.InlineResults}" Click="OnApplySettings" />
