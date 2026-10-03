@@ -19,6 +19,8 @@
 - **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*): holds the file to the text rules of Mathlib's style linter. Trailing whitespace, tabs, Windows line endings and a missing or doubled final newline are fixed as one undoable edit; lines over 100 characters are listed in Output for you to break.
 - **Tidy File** (*Lean ▸ Tidy File*) does both in one undoable edit: sorts the imports, fixes the whitespace, and lists what is left (long lines and, in a project that uses Mathlib, the file conventions).
 - **Mathlib's file conventions**: the copyright header, a module docstring, and theorem names that start with a capital are reported by *Tidy File* in a Mathlib project and by `style_check` over MCP (`mathlib=true` forces it). **Add Mathlib Copyright Header** puts the header on a file that has none, for this year and the name git is set up with.
+- **Remove Deprecations Older Than Six Months** (*Lean ▸ Remove Deprecations Older Than Six Months*): Mathlib deletes a deprecated alias some months after the rename. Reads each `(since := "…")`, and deletes those past the age, with their doc comments, as one undoable edit; each is named in Output. The counterpart of the deprecated alias *Rename* writes. `stale_deprecations` does the same over MCP, with `months` and `apply`.
+- **Doc comments on definitions**: in a Mathlib project, Tidy File and `style_check` also list each public `def`, `abbrev`, `structure`, `class` and `inductive` with no doc comment, as Mathlib's `docBlame` linter asks, read from the text, so nothing has to be built first.
 - **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:

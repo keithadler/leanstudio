@@ -188,6 +188,13 @@ public sealed class TextToolTests
             string conventions = await Call("style_check", new() { ["path"] = file, ["mathlib"] = true });
             Assert.Contains("copyright-header", conventions, StringComparison.Ordinal);
             Assert.Contains("module-doc", conventions, StringComparison.Ordinal);
+            Assert.Contains("A.lean:4: missing-doc: `x` has no doc comment.", conventions, StringComparison.Ordinal);
+
+            await File.WriteAllTextAsync(file, "@[deprecated (since := \"2020-01-01\")] alias old := new\n\ndef new := 1\n", TestContext.Current.CancellationToken);
+            Assert.Contains("old, deprecated 2020-01-01", await Call("stale_deprecations", new() { ["path"] = file }), StringComparison.Ordinal);
+            Assert.Contains("no deprecation is that old", await Call("stale_deprecations", new() { ["path"] = file, ["months"] = 1000 }), StringComparison.Ordinal);
+            await Call("stale_deprecations", new() { ["path"] = file, ["apply"] = true });
+            Assert.Equal("def new := 1\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -230,5 +237,66 @@ public sealed class MathlibConventionsTests
         Assert.Equal("/-\nCopyright (c) 2026 Grace Hopper. All rights reserved.\nReleased under Apache 2.0 license as described in the file LICENSE.\nAuthors: Grace Hopper\n-/\nimport A\n", added);
         Assert.DoesNotContain(MathlibConventions.Find(added + "/-! Doc -/\n"), p => p.Rule == "copyright-header");
         Assert.Equal(added, MathlibConventions.AddHeader(added, 2030, "Someone Else"));
+    }
+}
+
+/// <summary>Finding and deleting the deprecated declarations that are old enough.</summary>
+public sealed class StaleDeprecationTests
+{
+    private static readonly DateOnly Today = new(2026, 10, 3);
+
+    private const string File =
+        "theorem keep : True := trivial\n\n"
+        + "/-- Old. -/\n@[deprecated (since := \"2025-12-31\")] alias oldName := keep\n\n"
+        + "@[deprecated keep (since := \"2024-01-15\")]\ntheorem older : True := keep\n\n"
+        + "@[deprecated (since := \"2026-08-01\")] alias recent := keep\n\n"
+        + "def last := 1\n";
+
+    [Fact]
+    public void FindsOnlyTheDeprecationsPastTheAge()
+    {
+        IReadOnlyList<StaleDeprecation> stale = StaleDeprecations.Find(File, Today);
+        Assert.Equal(["oldName", "older"], stale.Select(s => s.Name));
+        Assert.Equal([9, 32], stale.Select(s => s.AgeMonths)); // whole months: 2025-12-31 to 2026-10-03; 2024-01-15 to 2026-10-03
+        Assert.Equal([2, 5], stale.Select(s => s.StartLine)); // the first starts at its doc comment
+        Assert.Equal(["oldName", "older", "recent"], StaleDeprecations.Find(File, Today, months: 1).Select(s => s.Name));
+        Assert.Equal(["older"], StaleDeprecations.Find(File, Today, months: 12).Select(s => s.Name));
+        Assert.Equal(["older"], StaleDeprecations.Find(File, new DateOnly(2026, 9, 30), 9).Select(s => s.Name)); // oldName is 8 months old on 9-30
+    }
+
+    [Fact]
+    public void DeletesThemWithTheirDocCommentsWithoutDoublingBlankLines()
+    {
+        string result = StaleDeprecations.Remove(File, StaleDeprecations.Find(File, Today));
+        Assert.Equal("theorem keep : True := trivial\n\n@[deprecated (since := \"2026-08-01\")] alias recent := keep\n\ndef last := 1\n", result);
+        Assert.Empty(StaleDeprecations.Find(result, Today));
+    }
+
+    [Fact]
+    public void ReadsAYearAndMonthAndIgnoresWhatIsNotADeprecation()
+    {
+        const string text = "@[deprecated (since := \"2025-01\")] alias a := b\n-- since := \"2020-01-01\"\ndef b := 1\n";
+        Assert.Equal(["a"], StaleDeprecations.Find(text, Today).Select(s => s.Name));
+        Assert.Empty(StaleDeprecations.Find("def b := 1\n", Today));
+    }
+}
+
+/// <summary>Declarations without a doc comment.</summary>
+public sealed class DocCoverageTests
+{
+    [Fact]
+    public void FindsPublicDefinitionsWithoutADocComment()
+    {
+        const string text = "/-- Documented. -/\ndef a := 1\n\ndef b := 2\n\n/-- Multi\n  line. -/\n@[simp]\ndef c := 3\n\n@[simp]\nstructure D where\n  x : Nat\n\nprivate def e := 5\n\n/-! Module doc is not a doc comment. -/\ndef f := 6\n\ntheorem t : True := trivial\n";
+        Assert.Equal([(3, "missing-doc"), (11, "missing-doc"), (17, "missing-doc")], DocCoverage.Find(text).Select(p => (p.Line, p.Rule)));
+        Assert.Contains("`b`", DocCoverage.Find(text)[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LeavesOutIndentedCommentedAndTheoremsUnlessAsked()
+    {
+        const string text = "namespace N\n  def indented := 1\nend N\n/-\ndef commented := 1\n-/\n-- def line := 1\ntheorem t : True := trivial\n";
+        Assert.Empty(DocCoverage.Find(text));
+        Assert.Equal([7], DocCoverage.Find(text, includeTheorems: true).Select(p => p.Line));
     }
 }

@@ -493,7 +493,12 @@ public sealed partial class MainViewModel
         {
             d.Document.Replace(0, text.Length, tidy);
         }
-        IReadOnlyList<StyleProblem> left = [.. StyleCheck.Find(tidy), .. (ProjectFor(d).DependsOnMathlib ? MathlibConventions.Find(tidy) : [])];
+        List<StyleProblem> left = [.. StyleCheck.Find(tidy)];
+        if (ProjectFor(d).DependsOnMathlib)
+        {
+            left.AddRange(MathlibConventions.Find(tidy));
+            left.AddRange(DocCoverage.Find(tidy));
+        }
         foreach (StyleProblem p in left)
         {
             Log($"  line {p.Line + 1}: {p.Message}");
@@ -532,6 +537,32 @@ public sealed partial class MainViewModel
         }
         d.Document.Insert(0, withHeader[..^text.Length]);
         Log($"Header: added Mathlib's copyright header for {author}. Check the name, then undo if it is wrong.");
+    }
+
+    /// <summary>
+    /// Delete the deprecated aliases and declarations of the active file that are more than six months old (by their
+    /// <c>(since := "…")</c>), with their doc comments, as one undoable edit. Each is named in Output.
+    /// </summary>
+    [RelayCommand]
+    public void RemoveStaleDeprecations()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        IReadOnlyList<StaleDeprecation> stale = StaleDeprecations.Find(text, DateOnly.FromDateTime(DateTime.Today));
+        if (stale.Count == 0)
+        {
+            Log("Deprecations: none is more than six months old.");
+            return;
+        }
+        d.Document.Replace(0, text.Length, StaleDeprecations.Remove(text, stale));
+        foreach (StaleDeprecation s in stale)
+        {
+            Log($"  removed {s.Name}, deprecated {s.Since:yyyy-MM-dd} ({s.AgeMonths} months ago)");
+        }
+        Log($"Deprecations: removed {stale.Count}. Undo brings them back.");
     }
 
     // ---- linters ----

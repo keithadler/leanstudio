@@ -719,7 +719,7 @@ public static class LeanTools
             }),
 
         new("style_check",
-            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. In a project that uses Mathlib (or with mathlib=true) it also checks Mathlib's file conventions: the copyright header, a module docstring, theorem names in snake_case. With apply=true, fixes what has one obvious fix (the text rules, except long lines) on disk.",
+            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. In a project that uses Mathlib (or with mathlib=true) it also checks Mathlib's file conventions: the copyright header, a module docstring, theorem names in snake_case, and a doc comment on every public definition. With apply=true, fixes what has one obvious fix (the text rules, except long lines) on disk.",
             Schema(("path", "string", "The .lean file.", true),
                    ("apply", "boolean", "Fix the fixable problems on disk (default false).", false),
                    ("mathlib", "boolean", "Also check Mathlib's file conventions (default: when the project uses Mathlib).", false)),
@@ -728,7 +728,12 @@ public static class LeanTools
                 string path = LeanFile(bench, a);
                 string text = await File.ReadAllTextAsync(path, ct);
                 bool conventions = OptBool(a, "mathlib") ?? bench.ProjectFor(path).DependsOnMathlib;
-                IReadOnlyList<StyleProblem> problems = [.. StyleCheck.Find(text), .. (conventions ? MathlibConventions.Find(text) : [])];
+                List<StyleProblem> problems = [.. StyleCheck.Find(text)];
+                if (conventions)
+                {
+                    problems.AddRange(MathlibConventions.Find(text));
+                    problems.AddRange(DocCoverage.Find(text));
+                }
                 if (problems.Count == 0)
                 {
                     return "no style problems";
@@ -744,6 +749,33 @@ public static class LeanTools
                     string[] fixable = ["trailing-whitespace", "tab", "crlf", "final-newline"];
                     int left = problems.Count(p => !fixable.Contains(p.Rule));
                     sb.Append(CultureInfo.InvariantCulture, $"fixed {problems.Count - left} problem(s); {left} are left for you");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
+        new("stale_deprecations",
+            "The deprecated declarations of a Lean file that are old enough to delete: Mathlib removes a deprecated alias some months after the rename. Reads each (since := \"yyyy-mm-dd\") and lists those at least `months` old (default 6). With apply=true, deletes them, with their doc comments, from the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("months", "integer", "How old, in whole months, a deprecation must be (default 6).", false),
+                   ("apply", "boolean", "Delete them from the file on disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                IReadOnlyList<StaleDeprecation> stale = StaleDeprecations.Find(text, DateOnly.FromDateTime(DateTime.Today), OptInt(a, "months") ?? 6);
+                if (stale.Count == 0)
+                {
+                    return "no deprecation is that old";
+                }
+                var sb = new StringBuilder();
+                foreach (StaleDeprecation s in stale)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{s.StartLine + 1}: {s.Name}, deprecated {s.Since:yyyy-MM-dd} ({s.AgeMonths} months ago)\n");
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, StaleDeprecations.Remove(text, stale), ct);
+                    sb.Append(CultureInfo.InvariantCulture, $"removed {stale.Count} deprecation(s)");
                 }
                 return sb.ToString().TrimEnd();
             }),

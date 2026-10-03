@@ -133,6 +133,7 @@
         <MenuItem Header="Tidy Whitespace and Check Style" Command="{Binding TidyWhitespaceCommand}" />
         <MenuItem Header="Tidy File (sort imports, fix whitespace)" Command="{Binding TidyFileCommand}" />
         <MenuItem Header="Add Mathlib Copyright Header" Command="{Binding AddMathlibHeaderCommand}" />
+        <MenuItem Header="Remove Deprecations Older Than Six Months" Command="{Binding RemoveStaleDeprecationsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
         <Separator />
