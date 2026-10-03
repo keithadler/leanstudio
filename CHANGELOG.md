@@ -21,6 +21,8 @@
 - **Mathlib's file conventions**: the copyright header, a module docstring, and theorem names that start with a capital are reported by *Tidy File* in a Mathlib project and by `style_check` over MCP (`mathlib=true` forces it). **Add Mathlib Copyright Header** puts the header on a file that has none, for this year and the name git is set up with.
 - **Remove Deprecations Older Than Six Months** (*Lean ▸ Remove Deprecations Older Than Six Months*): Mathlib deletes a deprecated alias some months after the rename. Reads each `(since := "…")`, and deletes those past the age, with their doc comments, as one undoable edit; each is named in Output. The counterpart of the deprecated alias *Rename* writes. `stale_deprecations` does the same over MCP, with `months` and `apply`.
 - **Doc comments on definitions**: in a Mathlib project, Tidy File and `style_check` also list each public `def`, `abbrev`, `structure`, `class` and `inductive` with no doc comment, as Mathlib's `docBlame` linter asks, read from the text, so nothing has to be built first.
+- **Wrap Long Comment Lines** (*Lean ▸ Wrap Long Comment Lines*): breaks the `--` comment and docstring lines over 100 characters at a space, which Tidy cannot do for you, as one undoable edit. Code, code fences, indented code in a docstring and words longer than the limit (a URL) are never touched. `style_check` takes `wrap=true` with `apply`.
+- Structure, class and inductive names that start with a lowercase letter are now reported by the Mathlib conventions check.
 - **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:

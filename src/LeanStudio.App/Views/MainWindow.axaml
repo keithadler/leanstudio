@@ -132,6 +132,7 @@
         <MenuItem Header="Sort Imports" Command="{Binding SortImportsCommand}" />
         <MenuItem Header="Tidy Whitespace and Check Style" Command="{Binding TidyWhitespaceCommand}" />
         <MenuItem Header="Tidy File (sort imports, fix whitespace)" Command="{Binding TidyFileCommand}" />
+        <MenuItem Header="Wrap Long Comment Lines" Command="{Binding WrapLongCommentsCommand}" />
         <MenuItem Header="Add Mathlib Copyright Header" Command="{Binding AddMathlibHeaderCommand}" />
         <MenuItem Header="Remove Deprecations Older Than Six Months" Command="{Binding RemoveStaleDeprecationsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />

@@ -190,6 +190,11 @@ public sealed class TextToolTests
             Assert.Contains("module-doc", conventions, StringComparison.Ordinal);
             Assert.Contains("A.lean:4: missing-doc: `x` has no doc comment.", conventions, StringComparison.Ordinal);
 
+            await File.WriteAllTextAsync(file, "-- " + string.Join(' ', Enumerable.Repeat("word", 40)) + "\n", TestContext.Current.CancellationToken);
+            await Call("style_check", new() { ["path"] = file, ["apply"] = true, ["wrap"] = true });
+            Assert.All((await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken)).Split('\n'), l => Assert.True(l.Length <= 100, l));
+            Assert.Equal("no style problems", await Call("style_check", new() { ["path"] = file }));
+
             await File.WriteAllTextAsync(file, "@[deprecated (since := \"2020-01-01\")] alias old := new\n\ndef new := 1\n", TestContext.Current.CancellationToken);
             Assert.Contains("old, deprecated 2020-01-01", await Call("stale_deprecations", new() { ["path"] = file }), StringComparison.Ordinal);
             Assert.Contains("no deprecation is that old", await Call("stale_deprecations", new() { ["path"] = file, ["months"] = 1000 }), StringComparison.Ordinal);
@@ -228,6 +233,13 @@ public sealed class MathlibConventionsTests
     {
         string text = Header + "/-! Doc -/\n\ntheorem Foo : True := trivial\n@[simp] protected lemma Nat.Bar_baz (n : Nat) : n = n := rfl\ntheorem Nat.ok_name : True := trivial\ntheorem isOpen_iff : True := trivial\n";
         Assert.Equal([(7, "theorem-name"), (8, "theorem-name")], MathlibConventions.Find(text).Select(p => (p.Line, p.Rule)));
+    }
+
+    [Fact]
+    public void FlagsTypeNamesThatStartLowercase()
+    {
+        string text = Header + "/-! Doc -/\n\nstructure point where\n  x : Nat\n\nclass N.isGood (a : Nat) : Prop\ninductive Tree\n@[simp] structure Foo.bar\n";
+        Assert.Equal([(7, "type-name"), (10, "type-name"), (12, "type-name")], MathlibConventions.Find(text).Select(p => (p.Line, p.Rule)));
     }
 
     [Fact]
@@ -298,5 +310,47 @@ public sealed class DocCoverageTests
         const string text = "namespace N\n  def indented := 1\nend N\n/-\ndef commented := 1\n-/\n-- def line := 1\ntheorem t : True := trivial\n";
         Assert.Empty(DocCoverage.Find(text));
         Assert.Equal([7], DocCoverage.Find(text, includeTheorems: true).Select(p => p.Line));
+    }
+}
+
+/// <summary>Breaking long comment lines.</summary>
+public sealed class WrapCommentsTests
+{
+    [Fact]
+    public void WrapsALineCommentOntoAnotherLineComment()
+    {
+        string text = "-- one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen\n";
+        string wrapped = StyleCheck.WrapComments(text, 90);
+        Assert.Equal("-- one two three four five six seven eight nine ten eleven twelve thirteen fourteen\n-- fifteen sixteen\n", wrapped);
+        Assert.All(wrapped.Split('\n'), l => Assert.True(l.Length <= 90, l));
+        Assert.Equal("  /- one two three four -/\n", StyleCheck.WrapComments("  /- one two three four -/\n", 90));
+    }
+
+    [Fact]
+    public void WrapsProseInADocCommentAndKeepsItsEnd()
+    {
+        string text = "/-- alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau. -/\ndef x := 1\n";
+        Assert.Equal("/-- alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma\ntau. -/\ndef x := 1\n", StyleCheck.WrapComments(text));
+        string multi = "/-!\n# Title\n" + string.Join(' ', Enumerable.Range(0, 30).Select(i => "word" + i)) + "\n-/\n";
+        string wrapped = StyleCheck.WrapComments(multi);
+        Assert.All(wrapped.Split('\n'), l => Assert.True(l.Length <= 100, l));
+        Assert.Equal(multi.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries), wrapped.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)); // no word lost or changed
+    }
+
+    [Fact]
+    public void LeavesCodeFencesIndentedCodeUrlsAndCrlfAlone()
+    {
+        string code = "def " + string.Join(" ", Enumerable.Repeat("verylongidentifier", 8)) + " := 1\n";
+        Assert.Equal(code, StyleCheck.WrapComments(code));
+        string fence = "/--\n```\n" + new string('a', 40) + " " + new string('b', 70) + "\n```\n-/\n";
+        Assert.Equal(fence, StyleCheck.WrapComments(fence));
+        string url = "-- see https://example.com/" + new string('x', 120) + "\n";
+        Assert.Equal("-- see\n-- https://example.com/" + new string('x', 120) + "\n", StyleCheck.WrapComments(url)); // the URL goes whole onto a line of its own
+        string bare = "-- https://example.com/" + new string('x', 120) + "\n";
+        Assert.Equal(bare, StyleCheck.WrapComments(bare));
+        Assert.Equal("-- " + string.Join(' ', Enumerable.Repeat("word", 25)) + "\r\n", StyleCheck.WrapComments("-- " + string.Join(' ', Enumerable.Repeat("word", 25)) + "\r\n", 200));
+        string crlf = "-- " + string.Join(' ', Enumerable.Repeat("word", 30)) + "\r\n";
+        Assert.All(StyleCheck.WrapComments(crlf, 60).Split('\n').Where(l => l.Length > 0), l => Assert.EndsWith("\r", l, StringComparison.Ordinal));
+        Assert.DoesNotContain(StyleCheck.Find(StyleCheck.WrapComments("-- " + string.Join(' ', Enumerable.Repeat("word", 40)) + "\n")), p => p.Rule == "long-line");
     }
 }

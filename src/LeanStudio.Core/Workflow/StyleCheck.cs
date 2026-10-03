@@ -75,4 +75,84 @@ public static class StyleCheck
         string body = string.Join('\n', lines).TrimEnd('\n');
         return body.Length == 0 ? "" : body + "\n";
     }
+
+    /// <summary>
+    /// <paramref name="text"/> with the comment lines longer than <paramref name="max"/> characters broken at a space:
+    /// a <c>--</c> comment continues on a new <c>--</c> line, and a line of prose in a doc or module comment continues on the
+    /// next line. Code is never touched: not a line outside a comment, not one in a code fence or indented four spaces or
+    /// more inside a comment, not a word longer than the limit (a URL).
+    /// </summary>
+    public static string WrapComments(string text, int max = MaxLineLength)
+    {
+        string[] lines = text.Split('\n');
+        var output = new List<string>(lines.Length);
+        int depth = 0;
+        bool fence = false;
+        foreach (string raw in lines)
+        {
+            string cr = raw.EndsWith('\r') ? "\r" : "";
+            string line = cr.Length > 0 ? raw[..^1] : raw;
+            bool inBlock = depth > 0;
+            depth = Math.Max(0, depth + BlockDelta(line));
+            string? prefix = null;
+            if (!inBlock && line.TrimStart().StartsWith("--", StringComparison.Ordinal))
+            {
+                int dash = line.IndexOf("--", StringComparison.Ordinal);
+                int end = dash + 2;
+                while (end < line.Length && line[end] is '-' or '!')
+                {
+                    end++;
+                }
+                prefix = line[..end] + " ";
+            }
+            else if (inBlock || line.TrimStart().StartsWith("/-", StringComparison.Ordinal))
+            {
+                if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+                {
+                    fence = !fence;
+                }
+                else if (!fence && !(inBlock && line.StartsWith("    ", StringComparison.Ordinal)))
+                {
+                    prefix = line[..(line.Length - line.TrimStart().Length)];
+                }
+            }
+            if (depth == 0 && !inBlock && prefix is null || prefix is null)
+            {
+                output.Add(raw);
+                continue;
+            }
+            while (new System.Globalization.StringInfo(line).LengthInTextElements > max)
+            {
+                int cut = line.LastIndexOf(' ', Math.Min(max, line.Length - 1));
+                if (cut <= prefix.Length || line[prefix.Length..cut].Trim().Length == 0)
+                {
+                    break; // one long word: leave it
+                }
+                output.Add(line[..cut].TrimEnd() + cr);
+                line = prefix + line[(cut + 1)..].TrimStart();
+            }
+            output.Add(line + cr);
+        }
+        return string.Join('\n', output);
+    }
+
+    /// <summary>How much a line opens more block comments than it closes (<c>/-</c> against <c>-/</c>).</summary>
+    private static int BlockDelta(string line)
+    {
+        int delta = 0;
+        for (int i = 0; i + 1 < line.Length; i++)
+        {
+            if (line[i] == '/' && line[i + 1] == '-')
+            {
+                delta++;
+                i++;
+            }
+            else if (line[i] == '-' && line[i + 1] == '/')
+            {
+                delta--;
+                i++;
+            }
+        }
+        return delta;
+    }
 }

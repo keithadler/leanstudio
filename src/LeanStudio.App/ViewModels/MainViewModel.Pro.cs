@@ -565,6 +565,33 @@ public sealed partial class MainViewModel
         Log($"Deprecations: removed {stale.Count}. Undo brings them back.");
     }
 
+    /// <summary>
+    /// Break the comment and docstring lines of the active file that are over 100 characters at a space, as one undoable
+    /// edit. Code is never touched; what still is too long is listed in Output.
+    /// </summary>
+    [RelayCommand]
+    public void WrapLongComments()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string wrapped = StyleCheck.WrapComments(text);
+        if (wrapped != text)
+        {
+            d.Document.Replace(0, text.Length, wrapped);
+        }
+        IReadOnlyList<StyleProblem> left = [.. StyleCheck.Find(wrapped).Where(p => p.Rule == "long-line")];
+        foreach (StyleProblem p in left)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log((wrapped == text ? "Wrap: no comment line to break" : "Wrap: broke the long comment lines")
+            + (left.Count > 0 ? $"; {left.Count} long line{(left.Count == 1 ? "" : "s")} of code left for you (above)." : ".")
+            + (wrapped == text ? "" : " Undo brings the old text back."));
+    }
+
     // ---- linters ----
 
     /// <summary>
