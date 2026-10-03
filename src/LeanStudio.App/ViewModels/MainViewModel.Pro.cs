@@ -444,6 +444,38 @@ public sealed partial class MainViewModel
         Log("Imports: sorted. Undo brings the old order back.");
     }
 
+    /// <summary>
+    /// Check the active file against Mathlib's text rules (trailing whitespace, lines over 100 characters, tabs, line
+    /// endings, the final newline), listing what is wrong in Output, and fix what has one obvious fix as one undoable edit.
+    /// </summary>
+    [RelayCommand]
+    public void TidyWhitespace()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        IReadOnlyList<StyleProblem> problems = StyleCheck.Find(text);
+        if (problems.Count == 0)
+        {
+            Log("Style: no problems.");
+            return;
+        }
+        string fixedText = StyleCheck.Fix(text);
+        if (fixedText != text)
+        {
+            d.Document.Replace(0, text.Length, fixedText);
+        }
+        foreach (StyleProblem p in problems.Where(p => p.Rule == "long-line"))
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        int left = problems.Count(p => p.Rule == "long-line");
+        Log($"Style: fixed {problems.Count - left} problem{(problems.Count - left == 1 ? "" : "s")}"
+            + (left > 0 ? $"; {left} long line{(left == 1 ? "" : "s")} left for you." : ".") + " Undo brings the old text back.");
+    }
+
     // ---- linters ----
 
     /// <summary>

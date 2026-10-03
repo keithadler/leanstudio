@@ -130,6 +130,7 @@
         <MenuItem Header="Instances of Class at Cursor…" Click="OnInstancesOfClass" />
         <MenuItem Header="Remove Unused Imports" Command="{Binding RemoveUnusedImportsCommand}" />
         <MenuItem Header="Sort Imports" Command="{Binding SortImportsCommand}" />
+        <MenuItem Header="Tidy Whitespace and Check Style" Command="{Binding TidyWhitespaceCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
         <Separator />

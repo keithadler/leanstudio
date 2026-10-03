@@ -695,6 +695,56 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("sort_imports",
+            "Put the imports in a Lean file's header in order, as Mathlib's style asks: each run of import lines sorted by module name, repeats dropped, comments and the body untouched. Returns the sorted header; with apply=true, writes the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Write the sorted file to disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                string sorted = ImportOrder.Sort(text);
+                if (sorted == text)
+                {
+                    return "the imports are already in order";
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, sorted, ct);
+                    return "sorted the imports of " + path;
+                }
+                return "would sort the imports (pass apply=true to write them):\n"
+                    + string.Join('\n', sorted.Split('\n').Where(l => l.TrimStart().StartsWith("import ", StringComparison.Ordinal)
+                        || l.TrimStart().StartsWith("public import ", StringComparison.Ordinal)));
+            }),
+
+        new("style_check",
+            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. With apply=true, fixes what has one obvious fix (everything but long lines) on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Fix the fixable problems on disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                IReadOnlyList<StyleProblem> problems = StyleCheck.Find(text);
+                if (problems.Count == 0)
+                {
+                    return "no style problems";
+                }
+                var sb = new StringBuilder();
+                foreach (StyleProblem p in problems)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{p.Line + 1}: {p.Rule}: {p.Message}\n");
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, StyleCheck.Fix(text), ct);
+                    int left = problems.Count(p => p.Rule == "long-line");
+                    sb.Append(CultureInfo.InvariantCulture, $"fixed {problems.Count - left} problem(s); {left} long line(s) are left for you");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

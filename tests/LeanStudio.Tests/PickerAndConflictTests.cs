@@ -106,3 +106,89 @@ public sealed class ImportOrderTests
         Assert.Equal("", ImportOrder.Sort(""));
     }
 }
+
+/// <summary>The text rules of Mathlib's style linter.</summary>
+public sealed class StyleCheckTests
+{
+    [Fact]
+    public void FindsEachKindOfProblemAtItsLine()
+    {
+        string text = "def a := 1  \n\tdef b := 2\n-- " + new string('x', 100) + "\ndef c := 3";
+        IReadOnlyList<StyleProblem> found = StyleCheck.Find(text);
+        Assert.Equal([(0, "trailing-whitespace"), (1, "tab"), (2, "long-line"), (3, "final-newline")], found.Select(p => (p.Line, p.Rule)));
+        Assert.Contains("103 characters", found[2].Message);
+    }
+
+    [Fact]
+    public void AcceptsACleanFileAndALineOfExactlyTheLimit()
+    {
+        Assert.Empty(StyleCheck.Find("def a := 1\n-- " + new string('x', 97) + "\n"));
+        Assert.Empty(StyleCheck.Find(""));
+    }
+
+    [Fact]
+    public void ReportsCrlfAndExtraFinalNewlines()
+    {
+        Assert.Equal(["crlf"], StyleCheck.Find("a\r\nb\r\n").Select(p => p.Rule));
+        Assert.Equal([(1, "final-newline")], StyleCheck.Find("a\n\n").Select(p => (p.Line, p.Rule)));
+    }
+
+    [Fact]
+    public void FixesWhatHasOneFixAndLeavesLongLinesAlone()
+    {
+        Assert.Equal("a\n  b\nc\n", StyleCheck.Fix("a  \r\n\tb\t\r\nc\n\n\n"));
+        Assert.Equal("a\n", StyleCheck.Fix("a"));
+        string longLine = "-- " + new string('y', 120) + "\n";
+        Assert.Equal(longLine, StyleCheck.Fix(longLine));
+        Assert.Equal("", StyleCheck.Fix(""));
+        Assert.Empty(StyleCheck.Find(StyleCheck.Fix("x \t\r\n\r\n\r\ny")));
+    }
+}
+
+/// <summary>The text tools assistants get over MCP; they need no running Lean.</summary>
+public sealed class TextToolTests
+{
+    [Fact]
+    public async Task AssistantsCanSortImportsAndCheckStyle()
+    {
+        string dir = Directory.CreateTempSubdirectory("leanstudio-text-").FullName;
+        try
+        {
+            string file = Path.Combine(dir, "A.lean");
+            await File.WriteAllTextAsync(file, "import B\nimport A \n\ndef x := 1\t", TestContext.Current.CancellationToken);
+            await using var bench = new Core.Agents.Workbench(dir);
+            Mcp.McpServer server = Mcp.LeanTools.Create(bench, "test");
+            async Task<string> Call(string tool, System.Text.Json.Nodes.JsonObject args)
+            {
+                var r = await server.HandleAsync(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["jsonrpc"] = "2.0", ["id"] = 1, ["method"] = "tools/call",
+                    ["params"] = new System.Text.Json.Nodes.JsonObject { ["name"] = tool, ["arguments"] = args },
+                }, TestContext.Current.CancellationToken);
+                var result = r!["result"]!;
+                Assert.False(result["isError"]?.GetValue<bool>() ?? false, result.ToJsonString());
+                return result["content"]![0]!["text"]!.GetValue<string>();
+            }
+
+            string preview = await Call("sort_imports", new() { ["path"] = file });
+            Assert.Contains("import A \nimport B", preview, StringComparison.Ordinal);
+            Assert.StartsWith("import B\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken), StringComparison.Ordinal); // not written
+
+            await Call("sort_imports", new() { ["path"] = file, ["apply"] = true });
+            Assert.StartsWith("import A \nimport B\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken), StringComparison.Ordinal);
+            Assert.Contains("already in order", await Call("sort_imports", new() { ["path"] = file, ["apply"] = true }), StringComparison.Ordinal);
+
+            string report = await Call("style_check", new() { ["path"] = file });
+            Assert.Contains("A.lean:1: trailing-whitespace", report, StringComparison.Ordinal);
+            Assert.Contains("A.lean:4: tab", report, StringComparison.Ordinal);
+            Assert.Contains("final-newline", report, StringComparison.Ordinal);
+            await Call("style_check", new() { ["path"] = file, ["apply"] = true });
+            Assert.Equal("import A\nimport B\n\ndef x := 1\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+            Assert.Equal("no style problems", await Call("style_check", new() { ["path"] = file }));
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+}

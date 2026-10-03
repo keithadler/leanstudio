@@ -16,6 +16,8 @@
 
 **New**:
 - **Sort Imports** (*Lean ▸ Sort Imports*, and in the command palette): puts each run of `import` lines in the file's header in order by module name and drops repeats, as Mathlib's style asks. Blank lines and comments between runs stay, so a deliberate grouping is kept; nothing below the header moves. One undoable edit that touches only the lines that changed.
+- **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*): holds the file to the text rules of Mathlib's style linter. Trailing whitespace, tabs, Windows line endings and a missing or doubled final newline are fixed as one undoable edit; lines over 100 characters are listed in Output for you to break.
+- **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:
 - `verify` over MCP kept returning the declarations of the build it first read after the project was built again outside it (`lake build` in a terminal), until the server restarted ([#2](https://github.com/keithadler/leanstudio/issues/2)). Tenet now notes the build it opened (each `.olean`'s size and time, the manifest and the toolchain) and reads the new one when it has changed; the window's Verify, Why?, the project map and the blueprint check do the same.
