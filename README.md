@@ -98,6 +98,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Mathlib housekeeping: sort imports, tidy whitespace, wrap long comments, add the copyright header, delete old deprecations, a Mathlib-style name for a theorem, theorems that state the same thing, a project health summary | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | An onramp for people new to Lean: a tutorial, a puzzle a day with hints, goals read in English, errors explained, a hint for the goal under the cursor, a warning when a tutorial is Lean 3, practice typing symbols, badges for your firsts | | ✓ |
+| Projects the size of Fermat's Last Theorem: which `sorry` to prove next, which block the most, work split fairly among N people, how old each is, a completion forecast, the build's critical path, locked theorem statements, module layer rules | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
 | Built-in AI that prefers a model on your computer (Apple's on-device model on macOS 27, Ollama, LM Studio, llama.cpp, MLX), with every proof it suggests checked by Lean before you see it | | ✓ |
 | An MCP server so AI assistants can use Lean | | ✓ |
@@ -147,6 +148,21 @@ Lean Studio is built to be the place to start, whether you're curious about theo
 The Outline also shows, live, which theorems Lean accepts (✓), which still use `sorry` (◐) and which have errors (✗).
 
 ![The playground: results at the end of each line, a program run, and a famous theorem added](docs/images/playground.png)
+
+## Very large projects
+
+Fermat's Last Theorem and Navier–Stokes are not one file; they are hundreds of files and thousands of declarations, with a team and a blueprint. The **Big Projects** menu (and the command palette, and the MCP server) reads the whole project as one dependency graph, with no Lean running, and answers the questions a project lead asks. On 36,000 declarations in 600 files it takes about a second.
+
+1. **Sorries to Prove Next**: the `sorry`s you can prove right now, because everything their statements use is already proved, biggest unblocker first.
+2. **Sorries Blocking the Most**: the `sorry`s that most other declarations rest on, directly or not.
+3. **Share Out the Work for N People**: the open `sorry`s in N balanced packages, each kept together by file so people do not collide.
+4. **Oldest Sorries**: how long each `sorry` has stood, by `git blame`.
+5. **Completion Forecast**: the burndown continued, with the date the last `sorry` would go at the recent rate.
+6. **Build Critical Path**: the import chain that sets the minimum build time however many cores you have.
+7. **Longest Proofs**: the proofs most worth splitting.
+8. **Where to Split This File**: groups of declarations that share nothing, so a long file can be cut cleanly.
+9. **Module Layers**: list your layers, lowest first, in `.leanstudio/layers.json` (`{"layers": [["Foundations"], ["Algebra"], ["Geometry"]]}`) and the editor finds the imports that point upward.
+10. **Lock Statements**: freeze every theorem statement (not proof) as a hash, and later see which statements changed. A blueprint formalized by many hands stays faithful.
 
 ## Features
 

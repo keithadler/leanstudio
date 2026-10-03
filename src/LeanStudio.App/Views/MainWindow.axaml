@@ -141,6 +141,27 @@
         <MenuItem Header="What This Branch Changed Mathematically" Command="{Binding ShowStatementChangesCommand}" />
         <MenuItem Header="Sorry Burndown (last 30 commits)" Command="{Binding ShowSorryBurndownCommand}" />
         <MenuItem Header="Project Health Summary" Command="{Binding ShowProjectHealthCommand}" />
+        <MenuItem Header="Big Projects">
+          <MenuItem Header="Sorries to Prove Next (Nothing Blocks Them)" Command="{Binding ShowNextUpCommand}" />
+          <MenuItem Header="Sorries Blocking the Most" Command="{Binding ShowMostBlockingCommand}" />
+          <MenuItem Header="Share Out the Work for…">
+            <MenuItem Header="2 People" Command="{Binding ShowWorkPackagesCommand}" CommandParameter="2" />
+            <MenuItem Header="3 People" Command="{Binding ShowWorkPackagesCommand}" CommandParameter="3" />
+            <MenuItem Header="5 People" Command="{Binding ShowWorkPackagesCommand}" CommandParameter="5" />
+            <MenuItem Header="8 People" Command="{Binding ShowWorkPackagesCommand}" CommandParameter="8" />
+            <MenuItem Header="12 People" Command="{Binding ShowWorkPackagesCommand}" CommandParameter="12" />
+          </MenuItem>
+          <MenuItem Header="Oldest Sorries (from Git Blame)" Command="{Binding ShowSorryAgeCommand}" />
+          <MenuItem Header="When Will the Sorries Run Out?" Command="{Binding ShowForecastCommand}" />
+          <Separator />
+          <MenuItem Header="Build Critical Path" Command="{Binding ShowCriticalPathCommand}" />
+          <MenuItem Header="Where to Split This File" Command="{Binding ShowSplitAdviceCommand}" />
+          <MenuItem Header="Longest Proofs" Command="{Binding ShowLongProofsCommand}" />
+          <MenuItem Header="Check Module Layers" Command="{Binding CheckLayersCommand}" />
+          <Separator />
+          <MenuItem Header="Lock This Theorem's Statement" Command="{Binding LockStatementCommand}" />
+          <MenuItem Header="Check Locked Statements" Command="{Binding CheckLockedStatementsCommand}" />
+        </MenuItem>
         <MenuItem Header="Find Duplicate Theorem Statements" Command="{Binding FindDuplicateStatementsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />

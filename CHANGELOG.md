@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+**For projects the size of Fermat's Last Theorem or Navier–Stokes** (the *Big Projects* menu, the command palette and MCP tools; see *Very large projects* in the README): a declaration-level dependency graph of the whole project, built from text in about a second for 36,000 declarations, answers:
+- **Sorries to Prove Next** (the frontier of the proof) and **Sorries Blocking the Most**.
+- **Share Out the Work for N People**: balanced work packages, kept together by file.
+- **Oldest Sorries** (git blame) and **Completion Forecast** (a regression over the burndown).
+- **Build Critical Path**: the longest import chain.
+- **Longest Proofs** and **Where to Split This File**.
+- **Check Module Layers**: upward imports against a layer file.
+- **Lock Statements** and **Check Locked Statements**: theorem statements hashed, so a changed statement is caught.
+
 **An onramp for beginners** (the *Learn* menu and the command palette; see *New to Lean?* in the README):
 - **Hint for This Goal**: three hints for the goal under the cursor, each a little bigger (what it says in words, what kind of goal it is, the tactic to try and how it is written), never the whole proof.
 - **Explain This Declaration in Plain English**: reads a `def`, `theorem`, `structure` or `inductive` aloud ("`double` is a function. Given n (a natural number), it gives back a natural number.").
