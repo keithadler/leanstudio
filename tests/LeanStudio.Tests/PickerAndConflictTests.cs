@@ -185,10 +185,50 @@ public sealed class TextToolTests
             await Call("style_check", new() { ["path"] = file, ["apply"] = true });
             Assert.Equal("import A\nimport B\n\ndef x := 1\n", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
             Assert.Equal("no style problems", await Call("style_check", new() { ["path"] = file }));
+            string conventions = await Call("style_check", new() { ["path"] = file, ["mathlib"] = true });
+            Assert.Contains("copyright-header", conventions, StringComparison.Ordinal);
+            Assert.Contains("module-doc", conventions, StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(dir, true);
         }
+    }
+}
+
+/// <summary>Mathlib's file conventions: the header, the module docstring, theorem names.</summary>
+public sealed class MathlibConventionsTests
+{
+    private const string Header = "/-\nCopyright (c) 2025 Ada Lovelace. All rights reserved.\nReleased under Apache 2.0 license as described in the file LICENSE.\nAuthors: Ada Lovelace\n-/\n";
+
+    [Fact]
+    public void AcceptsAFileWithAHeaderAndAModuleDocstring() =>
+        Assert.Empty(MathlibConventions.Find(Header + "import Mathlib.Data.Nat.Basic\n\n/-! # Facts -/\n\ntheorem foo_bar : True := trivial\n"));
+
+    [Fact]
+    public void ReportsAMissingHeaderAndModuleDocstring() =>
+        Assert.Equal([(0, "copyright-header"), (0, "module-doc")], MathlibConventions.Find("import A\n\ndef x := 1\n").Select(p => (p.Line, p.Rule)));
+
+    [Theory]
+    [InlineData("/-\nCopyright (c) 2025 Ada. All rights reserved.\nReleased under MIT.\nAuthors: Ada\n-/\n")]
+    [InlineData("/-\nCopyright 2025 Ada.\nReleased under Apache 2.0 license as described in the file LICENSE.\nAuthors: Ada\n-/\n")]
+    [InlineData("/-\nCopyright (c) 2025 Ada. All rights reserved.\nReleased under Apache 2.0 license as described in the file LICENSE.\nAuthors: \n-/\n")]
+    public void ReportsAMalformedHeader(string header) =>
+        Assert.Contains(MathlibConventions.Find(header + "/-! Doc -/\n"), p => p.Rule == "copyright-header");
+
+    [Fact]
+    public void FlagsTheoremNamesThatStartWithACapital()
+    {
+        string text = Header + "/-! Doc -/\n\ntheorem Foo : True := trivial\n@[simp] protected lemma Nat.Bar_baz (n : Nat) : n = n := rfl\ntheorem Nat.ok_name : True := trivial\ntheorem isOpen_iff : True := trivial\n";
+        Assert.Equal([(7, "theorem-name"), (8, "theorem-name")], MathlibConventions.Find(text).Select(p => (p.Line, p.Rule)));
+    }
+
+    [Fact]
+    public void AddsTheHeaderOnlyWhereThereIsNoCommentFirst()
+    {
+        string added = MathlibConventions.AddHeader("import A\n", 2026, "Grace Hopper");
+        Assert.Equal("/-\nCopyright (c) 2026 Grace Hopper. All rights reserved.\nReleased under Apache 2.0 license as described in the file LICENSE.\nAuthors: Grace Hopper\n-/\nimport A\n", added);
+        Assert.DoesNotContain(MathlibConventions.Find(added + "/-! Doc -/\n"), p => p.Rule == "copyright-header");
+        Assert.Equal(added, MathlibConventions.AddHeader(added, 2030, "Someone Else"));
     }
 }

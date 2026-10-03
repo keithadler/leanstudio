@@ -719,14 +719,16 @@ public static class LeanTools
             }),
 
         new("style_check",
-            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. With apply=true, fixes what has one obvious fix (everything but long lines) on disk.",
+            "Check a Lean file against the text rules Mathlib's CI holds it to: no trailing whitespace, no line over 100 characters, no tabs, LF line endings, exactly one newline at the end. In a project that uses Mathlib (or with mathlib=true) it also checks Mathlib's file conventions: the copyright header, a module docstring, theorem names in snake_case. With apply=true, fixes what has one obvious fix (the text rules, except long lines) on disk.",
             Schema(("path", "string", "The .lean file.", true),
-                   ("apply", "boolean", "Fix the fixable problems on disk (default false).", false)),
+                   ("apply", "boolean", "Fix the fixable problems on disk (default false).", false),
+                   ("mathlib", "boolean", "Also check Mathlib's file conventions (default: when the project uses Mathlib).", false)),
             async (a, ct) =>
             {
                 string path = LeanFile(bench, a);
                 string text = await File.ReadAllTextAsync(path, ct);
-                IReadOnlyList<StyleProblem> problems = StyleCheck.Find(text);
+                bool conventions = OptBool(a, "mathlib") ?? bench.ProjectFor(path).DependsOnMathlib;
+                IReadOnlyList<StyleProblem> problems = [.. StyleCheck.Find(text), .. (conventions ? MathlibConventions.Find(text) : [])];
                 if (problems.Count == 0)
                 {
                     return "no style problems";
@@ -739,8 +741,9 @@ public static class LeanTools
                 if (OptBool(a, "apply") == true)
                 {
                     await File.WriteAllTextAsync(path, StyleCheck.Fix(text), ct);
-                    int left = problems.Count(p => p.Rule == "long-line");
-                    sb.Append(CultureInfo.InvariantCulture, $"fixed {problems.Count - left} problem(s); {left} long line(s) are left for you");
+                    string[] fixable = ["trailing-whitespace", "tab", "crlf", "final-newline"];
+                    int left = problems.Count(p => !fixable.Contains(p.Rule));
+                    sb.Append(CultureInfo.InvariantCulture, $"fixed {problems.Count - left} problem(s); {left} are left for you");
                 }
                 return sb.ToString().TrimEnd();
             }),

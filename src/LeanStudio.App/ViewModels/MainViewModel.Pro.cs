@@ -476,6 +476,64 @@ public sealed partial class MainViewModel
             + (left > 0 ? $"; {left} long line{(left == 1 ? "" : "s")} left for you." : ".") + " Undo brings the old text back.");
     }
 
+    /// <summary>
+    /// Put the whole file in Mathlib's shape in one undoable edit: the imports in order, then the text rules
+    /// (whitespace, tabs, line endings, the final newline). Long lines and the file conventions are listed in Output.
+    /// </summary>
+    [RelayCommand]
+    public void TidyFile()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        string tidy = StyleCheck.Fix(ImportOrder.Sort(text));
+        if (tidy != text)
+        {
+            d.Document.Replace(0, text.Length, tidy);
+        }
+        IReadOnlyList<StyleProblem> left = [.. StyleCheck.Find(tidy), .. (ProjectFor(d).DependsOnMathlib ? MathlibConventions.Find(tidy) : [])];
+        foreach (StyleProblem p in left)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log((tidy == text ? "Tidy: already tidy" : "Tidy: imports sorted and whitespace fixed")
+            + (left.Count > 0 ? $"; {left.Count} thing{(left.Count == 1 ? "" : "s")} left for you (above)." : ".")
+            + (tidy == text ? "" : " Undo brings the old text back."));
+    }
+
+    /// <summary>
+    /// Put Mathlib's copyright header at the top of the active file, with this year and the name git is set up with
+    /// (the Git user name, else the system user). A file that already starts with a comment is left alone.
+    /// </summary>
+    [RelayCommand]
+    public async Task AddMathlibHeaderAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string author = Environment.UserName;
+        if (Core.Git.GitRepository.Find(d.Path) is Core.Git.GitRepository git)
+        {
+            Core.Processes.ProcessResult r = await git.RunAsync(["config", "user.name"]);
+            if (r.Success && r.Output.Trim().Length > 0)
+            {
+                author = r.Output.Trim();
+            }
+        }
+        string text = d.Document.Text;
+        string withHeader = MathlibConventions.AddHeader(text, DateTime.Now.Year, author);
+        if (withHeader == text)
+        {
+            Log("Header: the file already starts with a comment, so it was left alone.");
+            return;
+        }
+        d.Document.Insert(0, withHeader[..^text.Length]);
+        Log($"Header: added Mathlib's copyright header for {author}. Check the name, then undo if it is wrong.");
+    }
+
     // ---- linters ----
 
     /// <summary>

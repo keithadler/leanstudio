@@ -17,6 +17,8 @@
 **New**:
 - **Sort Imports** (*Lean ▸ Sort Imports*, and in the command palette): puts each run of `import` lines in the file's header in order by module name and drops repeats, as Mathlib's style asks. Blank lines and comments between runs stay, so a deliberate grouping is kept; nothing below the header moves. One undoable edit that touches only the lines that changed.
 - **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*): holds the file to the text rules of Mathlib's style linter. Trailing whitespace, tabs, Windows line endings and a missing or doubled final newline are fixed as one undoable edit; lines over 100 characters are listed in Output for you to break.
+- **Tidy File** (*Lean ▸ Tidy File*) does both in one undoable edit: sorts the imports, fixes the whitespace, and lists what is left (long lines and, in a project that uses Mathlib, the file conventions).
+- **Mathlib's file conventions**: the copyright header, a module docstring, and theorem names that start with a capital are reported by *Tidy File* in a Mathlib project and by `style_check` over MCP (`mathlib=true` forces it). **Add Mathlib Copyright Header** puts the header on a file that has none, for this year and the name git is set up with.
 - **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:
