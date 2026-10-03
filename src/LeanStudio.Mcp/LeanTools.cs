@@ -808,6 +808,29 @@ public static class LeanTools
                 return $"{count} line(s) can be merged into the one before (pass apply=true to write them)";
             }),
 
+        new("duplicate_statements",
+            "Theorems of the project that state the same thing under different names: the statements are compared with the names of the variables they bind and the white space left out, so (a b : ℕ) : a + b = b + a matches (x y : ℕ) : x + y = y + x. Mathlib asks that a result is stated once. Statements are compared as text, so two that are equal only by unfolding are not found.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                IReadOnlyList<IReadOnlyList<TheoremStatement>> groups = DuplicateStatements.Scan(p.Root, ct);
+                if (groups.Count == 0)
+                {
+                    return Task.FromResult("no two theorems state the same thing");
+                }
+                var sb = new StringBuilder();
+                foreach (IReadOnlyList<TheoremStatement> group in groups)
+                {
+                    sb.Append("same statement: ").Append(group[0].Statement).Append('\n');
+                    foreach (TheoremStatement t in group)
+                    {
+                        sb.Append(CultureInfo.InvariantCulture, $"  {t.Name}  {Path.GetRelativePath(p.Root, t.Path)}:{t.Line + 1}\n");
+                    }
+                }
+                return Task.FromResult(sb.ToString().TrimEnd());
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

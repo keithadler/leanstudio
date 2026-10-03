@@ -331,6 +331,7 @@ What CI and reviewers check, before you push:
 - **Sort Imports** (*Lean ▸ Sort Imports*) puts each run of `import` lines in the header in order by module name and drops repeats, as Mathlib's style asks, leaving comments, blank-line groups and the body alone.
 - **Tidy Whitespace and Check Style** (*Lean ▸ Tidy Whitespace and Check Style*) holds a file to Mathlib's text rules: trailing whitespace, tabs, CRLF and the final newline are fixed in one undoable edit, and lines over 100 characters are listed for you to break.
 - **Tidy File** does Sort Imports and the whitespace fixes in one edit; in a Mathlib project it also reports a missing copyright header or module docstring and theorem names that start with a capital, and **Add Mathlib Copyright Header** writes the header for you.
+- **Find Duplicate Theorem Statements** lists theorems of the project that state the same thing under different names, with each one's file and line.
 - **Merge Consecutive rw / intro Steps** turns `rw [a]` then `rw [b]` (or `simp_rw`, or two `intro`s) into one line, where that cannot change the proof.
 - **Suggest a Name for This Theorem** works out the name Mathlib's scheme would give a theorem from its statement (`a + b = b + a` is `add_comm`; `a ≤ b → b < c → a < c` is `lt_of_le_of_lt`) and says whether yours matches.
 - **Copy as a Zulip Message** (*File ▸ Copy as a Zulip Message*) puts the file in a `lean` fence with Lean's errors and warnings in a quote under it, ready to paste into the Lean Zulip chat.

@@ -637,6 +637,40 @@ public sealed partial class MainViewModel
         Log($"Merge: {count} line{(count == 1 ? "" : "s")} merged into the one before. Undo brings them back.");
     }
 
+    /// <summary>
+    /// Look through the project's Lean files for theorems that state the same thing under different names (the names of
+    /// the variables they bind and the spacing do not count), and list each group in Output.
+    /// </summary>
+    [RelayCommand]
+    public async Task FindDuplicateStatementsAsync()
+    {
+        if (Project is null)
+        {
+            Log("Duplicates: open a project first.");
+            return;
+        }
+        string root = Project.Root;
+        ProStatus = "Comparing the project's theorem statements…";
+        try
+        {
+            IReadOnlyList<IReadOnlyList<TheoremStatement>> groups = await Task.Run(() => DuplicateStatements.Scan(root));
+            foreach (IReadOnlyList<TheoremStatement> group in groups)
+            {
+                Log("Same statement: " + group[0].Statement);
+                foreach (TheoremStatement t in group)
+                {
+                    Log($"  {t.Name}  ({Path.GetRelativePath(root, t.Path)}:{t.Line + 1})");
+                }
+            }
+            Log(groups.Count == 0 ? "Duplicates: no two theorems state the same thing."
+                : $"Duplicates: {groups.Count} statement{(groups.Count == 1 ? " is" : "s are")} made by more than one theorem. Keep one and deprecate or delete the rest.");
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- linters ----
 
     /// <summary>

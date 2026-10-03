@@ -174,6 +174,13 @@ public sealed class TextToolTests
             Assert.Equal("add_comm", await Call("suggest_name", new() { ["statement"] = "(a b : ℕ) : a + b = b + a" }));
             Assert.StartsWith("no name", await Call("suggest_name", new() { ["statement"] = "True" }), StringComparison.Ordinal);
 
+            Assert.Equal("no two theorems state the same thing", await Call("duplicate_statements", new()));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Q.lean"), "theorem q1 (a b : ℕ) : a + b = b + a := by omega\ntheorem q2 (x y : ℕ) : x + y = y + x := by omega\n", TestContext.Current.CancellationToken);
+            string dupes = await Call("duplicate_statements", new());
+            Assert.Contains("q1  Q.lean:1", dupes, StringComparison.Ordinal);
+            Assert.Contains("q2  Q.lean:2", dupes, StringComparison.Ordinal);
+            File.Delete(Path.Combine(dir, "Q.lean"));
+
             string proof = Path.Combine(dir, "P.lean");
             await File.WriteAllTextAsync(proof, "theorem t : P := by\n  rw [a]\n  rw [b]\n  exact h\n", TestContext.Current.CancellationToken);
             Assert.StartsWith("1 line(s) can be merged", await Call("merge_tactics", new() { ["path"] = proof }), StringComparison.Ordinal);
@@ -473,5 +480,55 @@ public sealed class TacticGolfTests
     public void KeepsCrlfLineEndings()
     {
         Assert.Equal(("  intro x y\r\n  exact h\r\n", 1), TacticGolf.Merge("  intro x\r\n  intro y\r\n  exact h\r\n"));
+    }
+}
+
+/// <summary>Theorems that state the same thing.</summary>
+public sealed class DuplicateStatementsTests
+{
+    [Fact]
+    public void ReadsTheStatementsOfTheoremsAtTheMargin()
+    {
+        const string text = "theorem a (x y : ℕ) :\n    x + y = y + x := by\n  omega\n\n/- theorem hidden : 1 = 1 := rfl -/\n  theorem indented : 1 = 1 := rfl\n@[simp] protected lemma b {n : ℕ} : n = n := rfl\n";
+        IReadOnlyList<TheoremStatement> found = DuplicateStatements.Statements("F.lean", text);
+        Assert.Equal([("a", 0, "(x y : ℕ) : x + y = y + x"), ("b", 6, "{n : ℕ} : n = n")], found.Select(s => (s.Name, s.Line, s.Statement)));
+    }
+
+    [Fact]
+    public void IgnoresTheNamesOfBoundVariablesAndSpacing()
+    {
+        Assert.Equal(DuplicateStatements.Normalize("(a b : ℕ) : a + b = b + a"), DuplicateStatements.Normalize("(x   y : ℕ)   : x + y = y + x"));
+        Assert.Equal(DuplicateStatements.Normalize("∀ a b, a ≤ b → a < b + 1"), DuplicateStatements.Normalize("∀ m n, m ≤ n -> m < n + 1"));
+        Assert.NotEqual(DuplicateStatements.Normalize("(a b : ℕ) : a + b = b + a"), DuplicateStatements.Normalize("(a b : ℕ) : a * b = b * a"));
+        Assert.NotEqual(DuplicateStatements.Normalize("(a b : ℕ) : a + b = b + a"), DuplicateStatements.Normalize("(a b : ℤ) : a + b = b + a"));
+        Assert.Equal("(_0 : ℕ) : _0 + n' = f _0", DuplicateStatements.Normalize("(x : ℕ) : x + n' = f x")); // free names stay
+    }
+
+    [Fact]
+    public void GroupsTheoremsWithTheSameStatementAcrossFiles()
+    {
+        var all = new List<TheoremStatement>();
+        all.AddRange(DuplicateStatements.Statements("A.lean", "theorem add_comm' (a b : ℕ) : a + b = b + a := by omega\ntheorem short : True := trivial\n"));
+        all.AddRange(DuplicateStatements.Statements("B.lean", "lemma plus_comm (x y : ℕ) :\n    x + y = y + x := Nat.add_comm x y\ntheorem short2 : True := trivial\ntheorem other (a b : ℕ) : a * b = b * a := by omega\n"));
+        IReadOnlyList<IReadOnlyList<TheoremStatement>> groups = DuplicateStatements.Find(all);
+        IReadOnlyList<TheoremStatement> group = Assert.Single(groups);
+        Assert.Equal(["add_comm'", "plus_comm"], group.Select(s => s.Name));
+        Assert.Equal(["A.lean", "B.lean"], group.Select(s => s.Path)); // `True` twice is too short to count
+    }
+
+    [Fact]
+    public async Task ScansAProjectFolder()
+    {
+        string dir = Directory.CreateTempSubdirectory("leanstudio-dups-").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(dir, "A.lean"), "theorem one (n : ℕ) : n + 0 = n := rfl\n", TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(Path.Combine(dir, "B.lean"), "theorem two (k : ℕ) : k + 0 = k := by simp\n", TestContext.Current.CancellationToken);
+            Assert.Equal(["one", "two"], Assert.Single(DuplicateStatements.Scan(dir, TestContext.Current.CancellationToken)).Select(s => s.Name).Order());
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 }
