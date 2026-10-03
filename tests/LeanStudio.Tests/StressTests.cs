@@ -141,6 +141,104 @@ public sealed class StressTests
         await wire.DisposeAsync();
     }
 
+    /// <summary>An input that gives no byte until it is told to end.</summary>
+    private sealed class EndsOnCommand(Task end) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await end.WaitAsync(cancellationToken);
+            return 0; // the other side has gone
+        }
+    }
+
+    /// <summary>An output whose first write waits to be released, and then fails as a pipe whose reader has died does.</summary>
+    private sealed class BreaksOnCommand(Task release, TaskCompletionSource entered) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            entered.TrySetResult();
+            await release.WaitAsync(cancellationToken);
+            throw new IOException("Pipe is broken.");
+        }
+    }
+
+    [Fact]
+    public async Task ARequestWhoseWriteFailsAfterTheReaderSawTheCloseNamesItAndLeavesNothingUnobserved()
+    {
+        // The other side dies while a request is still waiting to be written: the reader fails it (naming it), and
+        // then its write fails too. The caller must be told which request it was, as for any other, and the error the
+        // reader gave must not be left for the finalizer to report.
+        var unobserved = new List<Exception>();
+        void OnUnobserved(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            lock (unobserved)
+            {
+                unobserved.Add(e.Exception);
+            }
+        }
+        TaskScheduler.UnobservedTaskException += OnUnobserved;
+        try
+        {
+            IOException failure = await FailARequestAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("(while waiting for hang)", failure.Message, StringComparison.Ordinal);
+            Assert.Equal("Pipe is broken.", failure.InnerException?.Message);
+            for (int i = 0; i < 3; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            lock (unobserved)
+            {
+                Assert.Empty(unobserved);
+            }
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= OnUnobserved;
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static async Task<IOException> FailARequestAsync(CancellationToken ct)
+    {
+        var end = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var connection = new JsonRpcConnection(new EndsOnCommand(end.Task), new BreaksOnCommand(release.Task, entered));
+        connection.Closed += _ => closed.TrySetResult();
+        connection.Start();
+        Task request = connection.RequestAsync("hang", null, ct);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), ct); // its write is under way and waiting
+        end.SetResult(); // the other side goes: the reader fails the request that is waiting
+        await closed.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        release.SetResult(); // and now its write fails too
+        return await Assert.ThrowsAsync<IOException>(() => request.WaitAsync(TimeSpan.FromSeconds(10), ct));
+    }
+
     [Fact]
     public async Task GarbageJsonIsSkippedAndTheConversationGoesOn()
     {

@@ -133,9 +133,16 @@ public sealed class JsonRpcConnection : IAsyncDisposable
         {
             await WriteAsync(msg).ConfigureAwait(false);
         }
+        catch (IOException e)
+        {
+            Abandon(id, tcs);
+            // The other side may have died while this request waited to be written: the reader has then failed it
+            // already, naming it. The caller is told the same, not just that a pipe broke.
+            throw new IOException($"the language server connection closed (while waiting for {method})", e);
+        }
         catch
         {
-            _pending.TryRemove(id, out _);
+            Abandon(id, tcs);
             throw;
         }
         try
@@ -219,6 +226,17 @@ public sealed class JsonRpcConnection : IAsyncDisposable
     }
 
     private volatile bool _disposed;
+
+    /// <summary>
+    /// Stop waiting for request <paramref name="id"/> because it could not be written. If the reader failed it first
+    /// (the connection closed meanwhile), that error is observed here: nobody else will await it.
+    /// </summary>
+    private void Abandon(long id, TaskCompletionSource<JsonElement> tcs)
+    {
+        _pending.TryRemove(id, out _);
+        _pendingMethods.TryRemove(id, out _);
+        Forget(tcs.Task);
+    }
 
     /// <summary>Let a message go without waiting for it; if it fails (the connection closed), that is not an error.</summary>
     private static void Forget(Task t) => t.ContinueWith(static x => _ = x.Exception, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously);
