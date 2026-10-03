@@ -57,8 +57,9 @@ public static class SorryHistory
         foreach ((string hash, string date, string subject) in ParseLog(log.Output).Reverse())
         {
             ct.ThrowIfCancellationRequested();
+            // -w, not a \b pattern: macOS's regular expressions have no \b, so there it matches nothing.
             // Exit code 1 means no match: the commit has no sorry (or no Lean file), which is a count of 0.
-            Processes.ProcessResult grep = await repo.RunAsync(["grep", "-n", "-I", "-E", @"\b(sorry|admit)\b", hash, "--", "*.lean"], ct: ct).ConfigureAwait(false);
+            Processes.ProcessResult grep = await repo.RunAsync(["grep", "-n", "-I", "-w", "-e", "sorry", "-e", "admit", hash, "--", "*.lean"], ct: ct).ConfigureAwait(false);
             points.Add(new SorryPoint(hash, date, subject, grep.ExitCode is 0 or 1 ? Count(grep.Output) : 0));
         }
         return points;
