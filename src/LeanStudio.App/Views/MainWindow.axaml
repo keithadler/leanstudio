@@ -56,6 +56,7 @@
         <MenuItem Header="Export Proof Walkthrough…" Command="{Binding ExportWalkthroughCommand}" />
         <MenuItem Header="Open in the Lean 4 Web Editor" Command="{Binding OpenInWebEditorCommand}" />
         <MenuItem Header="Copy Share Link" Command="{Binding CopyShareLinkCommand}" />
+        <MenuItem Header="Copy as a Zulip Message" Command="{Binding CopyForZulipCommand}" />
         <MenuItem Header="Close File" Command="{Binding CloseDocumentCommand}" InputGesture="{OnPlatform Default='Ctrl+W', macOS='Cmd+W'}" />
         <Separator />
         <MenuItem Header="Preferences…" Click="OnPreferences" InputGesture="{OnPlatform Default='Ctrl+OemComma', macOS='Cmd+OemComma'}" />

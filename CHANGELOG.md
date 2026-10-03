@@ -23,6 +23,7 @@
 - **Doc comments on definitions**: in a Mathlib project, Tidy File and `style_check` also list each public `def`, `abbrev`, `structure`, `class` and `inductive` with no doc comment, as Mathlib's `docBlame` linter asks, read from the text, so nothing has to be built first.
 - **Wrap Long Comment Lines** (*Lean ▸ Wrap Long Comment Lines*): breaks the `--` comment and docstring lines over 100 characters at a space, which Tidy cannot do for you, as one undoable edit. Code, code fences, indented code in a docstring and words longer than the limit (a URL) are never touched. `style_check` takes `wrap=true` with `apply`.
 - Structure, class and inductive names that start with a lowercase letter are now reported by the Mathlib conventions check.
+- **Copy as a Zulip Message** (*File ▸ Copy as a Zulip Message*, and under Share in the palette): the active file in a `lean` fence and, in a quote below it, what Lean says about it, errors first, ready to paste into the Lean Zulip chat. The fences grow when the code has backticks of its own.
 - **Over MCP**, `sort_imports` and `style_check` do the same for assistants, each with `apply` to write the file.
 
 **Fixes**:

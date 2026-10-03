@@ -354,3 +354,24 @@ public sealed class WrapCommentsTests
         Assert.DoesNotContain(StyleCheck.Find(StyleCheck.WrapComments("-- " + string.Join(' ', Enumerable.Repeat("word", 40)) + "\n")), p => p.Rule == "long-line");
     }
 }
+
+/// <summary>A question ready to paste into the Lean Zulip chat.</summary>
+public sealed class ZulipPostTests
+{
+    [Fact]
+    public void PutsTheCodeInAFenceAndErrorsFirstInAQuote()
+    {
+        string post = ZulipPost.Build("example : 1 = 2 := by\n  simp\n\n",
+            [new ZulipMessage(2, 3, "warning", "unused"), new ZulipMessage(2, 3, "error", "simp made no progress\n"), new ZulipMessage(1, 1, "info", "hello")]);
+        Assert.Equal("```lean\nexample : 1 = 2 := by\n  simp\n```\n\n```quote\nerror (2:3): simp made no progress\n\nwarning (2:3): unused\n\ninfo (1:1): hello\n```\n", post);
+    }
+
+    [Fact]
+    public void LeavesOutTheQuoteWithoutMessagesAndLengthensFencesAroundBackticks()
+    {
+        Assert.Equal("```lean\n#eval 1\n```\n", ZulipPost.Build("#eval 1\n", []));
+        string post = ZulipPost.Build("/-- Uses ``` fences. -/\ndef a := 1", [new ZulipMessage(1, 1, "error", "see ````x````")]);
+        Assert.StartsWith("````lean\n", post, StringComparison.Ordinal);
+        Assert.Contains("`````quote\n", post, StringComparison.Ordinal);
+    }
+}

@@ -1182,6 +1182,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("File: Export Proof Walkthrough…", "", Cmd(_vm.ExportWalkthroughCommand));
         yield return ("Share: Open in the Lean 4 Web Editor", "", Cmd(_vm.OpenInWebEditorCommand));
         yield return ("Share: Copy Share Link", "", Cmd(_vm.CopyShareLinkCommand));
+        yield return ("Share: Copy as a Zulip Message", "", Cmd(_vm.CopyForZulipCommand));
         yield return ("Library: Ask Mathlib in Plain English (LeanSearch)", "", Act(() => _vm.SidebarTab = MainViewModel.LibraryTab));
         yield return ("View: Profiler", "", Act(() => _vm.BottomTab = MainViewModel.TimingPanel));
         yield return ("Project: Edit This Project's Commands (commands.json)", "", Cmd(_vm.EditProjectCommandsCommand));
