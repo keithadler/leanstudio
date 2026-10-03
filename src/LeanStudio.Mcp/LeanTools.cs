@@ -787,6 +787,27 @@ public static class LeanTools
             Schema(("statement", "string", "What follows the theorem's name, up to :=, such as \"(a b : ℕ) : a + b = b + a\".", true)),
             (a, ct) => Task.FromResult(TheoremNamer.Suggest(Str(a, "statement")) ?? "no name: the statement has no relation (=, ≤, <, ↔ …) to read")),
 
+        new("merge_tactics",
+            "Merge the tactics of a Lean file that follow each other and say the same thing once, where that cannot change the proof: `rw [a]` then `rw [b]` become `rw [a, b]` (also simp_rw, and the same `at` location), and two `intro` lines become one. Only whole lines that do nothing else are merged. With apply=true, writes the file on disk.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("apply", "boolean", "Write the merged file to disk (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                (string merged, int count) = TacticGolf.Merge(text);
+                if (count == 0)
+                {
+                    return "nothing to merge";
+                }
+                if (OptBool(a, "apply") == true)
+                {
+                    await File.WriteAllTextAsync(path, merged, ct);
+                    return $"merged {count} line(s) in {path}";
+                }
+                return $"{count} line(s) can be merged into the one before (pass apply=true to write them)";
+            }),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

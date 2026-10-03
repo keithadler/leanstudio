@@ -1,4 +1,5 @@
 using LeanStudio.Core.Editing;
+using LeanStudio.Core.Proofs;
 using LeanStudio.Core.Workflow;
 
 namespace LeanStudio.Tests;
@@ -172,6 +173,13 @@ public sealed class TextToolTests
 
             Assert.Equal("add_comm", await Call("suggest_name", new() { ["statement"] = "(a b : ℕ) : a + b = b + a" }));
             Assert.StartsWith("no name", await Call("suggest_name", new() { ["statement"] = "True" }), StringComparison.Ordinal);
+
+            string proof = Path.Combine(dir, "P.lean");
+            await File.WriteAllTextAsync(proof, "theorem t : P := by\n  rw [a]\n  rw [b]\n  exact h\n", TestContext.Current.CancellationToken);
+            Assert.StartsWith("1 line(s) can be merged", await Call("merge_tactics", new() { ["path"] = proof }), StringComparison.Ordinal);
+            await Call("merge_tactics", new() { ["path"] = proof, ["apply"] = true });
+            Assert.Equal("theorem t : P := by\n  rw [a, b]\n  exact h\n", await File.ReadAllTextAsync(proof, TestContext.Current.CancellationToken));
+            Assert.Equal("nothing to merge", await Call("merge_tactics", new() { ["path"] = proof }));
 
             string preview = await Call("sort_imports", new() { ["path"] = file });
             Assert.Contains("import A \nimport B", preview, StringComparison.Ordinal);
@@ -419,5 +427,51 @@ public sealed class TheoremNamerTests
     {
         Assert.Equal("add_le_add_of_le_of_lt", TheoremNamer.Suggest("{α : Type} (a b c d : α) (h₁ : a ≤ b) (h₂ : c < d) : a + c ≤ b + d"));
         Assert.Equal("mul_comm", TheoremNamer.Suggest("∀ a b : ℕ, a * b = b * a"));
+    }
+}
+
+/// <summary>Merging tactics that follow each other, where that cannot change the proof.</summary>
+public sealed class TacticGolfTests
+{
+    [Fact]
+    public void MergesRewritesAndIntrosInARow()
+    {
+        const string text = "theorem t : P := by\n  intro x\n  intro y z\n  rw [a]\n  rw [← b, c]\n  rw [d]\n  simp_rw [e]\n  simp_rw [f]\n  exact h\n";
+        var (merged, count) = TacticGolf.Merge(text);
+        Assert.Equal("theorem t : P := by\n  intro x y z\n  rw [a, ← b, c, d]\n  simp_rw [e, f]\n  exact h\n", merged);
+        Assert.Equal(4, count);
+        Assert.Equal((merged, 0), TacticGolf.Merge(merged)); // nothing left to merge
+    }
+
+    [Fact]
+    public void MergesRewritesAtTheSameLocationOnly()
+    {
+        var (merged, count) = TacticGolf.Merge("  rw [a] at h\n  rw [b] at h\n  rw [c] at g\n  rw [d]\n  rw [e] at h ⊢\n");
+        Assert.Equal("  rw [a, b] at h\n  rw [c] at g\n  rw [d]\n  rw [e] at h ⊢\n", merged);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public void LeavesWhatItCannotMergeSafely()
+    {
+        foreach (string text in new[]
+        {
+            "  rw [a] -- why\n  rw [b]\n", // a comment
+            "  rw [a]; simp\n  rw [b]\n", // another tactic on the line
+            "  rw [a]\n    rw [b]\n", // different indentation
+            "  intro x\n  rw [b]\n", // different tactics
+            "  simp_rw [a]\n  rw [b]\n",
+            "  intro x <;> simp\n  intro y\n",
+            "  rw [a]\n\n  rw [b]\n", // a blank line between
+        })
+        {
+            Assert.Equal((text, 0), TacticGolf.Merge(text));
+        }
+    }
+
+    [Fact]
+    public void KeepsCrlfLineEndings()
+    {
+        Assert.Equal(("  intro x y\r\n  exact h\r\n", 1), TacticGolf.Merge("  intro x\r\n  intro y\r\n  exact h\r\n"));
     }
 }

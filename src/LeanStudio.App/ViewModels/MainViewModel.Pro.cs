@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LeanStudio.Core.Projects;
+using LeanStudio.Core.Proofs;
 using LeanStudio.Core.Workflow;
 using LeanStudio.Lsp;
 
@@ -612,6 +613,28 @@ public sealed partial class MainViewModel
         Log(last == suggested
             ? $"Name: `{last}` is the name Mathlib's scheme gives {statement}."
             : $"Name: Mathlib's scheme gives `{suggested}` for {statement}; this one is `{last}`. A suggestion only: use Rename Symbol (F2) to apply it.");
+    }
+
+    /// <summary>
+    /// Merge the tactics of the active file that follow each other and say the same thing once: <c>rw [a]</c> then
+    /// <c>rw [b]</c> become <c>rw [a, b]</c> (also <c>simp_rw</c>, and the same <c>at</c>), and two <c>intro</c>s become one. As one undoable edit.
+    /// </summary>
+    [RelayCommand]
+    public void MergeConsecutiveTactics()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        (string merged, int count) = TacticGolf.Merge(text);
+        if (count == 0)
+        {
+            Log("Merge: no rw, simp_rw or intro lines in a row to merge.");
+            return;
+        }
+        d.Document.Replace(0, text.Length, merged);
+        Log($"Merge: {count} line{(count == 1 ? "" : "s")} merged into the one before. Undo brings them back.");
     }
 
     // ---- linters ----

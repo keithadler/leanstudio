@@ -124,6 +124,7 @@
         <MenuItem Header="Rename Symbol…" Command="{Binding RenameSymbolCommand}" InputGesture="F2" />
         <MenuItem Header="Rename This Module…" Click="OnRenameModule" />
         <MenuItem Header="Suggest a Name for This Theorem" Command="{Binding SuggestTheoremNameCommand}" />
+        <MenuItem Header="Merge Consecutive rw / intro Steps" Command="{Binding MergeConsecutiveTacticsCommand}" />
         <MenuItem Header="Fix All in File" Command="{Binding FixAllInFileCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+OemPeriod', macOS='Cmd+Alt+OemPeriod'}" />
         <MenuItem Header="Apply Lean's Suggestions Automatically" ToggleType="CheckBox" IsChecked="{Binding Settings.AutoApplyFixes}" Click="OnApplySettings" />
         <MenuItem Header="Show Compiled C" Click="OnShowC" />
