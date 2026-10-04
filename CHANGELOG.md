@@ -2,8 +2,6 @@
 
 ## 1.0.0
 
-**Typing in very long files is smoother**: the minimap is redrawn when typing pauses instead of on every key, which removes a copy and scan of the whole file from each keystroke.
-
 **For projects the size of Fermat's Last Theorem or Navier–Stokes** (the *Big Projects* menu, the command palette and MCP tools; see *Very large projects* in the README): a declaration-level dependency graph of the whole project, built from text in about a second for 36,000 declarations, answers:
 - **Sorries to Prove Next** (the frontier of the proof) and **Sorries Blocking the Most**.
 - **Share Out the Work for N People**: balanced work packages, kept together by file.
