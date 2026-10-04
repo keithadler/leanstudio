@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0
+
+**For projects the size of Fermat's Last Theorem or Navier–Stokes** (the *Big Projects* menu, the command palette and MCP tools; see *Very large projects* in the README): a declaration-level dependency graph of the whole project, built from text in about a second for 36,000 declarations, answers:
+- **Sorries to Prove Next** (the frontier of the proof) and **Sorries Blocking the Most**.
+- **Share Out the Work for N People**: balanced work packages, kept together by file.
+- **Oldest Sorries** (git blame) and **Completion Forecast** (a regression over the burndown).
+- **Build Critical Path**: the longest import chain.
+- **Longest Proofs** and **Where to Split This File**.
+- **Check Module Layers**: upward imports against a layer file.
+- **Lock Statements** and **Check Locked Statements**: theorem statements hashed, so a changed statement is caught.
+
+**An onramp for beginners** (the *Learn* menu and the command palette; see *New to Lean?* in the README):
+- **Hint for This Goal**: three hints for the goal under the cursor, each a little bigger (what it says in words, what kind of goal it is, the tactic to try and how it is written), never the whole proof.
+- **Explain This Declaration in Plain English**: reads a `def`, `theorem`, `structure` or `inductive` aloud ("`double` is a function. Given n (a natural number), it gives back a natural number.").
+- **Is This Lean 3?**: most tutorials online are Lean 3, which looks like Lean 4 and does not run in it. Finds `begin … end`, `λ x,`, `assume`, `cases h with x hx`, `open_locale`, lower-case imports and more, and says what each is now.
+- **Surprises in This File**: the arithmetic surprises that catch people who already program (`3 - 5` is `0`, `7 / 2` is `3`, `7 / 0` is `0`, decimals are approximate, `==` is not `=`, naturals never overflow), each with why.
+- **My Cheat Sheet**: the tactics and keywords your file uses, each explained with an example, in the order you first used them.
+- **New Puzzle**, **Puzzle Hint** and **Show Puzzle Solution**: twelve small proofs to finish, easiest first, with three hints each; today's first. Every solution is checked against real Lean by the tests.
+- **Practice Typing Symbols** and **Check My Symbol Practice**: a worksheet in the editor for typing `\forall`, `\exists` and the rest, marked line by line.
+- **My Badges and What's Next**: seventeen small firsts worked out from the Lean files you have written, and what to try next.
+- **Coming From…** Python, Haskell, JavaScript or Rust: how their ideas are said in Lean.
+- **Tip of the Day**.
+- The README's *New to Lean?* section is now an onramp, in the order a beginner needs it.
+
 ## 0.11.0
 
 **What VS Code had and Lean Studio didn't**:

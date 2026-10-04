@@ -877,6 +877,121 @@ public static class LeanTools
                 return Core.Git.StatementDiff.ToMarkdown(changes, baseRef.Length >= 40 ? baseRef[..7] : baseRef, head).TrimEnd();
             }),
 
+        new("sorry_next_up",
+            "For a very large formalization: the sorries that can be proved NOW, because every theorem they use is already fully proved, those that unblock the most other theorems first. Read from the sources (declarations and the names each mentions), so it needs no build and takes seconds on hundreds of thousands of lines. A name that only appears through `open` or notation can be missed.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("max", "integer", "How many to list (default 25).", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ScaleReports.NextUp(ScaleReports.ReadGraph(p.Root, ct), p.Root, OptInt(a, "max") ?? 25));
+            }),
+
+        new("sorry_blocking",
+            "The sorries that hold up the most other declarations in a very large formalization: proving one moves every theorem that rests on it, however far up, a step closer. Says which can be started now and which wait on another sorry.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("count", "integer", "How many to list (default 15).", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ScaleReports.MostBlocking(ScaleReports.ReadGraph(p.Root, ct), p.Root, OptInt(a, "count") ?? 15));
+            }),
+
+        new("work_packages",
+            "Share the sorries that can be proved now among a number of people (or agents) so that no share waits on another and the shares weigh about the same by how much each unblocks. Declarations of a file stay together.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("people", "integer", "How many people or agents to share the work among (default 5).", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ScaleReports.Packages(ScaleReports.ReadGraph(p.Root, ct), p.Root, OptInt(a, "people") ?? 5));
+            }),
+
+        new("sorry_age",
+            "How long each sorry of the project has stood, the oldest first, from git blame of each file that has any: who wrote it, when, and the commit. The sorries that have sat for a year are hard, forgotten or waiting on something.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository, so there is no blame to read");
+                }
+                IReadOnlyList<Marker> sorries = Core.Workflow.Markers.Scan(p.Root, ct);
+                return ScaleReports.Age(await Core.Git.SorryAge.ReadAsync(repo, sorries, DateOnly.FromDateTime(DateTime.Today), ct), p.Root);
+            }),
+
+        new("sorry_forecast",
+            "When the sorries might run out: a straight line through how many there were at each of the latest commits, with the day it reaches zero and how well the line fits (a formalization's pace is lumpy, so the confidence is stated). Says so when the number has not been falling.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("commits", "integer", "How many of the latest commits to fit (default 50).", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                if (Core.Git.GitRepository.Find(p.Root) is not Core.Git.GitRepository repo)
+                {
+                    throw new ToolException($"{p.Root} is not in a Git repository");
+                }
+                int commits = OptInt(a, "commits") ?? 50;
+                IReadOnlyList<Core.Git.SorryPoint> points = await Core.Git.SorryHistory.ReadAsync(repo, commits + 10, ct);
+                return points.Count == 0 ? "no history to read" : Core.Git.Forecast.From(points, commits).Message;
+            }),
+
+        new("build_critical_path",
+            "The longest chain of modules that must be built one after the other, which is the least a build can take however many machines it has; the chain, how much more machines can speed it up, and the modules on it that cost most (size in lines stands in for build time).",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) => Task.FromResult(ScaleReports.CriticalPathText(bench.ProjectFor(OptStr(a, "project")), ct))),
+
+        new("split_advice",
+            "Where a big Lean file could be split: groups of its declarations that do not use each other at all, each of which could be a file of its own, with what to check first (variables, opens, namespaces).",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("min_lines", "integer", "Parts shorter than this stay with the first (default 100).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                return ScaleReports.Split(path, await File.ReadAllTextAsync(path, ct), OptInt(a, "min_lines") ?? 100);
+            }),
+
+        new("long_proofs",
+            "The longest declarations of the project by lines of code: the proofs most likely to want splitting into lemmas.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("count", "integer", "How many to list (default 15).", false),
+                   ("min_lines", "integer", "Only those at least this long (default 0).", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                return Task.FromResult(ScaleReports.LongProofs(ScaleReports.ReadGraph(p.Root, ct), p.Root, OptInt(a, "count") ?? 15, OptInt(a, "min_lines") ?? 0));
+            }),
+
+        new("statement_lock",
+            "Hold the statement of a theorem fixed: lock the main theorem so that a refactor that weakens it (which still compiles and verifies) is reported, however its proof or the names of its variables change. action=check (default) says what became of every locked statement; action=lock locks the theorem called `name`; action=list shows what is locked. Kept in .leanstudio/statement-locks.json.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("action", "string", "check (default), lock or list.", false),
+                   ("name", "string", "With action=lock: the theorem to lock, as written in its declaration.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                switch (OptStr(a, "action") ?? "check")
+                {
+                    case "list":
+                        IReadOnlyList<LockedStatement> locks = StatementLock.Read(p.Root);
+                        return Task.FromResult(locks.Count == 0 ? "nothing is locked" : string.Join('\n', locks.Select(l => $"{l.Name}: {l.Statement}")));
+                    case "lock":
+                        string name = Str(a, "name");
+                        TheoremStatement t = ScaleReports.ReadGraphStatements(p.Root, ct).FirstOrDefault(s => s.Name == name)
+                            ?? throw new ToolException($"no theorem called {name} in the project");
+                        StatementLock.Write(p.Root, StatementLock.Lock(StatementLock.Read(p.Root), t));
+                        return Task.FromResult($"locked {t.Name}: {t.Statement}");
+                    default:
+                        return Task.FromResult(ScaleReports.Locks(p.Root, ScaleReports.ReadGraphStatements(p.Root, ct)));
+                }
+            }),
+
+        new("layer_check",
+            "Check the project's module layers: the imports that reach up from a lower layer into a higher one, by .leanstudio/layers.json ({\"layers\": [[\"Proj.Basic\"], [\"Proj.Main\"]]}, lowest first, each a list of module prefixes). Says how to write the file when there is none.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) => Task.FromResult(ScaleReports.Layers(bench.ProjectFor(OptStr(a, "project"))))),
+
         new("lint",
             "Run the linters CI runs on a Lean file of a Lake project: Mathlib's standard set in a project that uses Mathlib (its style linters among them), every linter Lean has elsewhere, and Batteries' environment linters (missing docstrings, simp normal form, unused arguments…) where Batteries is available. Lints the file as saved on disk.",
             Schema(("path", "string", "The .lean file.", true)),

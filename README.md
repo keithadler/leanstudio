@@ -97,7 +97,8 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Sorry Burndown: the project's `sorry` count over its last commits, from Git, and a branch's added, removed and restated theorems with proofs ignored, as Markdown for the pull request | | ✓ |
 | Mathlib housekeeping: sort imports, tidy whitespace, wrap long comments, add the copyright header, delete old deprecations, a Mathlib-style name for a theorem, theorems that state the same thing, a project health summary | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
-| A tutorial, goals read in English, errors explained, for people new to Lean | | ✓ |
+| An onramp for people new to Lean: a tutorial, a puzzle a day with hints, goals read in English, errors explained, a hint for the goal under the cursor, a warning when a tutorial is Lean 3, practice typing symbols, badges for your firsts | | ✓ |
+| Projects the size of Fermat's Last Theorem: which `sorry` to prove next, which block the most, work split fairly among N people, how old each is, a completion forecast, the build's critical path, locked theorem statements, module layer rules | | ✓ |
 | C FFI: `@[extern]` checked against the C code, stubs, clangd | | ✓ |
 | Built-in AI that prefers a model on your computer (Apple's on-device model on macOS 27, Ollama, LM Studio, llama.cpp, MLX), with every proof it suggests checked by Lean before you see it | | ✓ |
 | An MCP server so AI assistants can use Lean | | ✓ |
@@ -112,26 +113,56 @@ Lean Studio is tested against real Lean on macOS, Windows and Linux on every cha
 
 ## New to Lean?
 
-Lean Studio is built to be the place to start, whether you're curious about theorems or you write code:
+Lean Studio is built to be the place to start, whether you're curious about theorems or you write code. Everything below is inside the editor, in the **Learn** menu (and the command palette), with nothing to install but Lean Studio itself.
 
 ![The welcome screen: new project, open a folder or file, the tutorial, and recent projects](docs/images/welcome.png)
 
 ![Lesson 1 of the tutorial, with the sorry explained in plain words](docs/images/tutorial.png)
 
-1. **A tutorial inside the editor.** Ten short lessons, in Lean files, from `#eval 2 + 2` to proofs by induction and proving your own programs correct. Each ends in exercises (`sorry`s to replace), and the Learn tab ticks a lesson off when Lean accepts it. Every exercise is checked against real Lean by the tests, so none is impossible.
-2. **Every tactic and keyword explained.** Hover `intro`, `simp`, `omega` or `theorem` for what it does, in plain words, with an example. The Proof Steps list explains each step's tactic too.
-3. **Errors in plain words.** Under Lean's message, "What this means" gives the gist of "unsolved goals", "type mismatch", "unknown identifier" and more than twenty others, and what to try.
-4. **Goals read aloud.** Under each goal: "In words: For all propositions p and q: if p and q, then q and p."
-5. **A playground.** One click opens a Lean file to experiment in, with no project to set up.
-6. **Famous theorems.** Addition is commutative, reversing a list twice, the law of excluded middle, and, with Mathlib, infinitely many primes and √2 is irrational. Each comes with a plain English statement, and "Try it in Lean" shows its exact statement and the axioms it rests on.
-7. **Results inline.** `#eval`, `#check` and `#print` results appear at the end of their line, like a notebook.
-8. **▶ Run.** A file with a `main` gets a Run button; the program's output shows in Output.
-9. **Snippets.** Insert a function, a structure, a pattern match, a proof by induction, a `calc` chain or a program's `main`, indented and ready to fill in.
-10. **A symbol palette.** Click ∀ ∃ → ℕ ⟨⟩ and the rest to insert them, and see how to type each one. Hover any symbol in your code for the same.
+### The onramp
+
+**1. Start playing.** Open the **Playground**: one Lean file to experiment in, with no project to set up. `#eval` and `#check` answer at the end of their own line, like a notebook, and a file with a `main` gets a ▶ Run button. Pick a **snippet** (a function, a structure, a pattern match, a proof by induction, a `calc` chain) and fill it in.
+
+**2. Learn in order.** The **tutorial** is ten short lessons, in Lean files, from `#eval 2 + 2` to induction and proving your own programs correct. Each ends in exercises (`sorry`s to replace), and the Learn tab ticks a lesson off when Lean accepts it. Every exercise is checked against real Lean by the tests, so none is impossible. **Famous theorems** (addition is commutative, reversing a list twice, the law of excluded middle and, with Mathlib, infinitely many primes and √2 is irrational) come with a plain-English statement, and "Try it in Lean" shows the exact statement and the axioms it rests on.
+
+**3. Practise, with a puzzle a day.** **New Puzzle** opens a small proof to finish: twelve of them, easiest first, from `2 + 2 = 4` to "there is a number whose square is 49". Replace the `sorry` and Lean tells you at once. **Puzzle Hint** gives a bigger hint each time you ask, and **Show Puzzle Solution** is there when you have really tried. Today's puzzle comes first. Every solution is checked against real Lean by the tests.
+
+**4. Get unstuck without being told the answer.**
+- **Hint for This Goal** reads the goal under your cursor and gives three hints, each a little bigger: what it says in words, what kind of goal it is ("an if-then: assume the left side"), and the tactic to try, written out.
+- **Explain This Declaration in Plain English** reads a `def`, `theorem`, `structure` or `inductive` aloud: "`double` is a function. Given n (a natural number), it gives back a natural number."
+- **Hover** any tactic or keyword (`intro`, `simp`, `omega`, `theorem`) for what it does, in plain words, with an example. The Proof Steps list explains each step's tactic too.
+- **Goals in words**, under each goal: "In words: For all propositions p and q: if p and q, then q and p."
+- **Errors in plain words.** Under Lean's message, "What this means" gives the gist of "unsolved goals", "type mismatch", "unknown identifier" and more than twenty others, and what to try.
+- **My Cheat Sheet** collects the tactics and keywords your file actually uses, each explained with an example, in the order you first used them. You learn from what you have already written.
+
+**5. Dodge the traps.**
+- **Is This Lean 3?** Most tutorials, forum answers and blog posts online are about Lean 3, which looks like Lean 4 and does not run in it. Paste something in and this finds `begin … end`, `λ x,`, `assume`, `cases h with x hx`, lower-case imports and more, and says what each is now.
+- **Surprises in This File** explains the things that catch people who already program: `3 - 5` is `0` for natural numbers, `7 / 2` is `3`, `7 / 0` is `0`, decimals are approximate, `==` is not `=`, and a natural number never overflows. None of them is a mistake: they are how Lean works, and each says why.
+
+**6. Type the symbols.** **Practice Typing Symbols** opens a worksheet in the editor: each line names a symbol (for all, there exists, an arrow…) and shows what to type (`\forall` and a space). Type it where the real abbreviation input works, then **Check My Symbol Practice** marks each line. The **symbol palette** in the Learn tab inserts ∀ ∃ → ℕ ⟨⟩ and the rest with a click and shows how to type each, and hovering any symbol in your code does the same.
+
+**7. Coming from another language?** **Coming From…** writes out how a Python, Haskell, JavaScript or Rust idea is said in Lean: a function, if/else, a list, map and filter, a record, printing, "maybe nothing", a loop, a comment.
+
+**8. See how far you have come.** **My Badges and What's Next** scores small firsts, worked out from the Lean files you have written (so there is nothing to track): your first `#eval`, first function, first proof Lean accepts with no `sorry`, first `induction`, and so on, seventeen in the order you meet them, and it tells you what to try next. **Tip of the Day** shows one small thing that makes Lean nicer.
 
 The Outline also shows, live, which theorems Lean accepts (✓), which still use `sorry` (◐) and which have errors (✗).
 
 ![The playground: results at the end of each line, a program run, and a famous theorem added](docs/images/playground.png)
+
+## Very large projects
+
+Fermat's Last Theorem and Navier–Stokes are not one file; they are hundreds of files and thousands of declarations, with a team and a blueprint. The **Big Projects** menu (and the command palette, and the MCP server) reads the whole project as one dependency graph, with no Lean running, and answers the questions a project lead asks. On 36,000 declarations in 600 files it takes about a second.
+
+1. **Sorries to Prove Next**: the `sorry`s you can prove right now, because everything their statements use is already proved, biggest unblocker first.
+2. **Sorries Blocking the Most**: the `sorry`s that most other declarations rest on, directly or not.
+3. **Share Out the Work for N People**: the open `sorry`s in N balanced packages, each kept together by file so people do not collide.
+4. **Oldest Sorries**: how long each `sorry` has stood, by `git blame`.
+5. **Completion Forecast**: the burndown continued, with the date the last `sorry` would go at the recent rate.
+6. **Build Critical Path**: the import chain that sets the minimum build time however many cores you have.
+7. **Longest Proofs**: the proofs most worth splitting.
+8. **Where to Split This File**: groups of declarations that share nothing, so a long file can be cut cleanly.
+9. **Module Layers**: list your layers, lowest first, in `.leanstudio/layers.json` (`{"layers": [["Foundations"], ["Algebra"], ["Geometry"]]}`) and the editor finds the imports that point upward.
+10. **Lock Statements**: freeze every theorem statement (not proof) as a hash, and later see which statements changed. A blueprint formalized by many hands stays faithful.
 
 ## Features
 
@@ -666,7 +697,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **0.11**, and the [changelog](CHANGELOG.md) lists what's new since then. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **1.0**, and the [changelog](CHANGELOG.md) lists what is new in each release. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - User widgets render in the Infoview tab, not in the Tactic State panel, which shows Lean's interactive text. On Linux the tab needs WebKitGTK; without it, widgets open in the browser.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.

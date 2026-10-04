@@ -121,6 +121,94 @@ internal static class CommandChecks
             await Run(vm.ShowStatementChangesCommand);
             Check(Output().Contains("**Added (1)**", StringComparison.Ordinal) && Output().Contains("`fresh` : True", StringComparison.Ordinal), "and on a branch lists the theorem it added");
 
+            Console.WriteLine("the beginner's onramp");
+            Set("def double (n : Nat) : Nat := n + n\n");
+            doc.Reveal(0, 0);
+            await Run(vm.ExplainDeclarationCommand);
+            Check(Output().Contains("In plain words: `double` is a function. Given n (a natural number), it gives back a natural number.", StringComparison.Ordinal), "Explain This Declaration reads a def in plain English");
+            await Run(vm.HintForGoalCommand);
+            Check(Output().Contains("Hint: put the cursor in a proof", StringComparison.Ordinal), "Hint for This Goal says where to put the cursor when there is no goal");
+            Set("lemma f (p : Prop) : p -> p :=\nbegin\n  assume h,\n  exact h,\nend\n");
+            await Run(vm.CheckForLean3Command);
+            Check(Output().Contains("line 2: begin:", StringComparison.Ordinal) && Output().Contains("line 3: assume:", StringComparison.Ordinal) && Output().Contains("Lean 3: ", StringComparison.Ordinal), "Is This Lean 3? finds begin and assume and says what they are now");
+            Set("#eval 3 - 5\n");
+            await Run(vm.ShowGotchasCommand);
+            Check(Output().Contains("line 1: 3 - 5 is 0, not -2.", StringComparison.Ordinal), "Surprises in This File explains 3 - 5");
+            Set("theorem t (p : Prop) : p → p := by\n  intro h\n  exact h\n");
+            await Run(vm.MakeCheatSheetCommand);
+            Check(Output().Contains("# My Lean cheat sheet", StringComparison.Ordinal) && Output().Contains("### `intro`", StringComparison.Ordinal) && Output().Contains("### `exact`", StringComparison.Ordinal), "My Cheat Sheet explains the tactics the file uses");
+
+            await Run(vm.PracticeSymbolsCommand);
+            DocumentViewModel? practice = vm.ActiveDocument;
+            Check(practice is not null && Path.GetFileName(practice.Path) == "SymbolPractice.lean" && practice.Document.Text.Contains("(type \\", StringComparison.Ordinal), "Practice Typing Symbols opens a worksheet");
+            if (practice is not null)
+            {
+                string answered = practice.Document.Text;
+                foreach (var sym in LeanStudio.Core.Learn.SymbolTrainer.Symbols)
+                {
+                    answered = answered.Replace($"(type \\{sym.Abbreviation})  →  ", $"(type \\{sym.Abbreviation})  →  {sym.Symbol}", StringComparison.Ordinal);
+                }
+                practice.Document.Text = answered;
+                await Run(vm.CheckSymbolPracticeCommand);
+                Check(Output().Contains("Symbols: 8 of 8 right. Well done.", StringComparison.Ordinal), "Check My Symbol Practice marks every answer right");
+            }
+
+            await Run(vm.NewPuzzleCommand);
+            DocumentViewModel? puzzle = vm.ActiveDocument;
+            Check(puzzle is not null && Path.GetFileName(puzzle.Path).StartsWith("Puzzle", StringComparison.Ordinal) && puzzle.Document.Text.Contains("sorry", StringComparison.Ordinal), "New Puzzle opens a puzzle with a sorry to replace");
+            await Run(vm.PuzzleHintCommand);
+            await Run(vm.PuzzleHintCommand);
+            Check(Output().Contains("hint 1 of 3:", StringComparison.Ordinal) && Output().Contains("hint 2 of 3:", StringComparison.Ordinal), "Puzzle Hint gives a bigger hint each time");
+            await Run(vm.ShowPuzzleSolutionCommand);
+            Check(Output().Contains("one solution: replace `sorry` with", StringComparison.Ordinal), "Show Puzzle Solution shows the answer");
+
+            await Run(vm.ShowBadgesCommand);
+            Check(Output().Contains(" badges", StringComparison.Ordinal) && Output().Contains("Next: ", StringComparison.Ordinal), "My Badges and What's Next lists the badges and what to try next");
+            vm.ShowRosettaCommand.Execute("python");
+            Check(Output().Contains("## Coming from Python", StringComparison.Ordinal) && Output().Contains("IO.println \"hi\"", StringComparison.Ordinal), "Coming From Python writes the table");
+            await Run(vm.ShowTipCommand);
+            Check(Output().Contains("Tip of the day: ", StringComparison.Ordinal), "Tip of the Day shows a tip");
+
+            Console.WriteLine("big projects");
+            Directory.CreateDirectory(Path.Combine(dir, "Proj"));
+            await File.WriteAllTextAsync(Path.Combine(dir, "Proj", "Basic.lean"), "theorem base : 1 = 1 := rfl\n");
+            await File.WriteAllTextAsync(Path.Combine(dir, "Proj", "Mid.lean"), "import Proj.Basic\ntheorem mid : 2 = 2 := by\n  have := base\n  sorry\n");
+            await File.WriteAllTextAsync(Path.Combine(dir, "Proj", "Main.lean"), "import Proj.Mid\ntheorem main_thm2 : 3 = 3 := by\n  have := mid\n  rfl\n");
+            await Run(vm.ShowNextUpCommand);
+            Check(Output().Contains("can be proved now: every theorem they use is already fully proved", StringComparison.Ordinal) && Output().Contains("mid  (Proj/Mid.lean:2): unblocks 1", StringComparison.Ordinal), "Sorries to Prove Next lists the sorry nothing stands in front of");
+            await Run(vm.ShowMostBlockingCommand);
+            Check(Output().Contains("held up  mid  (Proj/Mid.lean:2)  ← can start now", StringComparison.Ordinal), "Sorries Blocking the Most ranks it");
+            await ((IAsyncRelayCommand<string>)vm.ShowWorkPackagesCommand).ExecuteAsync("3");
+            Check(Output().Contains("for 3 people", StringComparison.Ordinal), "Share Out the Work for 3 People divides the ready work");
+            await Run(vm.ShowSorryAgeCommand);
+            Check(Output().Contains("from git blame", StringComparison.Ordinal), "Oldest Sorries reads git blame");
+            await Run(vm.ShowForecastCommand);
+            Check(Output().Contains("Too little history to say", StringComparison.Ordinal), "When Will the Sorries Run Out? says when the history is too short");
+            await Run(vm.ShowCriticalPathCommand);
+            Check(Output().Contains("modules in a row", StringComparison.Ordinal) && Output().Contains("Proj.Basic → Proj.Mid → Proj.Main", StringComparison.Ordinal), "Build Critical Path finds the chain");
+            await Run(vm.ShowLongProofsCommand);
+            Check(Output().Contains("The longest declarations", StringComparison.Ordinal), "Longest Proofs lists them");
+            vm.ActiveDocument = doc; // the puzzle opened above is active
+            Set("theorem one : True := trivial\ntheorem two : True := trivial\n");
+            await Run(vm.ShowSplitAdviceCommand);
+            Check(Output().Contains("there is no clean place to split it", StringComparison.Ordinal), "Where to Split This File says when a file is small");
+            await File.WriteAllTextAsync(Path.Combine(dir, "Lock.lean"), "theorem main_thm (n : Nat) : n = n := rfl\n");
+            Set("theorem main_thm (n : Nat) : n = n := rfl\n");
+            doc.Reveal(0, 0);
+            await Run(vm.LockStatementCommand);
+            Check(Output().Contains("Locked `main_thm`: (n : Nat) : n = n", StringComparison.Ordinal), "Lock This Theorem's Statement locks it");
+            await Run(vm.CheckLockedStatementsCommand);
+            Check(Output().Contains("Locked statements: 1 of 1 unchanged.", StringComparison.Ordinal), "Check Locked Statements finds it unchanged");
+            await File.WriteAllTextAsync(Path.Combine(dir, "Lock.lean"), "theorem main_thm (n : Nat) : n ≤ n := Nat.le_refl n\n");
+            await Run(vm.CheckLockedStatementsCommand);
+            Check(Output().Contains("CHANGED  main_thm", StringComparison.Ordinal), "and reports it when the statement has been weakened");
+            await Run(vm.CheckLayersCommand);
+            Check(Output().Contains("No layers are written down", StringComparison.Ordinal), "Check Module Layers says how to write the layers");
+            Directory.CreateDirectory(Path.Combine(dir, ".leanstudio"));
+            await File.WriteAllTextAsync(Path.Combine(dir, ".leanstudio", "layers.json"), "{ \"layers\": [[\"Proj.Mid\"], [\"Proj.Basic\"], [\"Proj.Main\"]] }");
+            await Run(vm.CheckLayersCommand);
+            Check(Output().Contains("Proj/Mid.lean:1  Proj.Mid (layer 1) imports Proj.Basic (layer 2)", StringComparison.Ordinal), "and finds an import that reaches up");
+
             Console.WriteLine("share");
             await Run(vm.CopyForZulipCommand);
             Check(Output().Contains("Copied this file as a Zulip message", StringComparison.Ordinal), "Copy as a Zulip Message copies the file");
