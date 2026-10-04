@@ -213,7 +213,7 @@ public sealed class OnrampTests
                 File.WriteAllText(Path.Combine(dir, "Start.lean"), Puzzles.File(i));
                 string start = Lean.RunLean(dir, "Start.lean");
                 Assert.DoesNotContain("error", start, StringComparison.Ordinal);
-                Assert.Contains("declaration uses 'sorry'", start, StringComparison.Ordinal);
+                Assert.Contains("declaration uses `sorry`", start, StringComparison.Ordinal);
 
                 File.WriteAllText(Path.Combine(dir, "Solved.lean"), Puzzles.All[i].Solved);
                 string solved = Lean.RunLean(dir, "Solved.lean");
