@@ -283,29 +283,6 @@ public sealed class LeanEditor : UserControl
         _minimap.SetMarks(_current.Diagnostics, heat);
     }
 
-    /// <summary>
-    /// An edit: bring the chrome up to date once typing pauses. Reading a long file's scopes takes tens of
-    /// milliseconds, which is felt when it happens on every key.
-    /// </summary>
-    private void RefreshChromeSoon()
-    {
-        _minimap.TextChanged();
-        _scopeIndex = null;
-        _chromeTimer ??= new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(80) };
-        _chromeTimer.Tick -= OnChromeTimer;
-        _chromeTimer.Tick += OnChromeTimer;
-        _chromeTimer.Stop();
-        _chromeTimer.Start();
-    }
-
-    private Avalonia.Threading.DispatcherTimer? _chromeTimer;
-
-    private void OnChromeTimer(object? sender, EventArgs e)
-    {
-        _chromeTimer?.Stop();
-        RefreshChrome();
-    }
-
     /// <summary>The text changed or another file is shown: bring the scopes, minimap and conflicts up to date.</summary>
     private void RefreshChrome()
     {
@@ -812,7 +789,7 @@ public sealed class LeanEditor : UserControl
 
     private void OnTextChangedForLayers(object? sender, DocumentChangeEventArgs e)
     {
-        RefreshChromeSoon();
+        RefreshChrome();
         DropSuggestion();
         if (!_switching)
         {
