@@ -29,6 +29,7 @@ public sealed class Minimap : Control
     private IReadOnlyList<Diagnostic> _diagnostics = [];
     private IReadOnlyList<(int Line, int Heat)> _heat = [];
     private bool _dragging;
+    private Avalonia.Threading.DispatcherTimer? _redraw;
 
     /// <summary>A minimap of <paramref name="editor"/>.</summary>
     public Minimap(TextEditor editor)
@@ -44,9 +45,22 @@ public sealed class Minimap : Control
 
     private int LineCount => _text is null ? 0 : _editor.Document?.LineCount ?? 0;
 
-    /// <summary>The text changed: draw it again (lazily).</summary>
+    /// <summary>
+    /// The text changed: draw it again once typing pauses. Copying and scanning the whole file on every key made
+    /// typing in a long file stutter, and the old picture is right enough for a moment.
+    /// </summary>
     public void TextChanged()
     {
+        _redraw ??= new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _redraw.Tick -= OnRedraw;
+        _redraw.Tick += OnRedraw;
+        _redraw.Stop();
+        _redraw.Start();
+    }
+
+    private void OnRedraw(object? sender, EventArgs e)
+    {
+        _redraw?.Stop();
         _text = null;
         InvalidateVisual();
     }

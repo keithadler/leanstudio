@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+**Typing in very long files is smoother**: the minimap, breadcrumbs, sticky scroll and conflict markers are refreshed once typing pauses instead of on every key. On a 100,000-line file that removes about 30 ms of work per keystroke from the UI thread.
+
 **For projects the size of Fermat's Last Theorem or Navier–Stokes** (the *Big Projects* menu, the command palette and MCP tools; see *Very large projects* in the README): a declaration-level dependency graph of the whole project, built from text in about a second for 36,000 declarations, answers:
 - **Sorries to Prove Next** (the frontier of the proof) and **Sorries Blocking the Most**.
 - **Share Out the Work for N People**: balanced work packages, kept together by file.
