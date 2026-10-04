@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
 
 **Typing in very long files is smoother**: the minimap, breadcrumbs, sticky scroll and conflict markers are refreshed once typing pauses instead of on every key. On a 100,000-line file that removes about 30 ms of work per keystroke from the UI thread.
 
