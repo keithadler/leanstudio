@@ -26,9 +26,25 @@ public sealed class JunkValuesTests
     [Fact]
     public void IgnoresSInfInAProofAndInComments()
     {
-        const string text = "theorem t (s : Set ℕ) (h : s.Nonempty) : sInf s ∈ s := by\n  exact Nat.sInf_mem h\n\n-- sInf is junk on ∅\n/-- Uses sInf. -/\ndef ok : ℕ := 1\n";
+        const string text = "theorem t (s : Set ℕ) : sInf s ≤ 5 := by\n  exact sorry\n\n-- sInf is junk on ∅\n/-- Uses sInf. -/\ndef ok : ℕ := 1\n";
         // The statement of `t` mentions sInf, so it is flagged once; the proof, the comment and the doc comment are not.
         Assert.Equal(["0:junk-infsup"], Rules(text));
+    }
+
+    [Fact]
+    public void LeavesCompleteLatticesAndGuardedSetsAlone()
+    {
+        // ENNReal is a complete lattice: the sup of nothing is 0, a real answer, not a junk value.
+        Assert.Empty(Rules("def n (v : ℝ → ℝ) : ENNReal := ⨆ x, ENNReal.ofReal ‖v x‖\n"));
+        // A nonemptiness or boundedness hypothesis is what makes sSup mean something.
+        Assert.Empty(Rules("theorem t (s : Set ℝ) (h : s.Nonempty) (hb : BddAbove s) : sSup s ∈ closure s := by sorry\n"));
+        Assert.Equal(["0:junk-infsup"], Rules("theorem t (s : Set ℝ) : sSup s ≤ 3 := by sorry\n"));
+    }
+
+    [Fact]
+    public void ReportsEachLineOncePerRule()
+    {
+        Assert.Equal(["0:junk-infsup"], Rules("def a (s t : Set ℝ) : ℝ := sSup s + sSup t\n"));
     }
 
     [Fact]

@@ -19,6 +19,10 @@ public static class JunkValues
 
     private static readonly Regex InfSup = new(@"(?<![\w'])(?:[\w.]*\.)?(?:sInf|sSup|iInf|iSup)(?![\w'])|⨅|⨆", RegexOptions.Compiled);
     private static readonly Regex Division = new(@"(?<![/\-])/(?![/\-])\s*(?<den>[A-Za-z_][\w.']*)", RegexOptions.Compiled);
+    // A line in a complete lattice has no junk value: sSup of nothing is ⊥ there, a real answer. ENNReal is the common case.
+    private static readonly Regex CompleteLattice = new(@"ENNReal|ℝ≥0∞|\bEReal\b|\bEnat\b|ℕ∞|ofReal|< ⊤|≠ ⊤|= ⊤", RegexOptions.Compiled);
+    // Words that say the set is not empty or is bounded, which is what makes sSup of it mean something.
+    private static readonly Regex NonemptyGuard = new(@"Nonempty|BddAbove|BddBelow|IsLUB|IsGLB|IsCompact|\.Finite|Set\.Finite|Fintype|isCompact", RegexOptions.Compiled);
     private static readonly Regex DefaultAccess = new(@"\b(?:head|tail|getLast|get|back|getD)!|\]!|\.get!|\.head!|\.getLast!|\.back!", RegexOptions.Compiled);
 
     /// <summary>
@@ -78,6 +82,9 @@ public static class JunkValues
             Scan(norm, code, from, end, found, divisions);
         }
 
+        List<StyleProblem> unique = [.. found.DistinctBy(p => (p.Line, p.Rule))];
+        found.Clear();
+        found.AddRange(unique);
         found.Sort((a, b) => a.Line != b.Line ? a.Line.CompareTo(b.Line) : string.CompareOrdinal(a.Rule, b.Rule));
         return found;
     }
@@ -111,9 +118,14 @@ public static class JunkValues
     private static void Scan(string text, bool[] code, int from, int to, List<StyleProblem> found, bool divisions)
     {
         string block = text.Substring(from, to - from);
+        bool guarded = NonemptyGuard.IsMatch(block);
         foreach (Match m in InfSup.Matches(block))
         {
             int abs = from + m.Index;
+            if (guarded || CompleteLattice.IsMatch(LineText(text, abs)))
+            {
+                continue;
+            }
             if (abs < code.Length && code[abs])
             {
                 found.Add(new StyleProblem(LineOf(text, abs), "junk-infsup",
@@ -141,7 +153,7 @@ public static class JunkValues
             if (abs < code.Length && code[abs])
             {
                 found.Add(new StyleProblem(LineOf(text, abs), "junk-default-access",
-                    $"`{m.Value.TrimStart('.')}` stands in `default` when there is nothing to return, so a statement about it can hold of an empty list or an out-of-range index."));
+                    $"`{m.Value.TrimStart('.')}` panics when compiled but is `default` to Lean's proofs, so a theorem about it says nothing about the empty list or an out-of-range index."));
             }
         }
     }
@@ -150,6 +162,13 @@ public static class JunkValues
     {
         string d = Regex.Escape(den);
         return Regex.IsMatch(block, $@"\b{d}\s*≠\s*0|0\s*≠\s*{d}\b|0\s*<\s*{d}\b|\b{d}\s*>\s*0|\b{d}\s*≠\s*\(?0|NeZero\s*\(?{d}\b|\b{d}\s*=\s*[1-9]|\b{d}\s*:=\s*[1-9]|Nat\.pos_of_ne_zero\s*{d}\b");
+    }
+
+    private static string LineText(string text, int offset)
+    {
+        int start = text.LastIndexOf('\n', Math.Max(0, Math.Min(offset, text.Length - 1))) + 1;
+        int end = text.IndexOf('\n', offset);
+        return text.Substring(start, (end < 0 ? text.Length : end) - start);
     }
 
     private static int LineOf(string text, int offset)
