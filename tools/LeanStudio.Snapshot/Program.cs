@@ -601,6 +601,16 @@ internal static class Scenario
                 vm.ActiveDocument = sc;
                 Check(await WaitFor(() => Math.Abs(Shown() - scrolledTo) < 1, 5) && scrolledTo > 0,
                     $"switching away and back keeps the file's scroll position ({scrolledTo:F0} px, now {Shown():F0})");
+                // A jump made just after switching back wins over the restore of where the file was, which waits for
+                // the layout; it used to run afterwards and throw the view back, with the caret off screen.
+                vm.ActiveDocument = doc;
+                await WaitFor(() => ed.Document == doc, 5);
+                vm.ActiveDocument = sc;
+                sc.Reveal(2, 0);
+                double jumped = Shown();
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                Check(Math.Abs(Shown() - jumped) < 1 && Shown() < scrolledTo,
+                    $"a jump right after switching back is not undone by the queued restore ({jumped:F0} px, now {Shown():F0})");
                 ed.Minimap.ScrollTo(0);
                 Check(await WaitFor(() => Shown() == 0 && !ed.Sticky.IsVisible, 5),
                     $"clicking the top of the minimap scrolls to the top, and nothing is pinned there ({Shown():F0} px)");

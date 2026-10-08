@@ -68,6 +68,13 @@ public sealed class LeanEditor : UserControl
     private CancellationTokenSource? _foldCts;
     private readonly TextMate.Installation _textMate;
     private readonly Dictionary<DocumentViewModel, Vector> _scroll = new();
+
+    /// <summary>
+    /// Counts scrolls that supersede a queued restore of where a file was. The restore waits for the layout, so a jump
+    /// made in between (Go to Definition into a file that was already open, a click in Problems) would otherwise be
+    /// undone by it, leaving the caret off screen.
+    /// </summary>
+    private int _scrollTicket;
     private DocumentViewModel? _current;
     private bool _switching;
     private int _abbrevStart = -1;
@@ -500,8 +507,16 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.Caret.Offset = offset;
         if (_scroll.TryGetValue(doc, out Vector v))
         {
-            // Where the file was scrolled to when last shown (after the layout, when the editor can scroll).
-            Dispatcher.UIThread.Post(() => _editor.ScrollToOffset(v.Y, v.X), DispatcherPriority.Background);
+            // Where the file was scrolled to when last shown (after the layout, when the editor can scroll), unless
+            // something has scrolled it since, or another file is shown by then.
+            int ticket = ++_scrollTicket;
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ticket == _scrollTicket && ReferenceEquals(_current, doc))
+                {
+                    _editor.ScrollToOffset(v.Y, v.X);
+                }
+            }, DispatcherPriority.Background);
         }
         _editor.TextArea.TextView.Redraw();
         Dispatcher.UIThread.Post(() => _editor.TextArea.Focus(), DispatcherPriority.Background);
@@ -565,6 +580,7 @@ public sealed class LeanEditor : UserControl
         {
             return;
         }
+        _scrollTicket++; // this place wins over a restore still waiting to run
         int offset = SafeOffset(_current.Document, line, column);
         _editor.TextArea.Caret.Offset = offset;
         _editor.TextArea.Caret.BringCaretToView(80);

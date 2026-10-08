@@ -28,6 +28,7 @@
 **Verified project templates** (*New Project…*): a crypto primitive (modular exponentiation, with Diffie–Hellman agreement), a parser (with a proved round trip) and a file format (tag-length-value records, with a proved decode/encode round trip). Each is laid out as `Spec.lean`, `Impl.lean`, `Proofs.lean` and `Tests.lean`, with a README that explains the layout and the assurance workflow, and each passes the strictest assurance check from the start: everything proved outright, nothing widening the trust surface, and a theorem about every definition. The tests build each one and hold it to that.
 
 **Fixes**:
+- A jump made just after switching back to an open file (Go to Definition, a click in Problems) could be undone: the editor restores where the file was scrolled to once the layout is done, and that restore ran afterwards, throwing the view back with the caret off screen. A newer scroll now wins, and a restore never lands on a file that is no longer shown. This race was also what failed the 1.0.0 release run on Linux.
 - Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
 
 ## 1.0.0
