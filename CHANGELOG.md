@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
+
+1.0.0 was tagged but never published (its release run failed on the scroll race fixed below), so its changes, listed under 1.0.0, arrive with this release too.
 
 **An assurance report, and a check for CI** (*Tenet ▸ Assurance Report*, `leanstudio --verify`, the GitHub Action, and `assurance_report` over MCP; see *An assurance report, and a check for CI* in the README):
 - One page that says what a project's proofs can be relied on for: what is proved outright, what rests on `sorry` or on axioms the project introduces (and how much rests on each), which proofs trust compiled code, what Tenet rejects, and the trust surface.
