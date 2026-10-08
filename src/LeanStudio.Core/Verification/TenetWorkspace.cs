@@ -55,6 +55,15 @@ public sealed record VerificationReport(
     public int Conditional => Declarations.Count(d => d.Status == VerificationStatus.RestsOnAssumption);
     /// <summary>How many declarations were <see cref="VerificationStatus.Rejected"/>.</summary>
     public int Rejected => Declarations.Count(d => d.Status == VerificationStatus.Rejected);
+
+    /// <summary>How many checking units were re-checked this time.</summary>
+    public int UnitsChecked { get; init; }
+
+    /// <summary>
+    /// How many checking units were not re-checked, because exactly the same terms passed before against exactly the
+    /// same imports (see <see cref="CheckCache"/>).
+    /// </summary>
+    public int UnitsReused { get; init; }
 }
 
 /// <summary>
@@ -1241,14 +1250,18 @@ public sealed class TenetWorkspace : IDisposable
     /// </param>
     /// <param name="progress">Told after each declaration group is checked, possibly from several threads.</param>
     /// <param name="ct">Cancels the check; the task then ends as cancelled.</param>
-    public Task<VerificationReport> VerifyAsync(IReadOnlyList<string>? modules = null, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default)
+    /// <param name="useCache">
+    /// Skip the units that passed before unchanged, against unchanged imports (<see cref="CheckCache"/>), and remember
+    /// those that pass now. Off: everything is checked, and the cache is left alone.
+    /// </param>
+    public Task<VerificationReport> VerifyAsync(IReadOnlyList<string>? modules = null, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default, bool useCache = true)
     {
         var tcs = new TaskCompletionSource<VerificationReport>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
             try
             {
-                tcs.SetResult(Verify(modules, progress, ct));
+                tcs.SetResult(Verify(modules, progress, ct, useCache));
             }
             catch (OperationCanceledException e)
             {
@@ -1267,7 +1280,7 @@ public sealed class TenetWorkspace : IDisposable
         return tcs.Task;
     }
 
-    private VerificationReport Verify(IReadOnlyList<string>? modules, IProgress<VerificationProgress>? progress, CancellationToken ct)
+    private VerificationReport Verify(IReadOnlyList<string>? modules, IProgress<VerificationProgress>? progress, CancellationToken ct, bool useCache)
     {
         var sw = Stopwatch.StartNew();
         List<TenetName> targets = modules is null
@@ -1278,10 +1291,52 @@ public sealed class TenetWorkspace : IDisposable
             return new VerificationReport(LeanVersion, 0, ModuleCount, sw.Elapsed, []);
         }
         OleanCheckResult result;
+        int unitsChecked = 0, unitsReused = 0;
         lock (_lock)
         {
+            // The cache: which units are unchanged since they last passed.
+            HashSet<TenetName>? only = null;
+            Dictionary<Replay.Unit, string>? keys = null;
+            HashSet<string>? passed = null;
+            string? scope = null, cachePath = null;
+            List<Replay.Unit>? targetUnits = null;
+            if (useCache)
+            {
+                var ownSet = new HashSet<TenetName>(OwnModules);
+                scope = CheckCache.Scope(Assurance.TenetVersion, LeanVersion, _checker.Modules.Where(kv => !ownSet.Contains(kv.Key)).Select(kv => kv.Value));
+                cachePath = CheckCache.PathFor(Project.Root);
+                passed = CheckCache.Load(cachePath, scope);
+                var allUnits = new List<Replay.Unit>();
+                targetUnits = [];
+                var targetSet = new HashSet<TenetName>(targets);
+                foreach (TenetName m in OwnModules.Where(_checker.Modules.ContainsKey))
+                {
+                    OleanModule om = _checker.Modules[m];
+                    List<Replay.Unit> units = Replay.GroupUnits(om.ConstantNames.Select(om.FindConstant).OfType<ConstantInfo>());
+                    allUnits.AddRange(units);
+                    if (targetSet.Contains(m))
+                    {
+                        targetUnits.AddRange(units);
+                    }
+                }
+                keys = CheckCache.UnitKeys(allUnits, ct);
+                only = [];
+                foreach (Replay.Unit u in targetUnits)
+                {
+                    if (passed.Contains(keys[u]))
+                    {
+                        unitsReused++;
+                    }
+                    else
+                    {
+                        only.UnionWith(u.Names);
+                    }
+                }
+                unitsChecked = targetUnits.Count - unitsReused;
+            }
             result = _checker.Check(targets, new OleanCheckOptions
             {
+                Only = only,
                 ContinueOnError = true,
                 EvictBetweenModules = false,
                 Progress = p =>
@@ -1290,6 +1345,29 @@ public sealed class TenetWorkspace : IDisposable
                     progress?.Report(new VerificationProgress(p.Module.ToString(), p.ModuleIndex, p.ModuleCount, p.Done, p.Total));
                 },
             });
+            if (keys is not null && targetUnits is not null && passed is not null)
+            {
+                // Remember what passes now, and keep what passed before only while it is still part of the project.
+                var failed = new HashSet<TenetName>(result.Failures.Select(f => f.Name));
+                var current = new HashSet<string>(keys.Values, StringComparer.Ordinal);
+                var now = new HashSet<string>(passed.Where(current.Contains), StringComparer.Ordinal);
+                foreach (Replay.Unit u in targetUnits)
+                {
+                    if (u.Names.Any(failed.Contains))
+                    {
+                        now.Remove(keys[u]);
+                    }
+                    else
+                    {
+                        now.Add(keys[u]);
+                    }
+                }
+                CheckCache.Save(cachePath!, scope!, now);
+            }
+            else
+            {
+                unitsChecked = result.Checked;
+            }
         }
         ct.ThrowIfCancellationRequested();
 
@@ -1394,7 +1472,11 @@ public sealed class TenetWorkspace : IDisposable
                 }
             }
         }
-        return new VerificationReport(result.LeanVersion, targets.Count, result.ModulesLoaded, sw.Elapsed, verdicts);
+        return new VerificationReport(result.LeanVersion, targets.Count, result.ModulesLoaded, sw.Elapsed, verdicts)
+        {
+            UnitsChecked = unitsChecked,
+            UnitsReused = unitsReused,
+        };
     }
 
     private bool _disposed;

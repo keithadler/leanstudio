@@ -361,7 +361,8 @@ public static class LeanTools
         new("verify",
             "Re-check the project's built declarations with Tenet, an independent Lean kernel, and report which are verified, which rest on sorry or on axioms the project introduces, and which Tenet rejects. Run build first.",
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
-                   ("modules", "string[]", "Optional module names to check, e.g. [\"MyProject.Basic\"]; default all of the project's own.", false)),
+                   ("modules", "string[]", "Optional module names to check, e.g. [\"MyProject.Basic\"]; default all of the project's own.", false),
+                   ("fresh", "boolean", "Check everything again, ignoring what passed unchanged before (default false).", false)),
             async (a, ct) =>
             {
                 ProjectSession s = bench.Session(OptStr(a, "project"));
@@ -371,7 +372,7 @@ public static class LeanTools
                     throw new ToolException("nothing built yet: call build first");
                 }
                 List<string>? modules = a["modules"] is JsonArray arr ? arr.Select(n => n!.GetValue<string>()).ToList() : null;
-                VerificationReport r = await ws.VerifyAsync(modules, ct: ct);
+                VerificationReport r = await ws.VerifyAsync(modules, ct: ct, useCache: OptBool(a, "fresh") != true);
                 return FormatVerification(r);
             }),
 
@@ -402,7 +403,8 @@ public static class LeanTools
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
                    ("format", "string", "markdown (default), json, sarif or html.", false),
                    ("fail_on", "string", "Comma-separated categories that fail the report: rejected, sorry, axiom, native, implemented_by, extern, unsafe, partial, opaque, all or none (default rejected,sorry).", false),
-                   ("allow_axioms", "string[]", "Axioms the project documents and accepts; they do not count as failures.", false)),
+                   ("allow_axioms", "string[]", "Axioms the project documents and accepts; they do not count as failures.", false),
+                   ("fresh", "boolean", "Check everything again, ignoring what passed unchanged before (default false).", false)),
             async (a, ct) =>
             {
                 ProjectSession s = bench.Session(OptStr(a, "project"));
@@ -422,7 +424,7 @@ public static class LeanTools
                 {
                     throw new ToolException(e.Message);
                 }
-                AssuranceReport r = await Assurance.RunAsync(ws, policy, ct: ct);
+                AssuranceReport r = await Assurance.RunAsync(ws, policy, ct: ct, useCache: OptBool(a, "fresh") != true);
                 return (OptStr(a, "format") ?? "markdown") switch
                 {
                     "json" => Assurance.ToJson(r),
@@ -1418,6 +1420,10 @@ public static class LeanTools
         sb.Append(CultureInfo.InvariantCulture,
             $"Tenet checked {r.Declarations.Count} declarations in {r.ModulesChecked} modules (Lean {r.LeanVersion}): "
             + $"{r.Verified} verified, {r.Conditional} resting on an assumption, {r.Rejected} rejected.\n");
+        if (r.UnitsReused > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"{r.UnitsChecked} re-checked; {r.UnitsReused} unchanged since they last passed (same terms, same imports), not checked again.\n");
+        }
         foreach (DeclarationVerdict d in r.Declarations.Where(d => d.Status == VerificationStatus.Rejected))
         {
             sb.Append(CultureInfo.InvariantCulture, $"\nREJECTED {d.Name} ({d.Module}{(d.Line is int l ? $":{l}" : "")}): {d.Message}");

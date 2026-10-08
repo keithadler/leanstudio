@@ -119,6 +119,8 @@ public sealed record AssurancePolicy(IReadOnlySet<string> FailOn, IReadOnlySet<s
 /// <param name="Policy">What fails the check.</param>
 /// <param name="Definitions">How many definitions the project has that something could be proved about (see <see cref="TenetWorkspace.Coverage"/>).</param>
 /// <param name="Unstated">The definitions no theorem's statement mentions.</param>
+/// <param name="UnitsReused">How many checking units passed before unchanged and were not checked again.</param>
+/// <param name="UnitsChecked">How many checking units were checked this time.</param>
 public sealed record AssuranceReport(
     string Project,
     string Root,
@@ -134,7 +136,9 @@ public sealed record AssuranceReport(
     IReadOnlyList<TrustMark> Marks,
     AssurancePolicy Policy,
     int Definitions = 0,
-    IReadOnlyList<DeclarationRef>? Unstated = null)
+    IReadOnlyList<DeclarationRef>? Unstated = null,
+    int UnitsReused = 0,
+    int UnitsChecked = 0)
 {
     /// <summary>The definitions no theorem's statement mentions; empty when coverage was not computed.</summary>
     public IReadOnlyList<DeclarationRef> UnstatedDefinitions => Unstated ?? [];
@@ -311,27 +315,29 @@ public static class Assurance
             marks,
             policy,
             coverage?.Count ?? 0,
-            coverage?.Where(c => c.Theorems.Count == 0).Select(c => c.Definition).ToList());
+            coverage?.Where(c => c.Theorems.Count == 0).Select(c => c.Definition).ToList(),
+            verification.UnitsReused,
+            verification.UnitsChecked);
     }
 
     /// <summary>
     /// Verify a built project with Tenet and make its assurance report: the commit, the verification, the trust
     /// marks. The workspace is opened and disposed here.
     /// </summary>
-    public static async Task<AssuranceReport> RunAsync(LeanProject project, AssurancePolicy policy, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default)
+    public static async Task<AssuranceReport> RunAsync(LeanProject project, AssurancePolicy policy, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default, bool useCache = true)
     {
         using TenetWorkspace ws = TenetWorkspace.Open(project);
-        return await RunAsync(ws, policy, progress, ct).ConfigureAwait(false);
+        return await RunAsync(ws, policy, progress, ct, useCache).ConfigureAwait(false);
     }
 
     /// <summary>Make the assurance report with a workspace that is already open (the window's, or the MCP server's).</summary>
-    public static async Task<AssuranceReport> RunAsync(TenetWorkspace ws, AssurancePolicy policy, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default)
+    public static async Task<AssuranceReport> RunAsync(TenetWorkspace ws, AssurancePolicy policy, IProgress<VerificationProgress>? progress = null, CancellationToken ct = default, bool useCache = true)
     {
         if (ws.OwnModules.Count == 0)
         {
             throw new InvalidOperationException("Nothing is built yet: build the project first (lake build).");
         }
-        VerificationReport verification = await ws.VerifyAsync(progress: progress, ct: ct).ConfigureAwait(false);
+        VerificationReport verification = await ws.VerifyAsync(progress: progress, ct: ct, useCache: useCache).ConfigureAwait(false);
         IReadOnlyList<TrustMark> marks = ws.TrustSurface(ct);
         IReadOnlyList<StatedDefinition> coverage = ws.Coverage(ct);
         (string? commit, bool dirty) = await CommitOfAsync(ws.Project.Root, ct).ConfigureAwait(false);
@@ -406,7 +412,12 @@ public static class Assurance
         sb.Append("\n\n");
         sb.Append(r.Passed ? "✅ " : "❌ ").Append(Headline(r)).Append("\n\n");
         sb.Append(CultureInfo.InvariantCulture,
-            $"Re-checked by Tenet {r.TenetVersion}, an independent Lean kernel, in {r.Elapsed.TotalSeconds:F1}s: {Plural(r.ModulesChecked, "module")}, Lean {r.LeanVersion}. ");
+            $"Re-checked by Tenet {r.TenetVersion}, an independent Lean kernel, in {r.Elapsed.TotalSeconds:F1}s: {Plural(r.ModulesChecked, "module")}, Lean {r.LeanVersion}");
+        if (r.UnitsReused > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture, $"; {r.UnitsChecked:N0} checked, and {r.UnitsReused:N0} unchanged since they last passed not checked again");
+        }
+        sb.Append(". ");
         sb.Append("Fails on: ").Append(r.Policy.FailOn.Count == 0 ? "nothing" : string.Join(", ", AssurancePolicy.Categories.Where(r.Policy.FailOn.Contains))).Append(".\n\n");
 
         sb.Append("| | Declarations | What it means |\n|---|---:|---|\n");
@@ -521,6 +532,8 @@ public static class Assurance
             ["generated"] = r.Generated.ToString("o", CultureInfo.InvariantCulture),
             ["modulesChecked"] = r.ModulesChecked,
             ["seconds"] = Math.Round(r.Elapsed.TotalSeconds, 1),
+            ["unitsChecked"] = r.UnitsChecked,
+            ["unitsReused"] = r.UnitsReused,
             ["passed"] = r.Passed,
             ["headline"] = Headline(r),
             ["policy"] = new JsonObject
@@ -863,6 +876,8 @@ public static class Assurance
 
           --project DIR        the project (default: the current folder)
           --no-build           do not run lake build first (the project must already be built)
+          --no-cache           check every declaration again, even those that passed before unchanged
+                               (by default only what changed, or rests on what changed, is re-checked)
           --fail-on LIST       what fails the check, comma-separated, from: rejected, sorry, axiom, native,
                                implemented_by, extern, unsafe, partial, opaque, unstated (a definition
                                no theorem's statement mentions); or all, or none (default: rejected,sorry)
@@ -942,7 +957,7 @@ public static class Assurance
                     error.WriteLine($"  [{p.ModuleIndex}/{p.ModuleCount}] {p.Module}");
                 }
             });
-            report = await RunAsync(project, policy, progress, ct).ConfigureAwait(false);
+            report = await RunAsync(project, policy, progress, ct, useCache: !list.Contains("--no-cache")).ConfigureAwait(false);
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or Tenet.Kernel.KernelException or Tenet.Olean.OleanFormatException)
         {

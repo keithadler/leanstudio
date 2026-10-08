@@ -260,6 +260,8 @@ The panel also shows the **expected type** of the term under the cursor and the 
 
 A green build tells you Lean accepted the file. These badges tell you whether each theorem is actually proved, and whether a second kernel agrees.
 
+Verifying again re-checks only what changed. Each declaration gets a SHA-256 key over everything the kernel reads from it (its type, its value, every field of an inductive or recursor) and over the keys of the project's own declarations it uses, so an edited lemma re-checks itself and everything that rests on it, and nothing else. What the project imports is covered by a second key: Tenet's version, Lean's, and the exact files of every imported module. If any of those change, everything is checked again. A declaration is skipped only when exactly the same terms passed before against exactly the same imports, and a failure is never remembered. On [lean-aes](https://github.com/keithadler/lean-aes) (385 declarations, 20 modules), a full check takes about three minutes; after an edit, verifying again takes about a second. That makes *Verify After Every Build* cheap to leave on. `--no-cache` (and `fresh` over MCP) checks everything.
+
 ### An assurance report, and a check for CI
 
 **Tenet ▸ Assurance Report** answers the question a reviewer, an auditor or a manager asks of a proof project: what can be relied on? Tenet re-checks every declaration, and one page says:

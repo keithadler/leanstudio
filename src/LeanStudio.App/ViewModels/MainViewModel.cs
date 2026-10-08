@@ -1495,7 +1495,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             VerificationReport r = await ws.VerifyAsync(progress: progress, ct: verifyCts.Token);
             Verification.Show(r);
-            Log($"Tenet: {r.Verified} verified, {r.Conditional} resting on an assumption, {r.Rejected} rejected ({r.Elapsed.TotalSeconds:F1}s)");
+            Log($"Tenet: {r.Verified} verified, {r.Conditional} resting on an assumption, {r.Rejected} rejected ({r.Elapsed.TotalSeconds:F1}s"
+                + (r.UnitsReused > 0 ? $"; {r.UnitsChecked} re-checked, {r.UnitsReused} unchanged since they last passed)" : ")"));
             foreach (DocumentViewModel d in Documents)
             {
                 ApplyVerdicts(d);

@@ -21,6 +21,10 @@
 - Then the project moves only if asked: `lean-toolchain` and `lake-manifest.json` are replaced (backed up where *Undo Last Dependency Update* finds them) and deprecated names are renamed. From a terminal, `--adopt`.
 - Exit code 0 when it builds cleanly, 1 when something broke, so a scheduled CI job can say when a new Lean breaks the project.
 
+**Verifying again re-checks only what changed**:
+- Each checking unit gets a SHA-256 key over everything the kernel reads from it and over the keys of the project's own declarations it uses; a second key covers Tenet's version, Lean's and every imported module's files. A unit is skipped only when exactly the same terms passed before against exactly the same imports. Failures are never remembered.
+- An edited lemma re-checks itself and what rests on it, nothing else. The window, `verify` and `assurance_report` over MCP, and `leanstudio --verify` all use it; `--no-cache` and `fresh` check everything. The cache is `.lake/leanstudio/tenet-cache.json`.
+
 **Fixes**:
 - Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
 
