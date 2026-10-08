@@ -863,6 +863,27 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("junk_values",
+            "Find the places in a Lean file where Lean quietly returns a made-up value instead of failing, so a definition or statement can compile while describing something that does not exist: sInf/sSup/iInf/iSup of an empty set (0 on ℕ and ℝ), the xs[i]!, head!, get! family, which gives `default` when there is nothing to return. Read from the text, so nothing has to be built first. It cannot see types, so each hit is a place to look, not a bug; truncated natural subtraction needs types and is not covered. For a theorem only its statement is read, not its proof.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("division", "boolean", "Also list division by a variable no hypothesis says is nonzero (x / 0 = 0). Off by default: on Mathlib it mostly finds identities meant to hold at zero, so it is for application proofs.", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                IReadOnlyList<StyleProblem> hits = JunkValues.Find(text, OptBool(a, "division") == true);
+                if (hits.Count == 0)
+                {
+                    return "no junk values found";
+                }
+                var sb = new StringBuilder();
+                foreach (StyleProblem p in hits)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{p.Line + 1}: {p.Rule}: {p.Message}\n");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
         new("stale_deprecations",
             "The deprecated declarations of a Lean file that are old enough to delete: Mathlib removes a deprecated alias some months after the rename. Reads each (since := \"yyyy-mm-dd\") and lists those at least `months` old (default 6). With apply=true, deletes them, with their doc comments, from the file on disk.",
             Schema(("path", "string", "The .lean file.", true),

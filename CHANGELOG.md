@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Junk values** (`junk_values` over MCP): lists the places where Lean quietly returns a made-up value instead of failing, so a definition or statement can compile while describing something that does not exist. `sInf`, `sSup`, `iInf` and `iSup` of an empty set (0 on ℕ and ℝ), and `xs[i]!`, `head!`, `get!`, which stand in `default`; with `division=true`, also division by a variable that no hypothesis says is nonzero (`x / 0 = 0`), which is off by default because on Mathlib it mostly finds identities meant to hold at zero. Read from the text, so nothing has to be built first; for a theorem only its statement is read, not its proof. It cannot see types, so each hit is a place to look, not a bug, and truncated natural subtraction (`2 - 3 = 0` on ℕ) is not covered. Prompted by *Navier–Stokes lost in translation* (Bastounis, Circelli and Hansen), whose Example 4.2 is an `sInf` over an empty set.
+
 ## 1.1.1
 
 **Fixes**:
