@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+**Fixes**:
+- *What the Theorems Are About* (and the assurance report's list of definitions no theorem mentions) listed definitions that macros and deriving handlers make, which nobody wrote and nobody would state a theorem about: on a LeanAPI project, 29 of its 42 entries, all "at line 1". A definition whose source line does not name it is now left out.
+
 ## 1.1.0
 
 1.0.0 was tagged but never published (its release run failed on the scroll race fixed below), so its changes, listed under 1.0.0, arrive with this release too.

@@ -1157,8 +1157,14 @@ public sealed class TenetWorkspace : IDisposable
                     }
                     else if (c is DefinitionInfo or OpaqueInfo && !projections.Contains(n) && !IsInstanceName(s) && !DefinesASort(c.Type))
                     {
+                        int? line = LineOf(n);
+                        // Made by a macro or a deriving handler, not written: its line does not name it.
+                        if (line is int l && lines is { Length: > 0 } && l >= 1 && l <= lines.Length && !NamesDeclaration(lines[l - 1], n))
+                        {
+                            continue;
+                        }
                         index[n] = definitions.Count;
-                        definitions.Add(new DeclarationRef(s, module.ToString(), LineOf(n), file));
+                        definitions.Add(new DeclarationRef(s, module.ToString(), line, file));
                     }
                 }
             }
@@ -1221,6 +1227,29 @@ public sealed class TenetWorkspace : IDisposable
             }
         }
         return hits.OrderBy(t => t.Module, StringComparer.Ordinal).ThenBy(t => t.Line ?? int.MaxValue).ToList();
+    }
+
+    /// <summary>
+    /// The source line names the declaration: its last component appears there as a whole word (<c>def swap</c>,
+    /// <c>def Point.swap</c>, <c>operation newGame</c>). A declaration a macro or a deriving handler made points at
+    /// the command that made it (often an import line, or a <c>deriving</c> clause), which does not.
+    /// </summary>
+    private static bool NamesDeclaration(string line, TenetName name)
+    {
+        string last = name.ToString().Split('.')[^1].Trim('«', '»');
+        int at = 0;
+        while ((at = line.IndexOf(last, at, StringComparison.Ordinal)) >= 0)
+        {
+            bool startOk = at == 0 || !(char.IsLetterOrDigit(line[at - 1]) || line[at - 1] is '_' or '\'' or '«');
+            int end = at + last.Length;
+            bool endOk = end == line.Length || !(char.IsLetterOrDigit(line[end]) || line[end] is '_' or '\'' or '?' or '!' or '»');
+            if (startOk && endOk)
+            {
+                return true;
+            }
+            at = end;
+        }
+        return false;
     }
 
     /// <summary>An instance, by Lean's naming: some part of the name is <c>inst</c> followed by a capital (<c>instReprPoint</c>, <c>instReprPoint.repr</c>).</summary>

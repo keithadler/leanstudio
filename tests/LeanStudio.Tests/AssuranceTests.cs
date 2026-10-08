@@ -281,6 +281,10 @@ public sealed class SpecCoverageTests
 
         -- `helper` only in the proof: that says nothing about it.
         theorem three : 3 = 3 := by have := helper 1; rfl
+
+        -- A macro that makes a definition no line names, as deriving handlers and DSLs do: not code to state things about.
+        macro "mkFirst " n:ident : command => `(def $(Lean.mkIdent (n.getId ++ `first)) : Nat := 1)
+        mkFirst gen
         """;
 
     [Fact]
@@ -301,6 +305,7 @@ public sealed class SpecCoverageTests
             // Projections, instances (written or derived), a type abbreviation and a predicate are not code to state things about.
             IReadOnlyList<StatedDefinition> coverage = ws.Coverage(TestContext.Current.CancellationToken);
             Assert.Equal(["Point.swap", "double", "helper"], coverage.Select(c => c.Definition.Name));
+            Assert.NotNull(ws.Details("gen.first")); // it exists; it is just not listed
             Assert.Equal(["swap_swap"], coverage[0].Theorems.Select(t => t.Name));
             Assert.Equal(["double_eq", "double_even"], coverage[1].Theorems.Select(t => t.Name));
             Assert.Empty(coverage[2].Theorems);
