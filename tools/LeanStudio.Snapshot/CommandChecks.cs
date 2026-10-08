@@ -241,11 +241,28 @@ internal static class CommandChecks
         }
         finally
         {
-            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            // The window may still be writing into the folder (Verify After Every Build writes Tenet's cache once the
+            // check finishes): try again for a few seconds, and leave a temporary folder behind rather than fail.
+            for (int attempt = 1; Directory.Exists(dir); attempt++)
             {
-                File.SetAttributes(f, FileAttributes.Normal);
+                try
+                {
+                    foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                    {
+                        File.SetAttributes(f, FileAttributes.Normal);
+                    }
+                    Directory.Delete(dir, true);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == 20)
+                    {
+                        Console.WriteLine($"  note: could not delete {dir}: {e.Message}");
+                        break;
+                    }
+                    await Task.Delay(250);
+                }
             }
-            Directory.Delete(dir, true);
         }
         return _failures;
     }
