@@ -212,6 +212,32 @@ internal static class CommandChecks
             Console.WriteLine("share");
             await Run(vm.CopyForZulipCommand);
             Check(Output().Contains("Copied this file as a Zulip message", StringComparison.Ordinal), "Copy as a Zulip Message copies the file");
+
+            Console.WriteLine("tenet");
+            // A Lake project of its own, built, so Tenet has something to read.
+            string lake = Path.Combine(dir, "Built");
+            Directory.CreateDirectory(lake);
+            await File.WriteAllTextAsync(Path.Combine(lake, "lean-toolchain"), "leanprover/lean4:v4.34.0\n");
+            await File.WriteAllTextAsync(Path.Combine(lake, "lakefile.toml"), "name = \"Built\"\ndefaultTargets = [\"Built\"]\n\n[[lean_lib]]\nname = \"Built\"\n");
+            string built = Path.Combine(lake, "Built.lean");
+            await File.WriteAllTextAsync(built, "def double (n : Nat) : Nat := n + n\n\ndef helper (n : Nat) : Nat := double n + 1\n\ntheorem double_eq (n : Nat) : double n = 2 * n := by unfold double; omega\n");
+            await vm.CloseAllAsync(force: true); // the edits above stay unsaved; a prompt about them would wait forever here
+            await vm.OpenProjectAsync(lake);
+            Check(await WaitFor(() => vm.Project?.Root == lake, 30), "a Lake project opens");
+            await Run(vm.BuildCommand);
+            DocumentViewModel? source = await vm.OpenFileAsync(built);
+            Check(source is not null, "its file opens");
+            if (source is not null)
+            {
+                source.Reveal(0, 5);
+                await Run(vm.ProvedAboutAtCaretCommand);
+                Check(Output().Contains("1 theorem states something about `double`", StringComparison.Ordinal)
+                    && Output().Contains("It says that for any n (a natural number), double n equals 2 * n.", StringComparison.Ordinal),
+                    "What's Proved About This? reads the theorem about double in plain English");
+                await Run(vm.ShowSpecCoverageCommand);
+                Check(Output().Contains("1 of 2 definitions have a theorem whose statement mentions them", StringComparison.Ordinal) && Output().Contains("`helper`", StringComparison.Ordinal),
+                    "What the Theorems Are About finds helper with no theorem");
+            }
         }
         finally
         {

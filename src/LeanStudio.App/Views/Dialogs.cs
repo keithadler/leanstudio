@@ -398,6 +398,9 @@ internal static class Dialogs
                 "Library + executable (std)",
                 "Library using Mathlib (math)",
                 "Executable (exe)",
+                ProjectTemplates.Title(ProjectTemplate.VerifiedCrypto),
+                ProjectTemplates.Title(ProjectTemplate.VerifiedParser),
+                ProjectTemplates.Title(ProjectTemplate.VerifiedFileFormat),
             },
             SelectedIndex = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -474,6 +477,9 @@ internal static class Dialogs
                 1 => ProjectTemplate.Standard,
                 2 => ProjectTemplate.Math,
                 3 => ProjectTemplate.Executable,
+                4 => ProjectTemplate.VerifiedCrypto,
+                5 => ProjectTemplate.VerifiedParser,
+                6 => ProjectTemplate.VerifiedFileFormat,
                 _ => ProjectTemplate.Library,
             };
             result = new NewProjectRequest(p, n, t, toolchain.SelectedItem as string ?? "leanprover/lean4:stable");

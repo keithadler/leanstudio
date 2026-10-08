@@ -25,6 +25,8 @@
 - Each checking unit gets a SHA-256 key over everything the kernel reads from it and over the keys of the project's own declarations it uses; a second key covers Tenet's version, Lean's and every imported module's files. A unit is skipped only when exactly the same terms passed before against exactly the same imports. Failures are never remembered.
 - An edited lemma re-checks itself and what rests on it, nothing else. The window, `verify` and `assurance_report` over MCP, and `leanstudio --verify` all use it; `--no-cache` and `fresh` check everything. The cache is `.lake/leanstudio/tenet-cache.json`.
 
+**Verified project templates** (*New Project…*): a crypto primitive (modular exponentiation, with Diffie–Hellman agreement), a parser (with a proved round trip) and a file format (tag-length-value records, with a proved decode/encode round trip). Each is laid out as `Spec.lean`, `Impl.lean`, `Proofs.lean` and `Tests.lean`, with a README that explains the layout and the assurance workflow, and each passes the strictest assurance check from the start: everything proved outright, nothing widening the trust surface, and a theorem about every definition. The tests build each one and hold it to that.
+
 **Fixes**:
 - Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
 

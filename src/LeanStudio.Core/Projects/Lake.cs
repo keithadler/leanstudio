@@ -14,6 +14,12 @@ public enum ProjectTemplate
     Math,
     /// <summary>An executable only.</summary>
     Executable,
+    /// <summary>Lean Studio's own: modular exponentiation, specified, implemented and proved (see <see cref="ProjectTemplates"/>).</summary>
+    VerifiedCrypto,
+    /// <summary>Lean Studio's own: a parser and printer with a proved round trip.</summary>
+    VerifiedParser,
+    /// <summary>Lean Studio's own: a binary record format with a proved encode/decode round trip.</summary>
+    VerifiedFileFormat,
 }
 
 /// <summary>Lake, Lean's build tool: building, fetching Mathlib's cache, updating dependencies, and new projects.</summary>
@@ -67,17 +73,21 @@ public static class Lake
         ProjectTemplate.Library => "lib",
         ProjectTemplate.Math => "math",
         ProjectTemplate.Executable => "exe",
+        ProjectTemplate.VerifiedCrypto or ProjectTemplate.VerifiedParser or ProjectTemplate.VerifiedFileFormat => "lib",
         _ => "std",
     };
 
     /// <summary>
     /// Create <paramref name="parent"/>/<paramref name="name"/> with <c>lake new</c>, using the given toolchain
     /// (so it works with no elan default). The new project's <c>lean-toolchain</c> pins that toolchain, except that
-    /// the Mathlib template keeps the toolchain Mathlib chose. Creates <paramref name="parent"/> if needed.
+    /// the Mathlib template keeps the toolchain Mathlib chose. Creates <paramref name="parent"/> if needed. Lean Studio's
+    /// own templates start from Lake's library template and are filled in by <see cref="ProjectTemplates.Write"/>, with
+    /// the assurance workflow when <paramref name="studioVersion"/> is given.
     /// </summary>
     /// <returns>The <c>lake new</c> result, and the new project, or <see langword="null"/> when it failed.</returns>
     public static async Task<(ProcessResult Result, LeanProject? Project)> NewAsync(
-        string parent, string name, ProjectTemplate template, string toolchain, Action<string>? onLine = null, CancellationToken ct = default)
+        string parent, string name, ProjectTemplate template, string toolchain, Action<string>? onLine = null, CancellationToken ct = default,
+        string? studioVersion = null)
     {
         Directory.CreateDirectory(parent);
         ProcessResult r = await ProcessRunner.RunAsync(
@@ -92,6 +102,10 @@ public static class Lake
         if (template != ProjectTemplate.Math || project.Toolchain is null)
         {
             project.SetToolchain(toolchain);
+        }
+        if (ProjectTemplates.IsVerified(template))
+        {
+            ProjectTemplates.Write(project, template, studioVersion);
         }
         return (r, project);
     }

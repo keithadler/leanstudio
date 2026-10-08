@@ -145,6 +145,13 @@ Lean Studio is built to be the place to start, whether you're curious about theo
 
 **8. See how far you have come.** **My Badges and What's Next** scores small firsts, worked out from the Lean files you have written (so there is nothing to track): your first `#eval`, first function, first proof Lean accepts with no `sorry`, first `induction`, and so on, seventeen in the order you meet them, and it tells you what to try next. **Tip of the Day** shows one small thing that makes Lean nicer.
 
+**9. Start a real verified project.** **New Project…** offers three templates of Lean Studio's own, each a small program that is already fully proved, laid out the way verified code stays honest: `Spec.lean` (what it should do, written to be obviously right), `Impl.lean` (what runs), `Proofs.lean` (why they agree, for every input), `Tests.lean` (known answers), a README explaining the layout, and the assurance check in CI.
+- **Verified crypto primitive**: modular exponentiation by square-and-multiply, the operation underneath RSA and Diffie–Hellman, proved equal to `b ^ e % m`, with Diffie–Hellman agreement proved and the textbook RSA example as a test.
+- **Verified parser**: prefix arithmetic expressions, with the round trip `parse (print e) = some e` proved.
+- **Verified file format**: tag-length-value records, the shape of TLS and ASN.1, with decoding an encoded file proved to give back exactly its records.
+
+Each starts at 100% on the assurance report: no `sorry`, no axiom, no `native_decide`, and a theorem about every definition.
+
 The Outline also shows, live, which theorems Lean accepts (✓), which still use `sorry` (◐) and which have errors (✗).
 
 ![The playground: results at the end of each line, a program run, and a famous theorem added](docs/images/playground.png)

@@ -418,7 +418,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
                 Log($"Installing {req.Toolchain} first…");
                 await Elan.InstallAsync(req.Toolchain, Log, ct);
             }
-            var (result, project) = await Lake.NewAsync(req.Parent, req.Name, req.Template, req.Toolchain, Log, ct);
+            var (result, project) = await Lake.NewAsync(req.Parent, req.Name, req.Template, req.Toolchain, Log, ct, Services.Credits.Version);
             if (project is null)
             {
                 Log($"lake new failed (exit {result.ExitCode})");
@@ -434,7 +434,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
             string main = Directory.EnumerateFiles(project.Root, "*.lean", SearchOption.AllDirectories)
                 .Where(f => !f.Contains(Path.DirectorySeparatorChar + ".lake" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                .OrderBy(f => f.Contains("Basic", StringComparison.Ordinal) ? 0 : 1).FirstOrDefault() ?? "";
+                .OrderBy(f => Path.GetFileName(f) == "Spec.lean" ? 0 : f.Contains("Basic", StringComparison.Ordinal) ? 1 : 2).FirstOrDefault() ?? "";
             if (main.Length > 0)
             {
                 await OpenFileAsync(main);
