@@ -375,6 +375,28 @@ public static class LeanTools
                 return FormatVerification(r);
             }),
 
+        new("try_upgrade",
+            "Try a newer Lean (or newer dependencies, for a project that uses Mathlib) on a copy of the project, and report what broke: the build's errors by file and line, names the new version deprecates with Lean's replacement, and for each name it no longer has, the names it does have that it likely became (\"same statement\" marks a plain rename). The project is not changed unless adopt is true. Can take minutes; for Mathlib it fetches the new Mathlib.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("to", "string", "The Lean to try, e.g. v4.35.0. Default: what updating the dependencies brings, or the newest stable Lean for a project without dependencies.", false),
+                   ("update_dependencies", "boolean", "Run lake update in the trial (default true).", false),
+                   ("adopt", "boolean", "When the trial builds, move the project to it and rename deprecated names (default false). The old lean-toolchain and lake-manifest.json are kept in .lake/leanstudio-update-backup.", false)),
+            async (a, ct) =>
+            {
+                ProjectSession s = bench.Session(OptStr(a, "project"));
+                LeanProject p = s.Project;
+                using var http = new HttpClient();
+                UpgradeReport r = await UpgradeTrial.RunAsync(p, new UpgradeOptions(OptStr(a, "to"), OptBool(a, "update_dependencies") ?? true),
+                    c => LeanReleases.LatestStableTagAsync(http, c), ct: ct);
+                string text = UpgradeTrial.ToMarkdown(r, p.Root, limit: 100).TrimEnd();
+                if (OptBool(a, "adopt") == true && r.Problem is null)
+                {
+                    IReadOnlyList<string> renamed = await UpgradeTrial.AdoptAsync(p, r, renameDeprecated: true, ct);
+                    text += $"\n\nAdopted {r.ToToolchain}" + (renamed.Count > 0 ? $"; renamed deprecated names in {renamed.Count} file(s)" : "") + ". Call build next.";
+                }
+                return text;
+            }),
+
         new("assurance_report",
             "What the project's proofs can be relied on for, in one report: Tenet re-checks every declaration and the report says which are proved outright, which rest on sorry or on axioms the project introduces, which proofs trust compiled code (native_decide), which Tenet rejects, and every @[implemented_by], @[extern], unsafe, partial and opaque declaration (the trust surface). Run build first. The same report as `leanstudio --verify` in CI.",
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),

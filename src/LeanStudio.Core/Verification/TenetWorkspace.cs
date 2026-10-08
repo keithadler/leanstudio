@@ -315,7 +315,13 @@ public sealed class TenetWorkspace : IDisposable
     /// toolchain's own library instead (Init, Std, Lean), so the navigator still has something to show.
     /// Synchronous: reads module headers from disk. The caller owns the result and must dispose it.
     /// </summary>
-    public static TenetWorkspace Open(LeanProject project)
+    /// <param name="project">The project.</param>
+    /// <param name="alsoOpen">
+    /// Modules to open as well, with their imports, though nothing the project built imports them: what a file
+    /// that failed to build imports, say, so the names it should have found can be searched. They are never verified.
+    /// Names the search path cannot find are skipped.
+    /// </param>
+    public static TenetWorkspace Open(LeanProject project, IEnumerable<string>? alsoOpen = null)
     {
         // Taken before reading, so a build that finishes while the workspace opens makes it stale, not lost.
         string stamp = BuildStamp(project);
@@ -361,6 +367,14 @@ public sealed class TenetWorkspace : IDisposable
                 {
                     targets.Add((TenetName.Of(root), f));
                 }
+            }
+        }
+        foreach (string extra in alsoOpen ?? [])
+        {
+            TenetName m = TenetName.Parse(extra);
+            if (!targets.Any(t => t.Item1 == m) && search.Find(m) is string f)
+            {
+                targets.Add((m, f));
             }
         }
         var checker = new OleanChecker(search);

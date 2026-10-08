@@ -487,6 +487,7 @@ What CI and reviewers check, before you push:
 - **Toolchains**:
   - See what elan has installed, and install `stable`, `nightly` or any version.
   - Hear when a newer stable Lean is out, and move the project to it in one click: install, pin in `lean-toolchain`, restart Lean. Only for a project that depends on nothing; one that requires Mathlib or another package has to keep the Lean its dependencies were built for. It checks GitHub once per run, and not at all when update checks are off.
+  - **Try a newer Lean before you move to it** (*Lean ▸ Try a Newer Lean (on a copy)…*, or `leanstudio --try-upgrade` in a terminal or a nightly CI job). A copy of the project under `.lake/leanstudio/upgrade` is moved to the newest stable Lean (for a project that uses Mathlib, to whatever `lake update` brings, and Mathlib's Lean) and built. You get what broke, by file and line: the errors; the names the new version deprecates, with Lean's replacement; and for each name it no longer has, the names it does have that it likely became, marked *same statement* when one states exactly what the old one did. Then, and only if you say so, the project moves: `lean-toolchain` and `lake-manifest.json` are replaced (the old ones are kept, and *Undo Last Dependency Update* puts them back) and the deprecated names are renamed. `--to v4.35.0` tries a particular version; the exit code is 0 when it builds cleanly, so a scheduled job can tell you the day a new Lean breaks the project. AI assistants have it as `try_upgrade`.
   - Pin a toolchain to the project, which writes `lean-toolchain` and restarts Lean on it.
   - Set elan's default.
 
@@ -554,6 +555,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `references` | Every use of a name across the project. |
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
+| `try_upgrade` | Try a newer Lean (or Mathlib) on a copy of the project: what broke, by file and line, with Lean's replacements for deprecated names and likely new names for removed ones; `adopt` moves the project. |
 | `proved_about`, `spec_coverage`, `explain_declaration` | What the theorems state about a definition, in plain English; which definitions no theorem mentions; any declaration read aloud. |
 | `assurance_report` | What can be relied on, in one report: proved outright, resting on `sorry` or project axioms, trusting compiled code (`native_decide`), rejected, and the trust surface (`implemented_by`, `extern`, `unsafe`, `partial`, `opaque`). Markdown, JSON, SARIF or HTML. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LeanStudio.Core.Projects;
 using LeanStudio.Core.Proofs;
+using LeanStudio.Core.Toolchains;
 using LeanStudio.Core.Workflow;
 using LeanStudio.Lsp;
 
@@ -132,6 +133,60 @@ public sealed partial class MainViewModel
             await ApplyDeprecationRenamesAsync(report.Deprecated);
         }
         return report;
+    }
+
+    /// <summary>
+    /// Try a newer Lean on a copy of the project (for a project with dependencies, whatever updating them brings), and
+    /// show what broke in Output: errors by file, deprecated names with Lean's replacement, and what each name the new
+    /// version no longer has likely became. Then offer to move the project to it, renaming the deprecated names; the
+    /// old lean-toolchain and lake-manifest.json are kept, so Undo Last Dependency Update puts them back.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
+    public async Task TryUpgradeAsync()
+    {
+        if (Project is not LeanProject p || !p.IsLakeProject)
+        {
+            return;
+        }
+        UpgradeReport? report = null;
+        await RunBusyAsync("Trying a newer Lean on a copy of the project…", async ct =>
+        {
+            BottomTab = OutputPanel;
+            report = await UpgradeTrial.RunAsync(p, new UpgradeOptions(),
+                c => Settings.CheckForUpdates ? LeanReleases.LatestStableTagAsync(ReleaseHttp, c) : Task.FromResult<string?>(null),
+                new Progress<string>(Log), ct);
+            foreach (string line in UpgradeTrial.ToMarkdown(report, p.Root).TrimEnd().Split('\n'))
+            {
+                Log(line);
+            }
+        });
+        if (report is not { Built: true, Problem: null } r)
+        {
+            return;
+        }
+        string what = r.Clean ? "The project builds on it with no errors." : $"{r.Errors.Count} error{(r.Errors.Count == 1 ? "" : "s")} to fix afterwards (listed in Output).";
+        if (!await _dialogs.ConfirmAsync($"Use {r.ToToolchain}?",
+                $"{what}\n\nThe project moves to it: lean-toolchain and lake-manifest.json are replaced (Lean ▸ Undo Last Dependency Update puts the old ones back)"
+                + (r.Deprecated.Count > 0 ? $", and {r.Deprecated.Count} use{(r.Deprecated.Count == 1 ? "" : "s")} of deprecated names are renamed as Lean says." : ".")))
+        {
+            return;
+        }
+        await UpgradeTrial.AdoptAsync(p, r, renameDeprecated: false);
+        if (r.Deprecated.Count > 0)
+        {
+            await ApplyDeprecationRenamesAsync(r.Deprecated);
+        }
+        Log($"The project now uses {r.ToToolchain}.");
+        await RunBusyAsync("Building with the new version…", async ct =>
+        {
+            if (p.DependsOnMathlib)
+            {
+                await Lake.GetCacheAsync(p, Log, ct);
+            }
+            var build = await Lake.BuildAsync(p, onLine: Log, ct: ct);
+            TakeBuildOutput(build.Output);
+        });
+        await RestartServerAsync();
     }
 
     /// <summary>Rename every use of a deprecated name to what Lean says to use instead, file by file.</summary>

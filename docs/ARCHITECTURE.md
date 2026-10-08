@@ -177,7 +177,7 @@ written to stdout.
 | Proof tools | `prove`, `extract_lemma`, `ffi_bindings`, `profile` |
 | For Mathlib contributors | `unused_imports`, `sort_imports`, `style_check`, `stale_deprecations`, `suggest_name`, `duplicate_statements`, `project_health`, `sorry_history`, `statement_changes`, `lint`, `heartbeats`, `instances`, `blueprint` |
 | Walkthroughs and search | `explain_declaration`, `export_walkthrough`, `search_mathlib`, and `declaration` and `search_declarations` (the compiled library, through Tenet) |
-| Toolchains | `toolchains` |
+| Toolchains | `toolchains`, `try_upgrade` |
 | The open window | `studio_context`, `studio_show` |
 
 Each tool is a thin wrapper around a Core call on a `Workbench`. Tools take 1-based lines and columns and answer in

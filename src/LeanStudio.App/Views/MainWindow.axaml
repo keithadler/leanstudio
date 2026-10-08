@@ -210,6 +210,7 @@
         <MenuItem Header="Get Mathlib Cache for Open Files" Command="{Binding GetCacheForOpenFilesCommand}" />
         <MenuItem Header="Update Dependencies" Command="{Binding UpdateDependenciesCommand}" />
         <MenuItem Header="Update Mathlib (and see what broke)…" Click="OnUpdateMathlib" />
+        <MenuItem Header="Try a Newer Lean (on a copy)…" Command="{Binding TryUpgradeCommand}" />
         <MenuItem Header="Undo Last Dependency Update" Command="{Binding UndoDependencyUpdateCommand}" />
         <MenuItem Header="Clean Build" Command="{Binding CleanCommand}" />
         <MenuItem Header="Cancel Running Task" Command="{Binding CancelTaskCommand}" />

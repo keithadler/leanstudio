@@ -191,7 +191,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>The open project, or null. Set by <see cref="OpenProjectAsync"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasProject), nameof(ProjectName))]
-    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(TryUpgradeCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private LeanProject? _project;
 
     /// <summary>
@@ -221,7 +221,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// A long task (a build, a clone, fetching a cache…) is running; project tasks cannot start meanwhile.
     /// </summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(TryUpgradeCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private bool _isBusy;
 
     /// <summary>What the running long task is doing, for the status bar.</summary>

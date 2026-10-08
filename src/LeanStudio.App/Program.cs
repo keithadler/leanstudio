@@ -21,7 +21,7 @@ internal static class Program
     public static int Main(string[] args)
     {
         // Answered here, before any window: from a terminal, `leanstudio --help` must print, not open the IDE.
-        if ((args.Contains("--help") || args.Contains("-h")) && !args.Contains("--profile-check") && !args.Contains("--verify"))
+        if ((args.Contains("--help") || args.Contains("-h")) && !args.Contains("--profile-check") && !args.Contains("--verify") && !args.Contains("--try-upgrade"))
         {
             Console.Out.Write(Usage);
             return 0;
@@ -41,6 +41,11 @@ internal static class Program
         if (args.Contains("--profile-check"))
         {
             return Core.Proofs.ProfileCheck.RunCommandLineAsync(args, Console.Out, Console.Error).GetAwaiter().GetResult();
+        }
+        // `LeanStudio --try-upgrade [--to …]` tries a newer Lean on a copy of the project and reports what broke.
+        if (args.Contains("--try-upgrade"))
+        {
+            return Core.Toolchains.UpgradeTrial.RunCommandLineAsync(args, Console.Out, Console.Error).GetAwaiter().GetResult();
         }
         // `LeanStudio --verify [--fail-on …]` builds, re-checks with Tenet and reports what can be relied on: for CI.
         if (args.Contains("--verify"))
@@ -63,6 +68,8 @@ internal static class Program
           leanstudio --verify [...]           re-check the project with Tenet and report what can be relied on:
                                               sorry, axioms, native_decide, the trust surface (for CI;
                                               --verify --help for its options)
+          leanstudio --try-upgrade [...]      try a newer Lean (or Mathlib) on a copy of the project and report
+                                              what broke, with fixes (--try-upgrade --help for its options)
           leanstudio --version                print the version
           leanstudio --help                   print this
 

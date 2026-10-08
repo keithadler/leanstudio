@@ -15,6 +15,12 @@
 - For the whole project, each definition with the theorems about it, and those no theorem mentions: code nothing proved depends on. Instances, structure projections, and definitions of types and propositions are left out.
 - The assurance report lists the definitions no theorem mentions, and `--fail-on unstated` fails CI on them.
 
+**Try a newer Lean before moving to it** (*Lean ▸ Try a Newer Lean (on a copy)…*, `leanstudio --try-upgrade`, and `try_upgrade` over MCP):
+- A copy of the project, under `.lake/leanstudio/upgrade`, is moved to the newest stable Lean (or the one named with `--to`; for a project with dependencies, to what `lake update` brings and its Lean) and built. The project is not touched.
+- What broke comes back at the project's own files and lines: the errors; deprecated names, with Lean's replacement; and for each name the new version no longer has, the names it does have that it likely became, closest first. A candidate whose statement is exactly the old name's (read from the project's current build) comes first, marked *same statement*: a rename, not a change.
+- Then the project moves only if asked: `lean-toolchain` and `lake-manifest.json` are replaced (backed up where *Undo Last Dependency Update* finds them) and deprecated names are renamed. From a terminal, `--adopt`.
+- Exit code 0 when it builds cleanly, 1 when something broke, so a scheduled CI job can say when a new Lean breaks the project.
+
 **Fixes**:
 - Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
 
