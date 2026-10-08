@@ -42,6 +42,17 @@ public sealed class JunkValuesTests
     }
 
     [Fact]
+    public void SaysWhenATheoremElsewhereProvesTheGuard()
+    {
+        const string text = "def values (k : ℕ) : Set ℝ := {z | z = 0 ∨ z = k}\n\ndef norm (k : ℕ) : ℝ := sSup (values k)\n\ntheorem values_nonempty (k : ℕ) : (values k).Nonempty := ⟨0, Or.inl rfl⟩\n";
+        StyleProblem hit = Assert.Single(JunkValues.Find(text));
+        Assert.Equal("junk-infsup", hit.Rule);
+        Assert.Contains("`values` is proved at line 5", hit.Message, StringComparison.Ordinal);
+        // Without that theorem there is no note.
+        Assert.DoesNotContain("is proved at line", JunkValues.Find("def norm (k : ℕ) : ℝ := sSup (values k)\n").Single().Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReportsEachLineOncePerRule()
     {
         Assert.Equal(["0:junk-infsup"], Rules("def a (s t : Set ℝ) : ℝ := sSup s + sSup t\n"));

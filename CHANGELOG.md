@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
-- **Junk values** (`junk_values` over MCP): lists the places where Lean quietly returns a made-up value instead of failing, so a definition or statement can compile while describing something that does not exist. `sInf`, `sSup`, `iInf` and `iSup` of an empty set (0 on ℕ and ℝ), and `xs[i]!`, `head!`, `get!`, which stand in `default`; with `division=true`, also division by a variable that no hypothesis says is nonzero (`x / 0 = 0`), which is off by default because on Mathlib it mostly finds identities meant to hold at zero. Read from the text, so nothing has to be built first; for a theorem only its statement is read, not its proof. It cannot see types, so each hit is a place to look, not a bug, and truncated natural subtraction (`2 - 3 = 0` on ℕ) is not covered. Prompted by *Navier–Stokes lost in translation* (Bastounis, Circelli and Hansen), whose Example 4.2 is an `sInf` over an empty set.
+**Junk values** (*Lean ▸ Find Junk Values*, and `junk_values` over MCP): lists the places where Lean quietly returns a made-up value instead of failing, so a definition or statement can compile while describing something that does not exist. Prompted by *Navier–Stokes lost in translation* (Bastounis, Circelli and Hansen), whose Example 4.2 is an `sInf` over an empty set, which Lean takes to be 0.
+- `sInf`, `sSup`, `iInf`, `iSup`, `⨅` and `⨆` of a set that may be empty or unbounded (0 on ℕ and ℝ), and `xs[i]!`, `head!`, `get!`, which panic when compiled but are `default` to Lean's proofs, so a theorem about them says nothing about the empty list or an out-of-range index.
+- Division by a variable that no hypothesis says is nonzero (`x / 0 = 0`). Off over MCP unless `division=true` (the menu command includes it): on Mathlib it mostly finds identities meant to hold at zero, so it is for application proofs.
+- Left alone: `ENNReal` and the other complete lattices, where the sup of nothing is a real answer; and a declaration that carries a `Nonempty`, `BddAbove` or `IsCompact` hypothesis. When a theorem elsewhere in the file proves the guard (a `jetValues_nonempty` for `jetValues`), the hit says so and names the line.
+- Read from the text, so nothing has to be built first. For a theorem only its statement is read, not its proof. It cannot see types, so each hit is a place to look, not a bug, and truncated natural subtraction (`2 - 3 = 0` on ℕ) is not covered.
+- Run over OpenAI's Navier–Stokes and Euler formalization it lists 9 places to look, over 2,659 files.
 
 ## 1.1.1
 

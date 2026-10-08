@@ -79,7 +79,18 @@ public static class JunkValues
                     end = cut;
                 }
             }
+            int before = found.Count;
             Scan(norm, code, from, end, found, divisions);
+            if (!statementOnly)
+            {
+                for (int k = before; k < found.Count; k++)
+                {
+                    if (found[k].Rule == "junk-infsup")
+                    {
+                        found[k] = WithGuardNote(found[k], lines, norm, code, starts, s);
+                    }
+                }
+            }
         }
 
         List<StyleProblem> unique = [.. found.DistinctBy(p => (p.Line, p.Rule))];
@@ -87,6 +98,40 @@ public static class JunkValues
         found.AddRange(unique);
         found.Sort((a, b) => a.Line != b.Line ? a.Line.CompareTo(b.Line) : string.CompareOrdinal(a.Rule, b.Rule));
         return found;
+    }
+
+    private static readonly Regex Identifier = new(@"[A-Za-z_][\w.']{2,}", RegexOptions.Compiled);
+    private static readonly HashSet<string> Boring = new(StringComparer.Ordinal) { "fun", "Set", "Nat", "Real", "Finset", "Fin", "def", "let", "then", "else", "sInf", "sSup", "iInf", "iSup" };
+
+    /// <summary>
+    /// A junk-prone definition is often fine because a theorem elsewhere in the file proves its set nonempty or bounded
+    /// (<c>jetValues_nonempty</c>). Say so on the hit, naming the line, so the reader does not have to hunt for it.
+    /// </summary>
+    private static StyleProblem WithGuardNote(StyleProblem hit, string[] lines, string norm, bool[] code, List<(int Line, int Offset, string Kind)> starts, int own)
+    {
+        string line = lines[hit.Line];
+        int at = Math.Max(0, line.IndexOfAny(['s', 'i', '⨅', '⨆']));
+        foreach (Match id in Identifier.Matches(line[at..]))
+        {
+            if (Boring.Contains(id.Value))
+            {
+                continue;
+            }
+            for (int t = 0; t < starts.Count; t++)
+            {
+                if (t == own || starts[t].Kind is not ("theorem" or "lemma"))
+                {
+                    continue;
+                }
+                int to = t + 1 < starts.Count ? starts[t + 1].Offset : norm.Length;
+                string block = norm.Substring(starts[t].Offset, to - starts[t].Offset);
+                if (NonemptyGuard.IsMatch(block) && Regex.IsMatch(block, $@"(?<![\w.']){Regex.Escape(id.Value)}(?![\w'])"))
+                {
+                    return hit with { Message = hit.Message + $" A nonemptiness or boundedness theorem for `{id.Value}` is proved at line {starts[t].Line + 1}, so this may be fine." };
+                }
+            }
+        }
+        return hit;
     }
 
     private static bool IsTopLevelCommand(string line) =>

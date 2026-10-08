@@ -82,6 +82,12 @@ internal static class CommandChecks
             await Run(vm.WrapLongCommentsCommand);
             Check(Text().Split('\n').All(l => l.Length <= 100) && Text().Contains("\n-- word", StringComparison.Ordinal), "Wrap Long Comment Lines breaks a long comment");
 
+            Console.WriteLine("junk values");
+            Set("noncomputable def n_e : Nat := sInf {n : Nat | n * n = 2}\n\ndef first (xs : List Nat) : Nat := xs.head!\n");
+            await Run(vm.FindJunkValuesCommand);
+            Check(Output().Contains("`sInf` returns a made-up value", StringComparison.Ordinal) && Output().Contains("head!", StringComparison.Ordinal),
+                "Find Junk Values lists sInf of a possibly empty set and head!");
+
             Console.WriteLine("proof clean-ups");
             Set("theorem t : P := by\n  intro x\n  intro y\n  rw [a]\n  rw [b]\n  exact h\n");
             await Run(vm.MergeConsecutiveTacticsCommand);

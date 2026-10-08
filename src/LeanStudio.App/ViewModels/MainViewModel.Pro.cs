@@ -649,6 +649,31 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
+    /// List, in Output, the places in the active file where Lean quietly returns a made-up value instead of failing
+    /// (<c>sInf</c> of an empty set, <c>xs[i]!</c>, division by something that may be zero), so a definition or statement can
+    /// compile while describing something that does not exist. Read from the text; each hit is a place to look, not a bug.
+    /// </summary>
+    [RelayCommand]
+    public void FindJunkValues()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        IReadOnlyList<StyleProblem> hits = JunkValues.Find(d.Document.Text, divisions: true);
+        if (hits.Count == 0)
+        {
+            Log("Junk values: none found.");
+            return;
+        }
+        foreach (StyleProblem p in hits)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log($"Junk values: {hits.Count} place{(hits.Count == 1 ? "" : "s")} to look at (above). These are places to look, not bugs.");
+    }
+
+    /// <summary>
     /// Suggest a Mathlib-style name for the theorem at the cursor, worked out from its statement (<c>a + b = b + a</c> is
     /// <c>add_comm</c>), and say whether it matches the one it has. The name is only a starting point; Rename Symbol applies it.
     /// </summary>
