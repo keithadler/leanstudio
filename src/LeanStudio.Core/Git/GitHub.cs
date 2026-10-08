@@ -151,4 +151,52 @@ public static partial class GitHub
         File.WriteAllText(path, LeanActionWorkflow + "\n");
         return path;
     }
+
+    /// <summary>
+    /// A GitHub Actions workflow that runs Lean Studio's assurance check on every push and pull request: it builds,
+    /// re-checks every declaration with Tenet, fails on <c>sorry</c> or a rejection, comments the report on pull
+    /// requests and shows each finding on its line through code scanning. Pinned to Lean Studio <paramref name="version"/>.
+    /// </summary>
+    public static string AssuranceWorkflow(string version) => $$"""
+        name: Lean assurance
+
+        on:
+          push:
+          pull_request:
+          workflow_dispatch:
+
+        permissions:
+          contents: read
+          pull-requests: write
+          security-events: write
+
+        jobs:
+          verify:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v4
+              - uses: keithadler/leanstudio@v{{version}}
+                with:
+                  version: "{{version}}"
+                  # What fails the check: rejected, sorry, axiom, native, implemented_by, extern, unsafe, partial, opaque.
+                  fail-on: rejected,sorry
+                  sarif: true
+        """;
+
+    /// <summary>
+    /// Add <see cref="AssuranceWorkflow"/> to a project as <c>.github/workflows/lean_assurance.yml</c> unless a
+    /// <c>.yml</c> workflow there already uses Lean Studio's action; returns the file written, or null.
+    /// </summary>
+    public static string? AddAssuranceWorkflow(string projectRoot, string version)
+    {
+        string dir = Path.Combine(projectRoot, ".github", "workflows");
+        if (Directory.Exists(dir) && Directory.EnumerateFiles(dir, "*.yml").Any(f => File.ReadAllText(f).Contains("keithadler/leanstudio@", StringComparison.Ordinal)))
+        {
+            return null;
+        }
+        Directory.CreateDirectory(dir);
+        string path = Path.Combine(dir, "lean_assurance.yml");
+        File.WriteAllText(path, AssuranceWorkflow(version) + "\n");
+        return path;
+    }
 }

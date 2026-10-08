@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+**An assurance report, and a check for CI** (*Tenet ▸ Assurance Report*, `leanstudio --verify`, the GitHub Action, and `assurance_report` over MCP; see *An assurance report, and a check for CI* in the README):
+- One page that says what a project's proofs can be relied on for: what is proved outright, what rests on `sorry` or on axioms the project introduces (and how much rests on each), which proofs trust compiled code, what Tenet rejects, and the trust surface.
+- **Proofs that trust compiled code** are found whichever way Lean recorded them: the axiom `native_decide` and `bv_decide` add under `_native` (Lean 4.24 and later), `Lean.ofReduceBool`, `Lean.ofReduceNat` and `Lean.trustCompiler`. Tenet refusing to run compiled code counts here, not as a rejection: such a proof is not wrong, it is one no external kernel can follow.
+- **The trust surface**, read from the build's constants and attribute tables: every `@[implemented_by]`, `@[extern]`, `unsafe`, `partial` and `opaque` declaration, at its line, with what it means for someone relying on the project.
+- In the app, the report opens in the browser as a self-contained page that prints to PDF, and is written as HTML, JSON, SARIF and Markdown to `.lake/assurance`.
+- **`leanstudio --verify`** builds, makes the report, prints it as Markdown (and adds it to the GitHub Actions job summary) and fails (exit 1) when the policy is broken: by default a rejection or a `sorry`. `--fail-on` chooses from `rejected`, `sorry`, `axiom`, `native`, `implemented_by`, `extern`, `unsafe`, `partial` and `opaque`; `--allow-axiom` accepts axioms the project documents; `--json`, `--sarif`, `--html` and `--badge` (a shields.io endpoint) write the other formats.
+- **A GitHub Action** (`uses: keithadler/leanstudio@v…`): installs Lean and Lean Studio, fetches Mathlib's cache when the project uses Mathlib, runs the check, comments the report on the pull request (one comment, updated on every push), uploads SARIF so each finding shows on its line, and keeps the reports as an artifact. *Git ▸ Add Assurance Check Workflow* writes the workflow.
+
+**Fixes**:
+- Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
+
 ## 1.0.0
 
 **For projects the size of Fermat's Last Theorem or Navier–Stokes** (the *Big Projects* menu, the command palette and MCP tools; see *Very large projects* in the README): a declaration-level dependency graph of the whole project, built from text in about a second for 36,000 declarations, answers:

@@ -168,12 +168,12 @@ protocol versions 2025-06-18, 2025-03-26 and 2024-11-05. Requests run concurrent
 quick question, and responses are written one line at a time under a lock. Nothing except protocol messages is
 written to stdout.
 
-[`LeanTools.cs`](../src/LeanStudio.Mcp/LeanTools.cs) defines the 29 tools, in the order clients list them:
+[`LeanTools.cs`](../src/LeanStudio.Mcp/LeanTools.cs) defines the tools, in the order clients list them:
 
 | Area | Tools |
 |---|---|
 | Checking and reading a file | `project_info`, `check_file`, `goals`, `proof_steps`, `hover`, `suggestions`, `references`, `run_lean` |
-| Building and Tenet | `build`, `verify`, `axioms`, `why_not_proved`, `project_map` |
+| Building and Tenet | `build`, `verify`, `assurance_report`, `axioms`, `why_not_proved`, `project_map` |
 | Proof tools | `prove`, `extract_lemma`, `ffi_bindings`, `profile` |
 | For Mathlib contributors | `unused_imports`, `sort_imports`, `style_check`, `stale_deprecations`, `suggest_name`, `duplicate_statements`, `project_health`, `sorry_history`, `statement_changes`, `lint`, `heartbeats`, `instances`, `blueprint` |
 | Walkthroughs and search | `export_walkthrough`, `search_mathlib`, and `declaration` and `search_declarations` (the compiled library, through Tenet) |

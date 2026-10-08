@@ -6,7 +6,8 @@ namespace LeanStudio.App;
 
 /// <summary>
 /// The entry point: opens the IDE window, or with <c>--mcp</c> runs as an MCP server over standard input and output,
-/// or with <c>--profile-check</c> runs the profiler's regression check and exits.
+/// or with <c>--profile-check</c> runs the profiler's regression check and exits, or with <c>--verify</c> makes the
+/// assurance report and exits.
 /// </summary>
 internal static class Program
 {
@@ -20,7 +21,7 @@ internal static class Program
     public static int Main(string[] args)
     {
         // Answered here, before any window: from a terminal, `leanstudio --help` must print, not open the IDE.
-        if ((args.Contains("--help") || args.Contains("-h")) && !args.Contains("--profile-check"))
+        if ((args.Contains("--help") || args.Contains("-h")) && !args.Contains("--profile-check") && !args.Contains("--verify"))
         {
             Console.Out.Write(Usage);
             return 0;
@@ -41,6 +42,11 @@ internal static class Program
         {
             return Core.Proofs.ProfileCheck.RunCommandLineAsync(args, Console.Out, Console.Error).GetAwaiter().GetResult();
         }
+        // `LeanStudio --verify [--fail-on …]` builds, re-checks with Tenet and reports what can be relied on: for CI.
+        if (args.Contains("--verify"))
+        {
+            return Core.Verification.Assurance.RunCommandLineAsync(args, Console.Out, Console.Error).GetAwaiter().GetResult();
+        }
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -54,6 +60,9 @@ internal static class Program
           leanstudio --mcp [--project DIR]    run the MCP server for AI assistants on standard input and output
           leanstudio --profile-check [...]    fail when a declaration got costlier than at a revision (for CI;
                                               --profile-check --help for its options)
+          leanstudio --verify [...]           re-check the project with Tenet and report what can be relied on:
+                                              sorry, axioms, native_decide, the trust surface (for CI;
+                                              --verify --help for its options)
           leanstudio --version                print the version
           leanstudio --help                   print this
 

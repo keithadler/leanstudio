@@ -1132,6 +1132,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Update Dependencies", "", Cmd(_vm.UpdateDependenciesCommand));
         yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
         yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
+        yield return ("Tenet: Assurance Report", "", Cmd(_vm.AssuranceReportCommand));
         yield return ("Lean: Run Task…", m + "⇧B", RunTaskAsync);
         yield return ("Lean: Restart File (rebuild its imports)", "", Cmd(_vm.RestartFileCommand));
         yield return ("Lean: Install Lean (elan and the latest stable Lean)", "", Cmd(_vm.InstallLeanCommand));
@@ -1186,6 +1187,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("GitHub: Create Pull Request…", "", Cmd(_vm.SourceControl.CreatePullRequestCommand));
         yield return ("GitHub: Open on GitHub", "", Cmd(_vm.SourceControl.OpenOnGitHubCommand));
         yield return ("GitHub: Add Lean CI Workflow", "", Cmd(_vm.SourceControl.AddCiWorkflowCommand));
+        yield return ("GitHub: Add Assurance Check Workflow", "", Cmd(_vm.SourceControl.AddAssuranceWorkflowCommand));
         yield return ("AI: Ask AI to Prove This Sorry (Lean checks every suggestion)", m + "⌥A", Cmd(_vm.AskAiToProveCommand));
         yield return ("AI: Explain This (the error or goal at the cursor)", "", Cmd(_vm.ExplainWithAiCommand));
         yield return ("AI: Ask AI…", m + "⌥K", Cmd(_vm.AskAiCommand));

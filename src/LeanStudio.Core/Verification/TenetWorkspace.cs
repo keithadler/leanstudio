@@ -68,6 +68,29 @@ public sealed record VerificationReport(
 /// <param name="Total">How many declaration groups this module has.</param>
 public sealed record VerificationProgress(string Module, int ModuleIndex, int ModuleCount, int Done, int Total);
 
+/// <summary>A way a declaration widens what has to be trusted beyond the proofs themselves.</summary>
+public enum TrustKind
+{
+    /// <summary><c>@[implemented_by]</c>: the code that runs is another definition, not the one proofs are about.</summary>
+    ImplementedBy,
+    /// <summary><c>@[extern]</c>: the code that runs is written in C (or another language), not the one proofs are about.</summary>
+    Extern,
+    /// <summary><c>unsafe</c>: outside Lean's logic, so nothing can be proved about it.</summary>
+    Unsafe,
+    /// <summary><c>partial</c>: proofs see an opaque constant, never the recursive body that runs.</summary>
+    Partial,
+    /// <summary><c>opaque</c>: proofs know its type and nothing else.</summary>
+    Opaque,
+}
+
+/// <summary>One declaration of the project that widens the trust surface (see <see cref="TenetWorkspace.TrustSurface"/>).</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Module">The module that defines it.</param>
+/// <param name="Kind">How it widens what has to be trusted.</param>
+/// <param name="Line">The 1-based line of its keyword in the source file, or <see langword="null"/> when unknown.</param>
+/// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
+public sealed record TrustMark(string Name, string Module, TrustKind Kind, int? Line, string? SourceFile);
+
 /// <summary>A declaration found by <see cref="TenetWorkspace.Search"/>: its full name and the module that defines it.</summary>
 /// <param name="Name">The declaration's full name.</param>
 /// <param name="Module">The module that defines it.</param>
@@ -960,6 +983,93 @@ public sealed class TenetWorkspace : IDisposable
             }
         }
         return null;
+    }
+
+    // ---- trust surface ----
+
+    private static readonly TenetName ImplementedByAttribute = TenetName.Of("Lean", "Compiler", "implementedByAttr");
+    private static readonly TenetName ExternAttribute = TenetName.Of("Lean", "externAttr");
+
+    /// <summary>
+    /// The project's declarations that widen what has to be trusted beyond its proofs: code that runs something
+    /// other than what it states (<c>@[implemented_by]</c>, <c>@[extern]</c>), code outside the logic
+    /// (<c>unsafe</c>), and definitions whose bodies no proof can see (<c>partial</c>, <c>opaque</c>). Read from
+    /// the <c>.olean</c> files' constants and attribute tables, so the project must be built; sorted by module and
+    /// line. Proofs that trust compiled code (<c>native_decide</c>) are found by verification, as an assumption.
+    /// </summary>
+    public IReadOnlyList<TrustMark> TrustSurface(CancellationToken ct = default)
+    {
+        lock (_lock)
+        {
+            var marks = new Dictionary<(string, TrustKind), TrustMark>();
+            foreach (TenetName module in OwnModules.Where(_checker.Modules.ContainsKey))
+            {
+                OleanModule om = _checker.Modules[module];
+                string[]? lines = null;
+                void Mark(TenetName name, TrustKind kind)
+                {
+                    string owner = UserFacingOwner(name.ToString());
+                    if (marks.ContainsKey((owner, kind)))
+                    {
+                        return;
+                    }
+                    TenetName ownerName = TenetName.Parse(owner);
+                    int? line = (om.SourceRangeOf(ownerName) ?? om.SourceRangeOf(name))?.Line is int l
+                        ? Proofs.ProofSteps.DeclarationLine(lines ??= SourceFileOf(module.ToString()) is string f ? File.ReadAllLines(f) : [], l)
+                        : null;
+                    marks[(owner, kind)] = new TrustMark(owner, module.ToString(), kind, line, SourceFileOf(module.ToString()));
+                }
+                foreach (TenetName n in om.KeysInExtension(ImplementedByAttribute))
+                {
+                    Mark(n, TrustKind.ImplementedBy);
+                }
+                foreach (TenetName n in om.KeysInExtension(ExternAttribute))
+                {
+                    Mark(n, TrustKind.Extern);
+                }
+                var partial = new HashSet<string>(StringComparer.Ordinal);
+                var opaque = new List<TenetName>();
+                foreach (TenetName n in om.ConstantNames)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (om.FindConstant(n) is not ConstantInfo c)
+                    {
+                        continue;
+                    }
+                    string s = n.ToString();
+                    // `partial def f` is an opaque `f` the logic sees, and `f._unsafe_rec`, the recursive body that runs.
+                    // Lean compiles every recursive definition through `f._unsafe_rec`, structural and well-founded
+                    // ones too, so the helper alone says nothing: only an opaque `f` beside it is partial.
+                    if (s.EndsWith("._unsafe_rec", StringComparison.Ordinal) || c is DefinitionInfo { Safety: DefinitionSafety.Partial })
+                    {
+                        string owner = s.EndsWith("._unsafe_rec", StringComparison.Ordinal) ? s[..^"._unsafe_rec".Length] : s;
+                        if (owner != s && om.FindConstant(TenetName.Parse(owner)) is OpaqueInfo)
+                        {
+                            partial.Add(UserFacingOwner(owner));
+                            Mark(TenetName.Parse(owner), TrustKind.Partial);
+                        }
+                    }
+                    else if (c.IsUnsafe && IsUserFacing(s))
+                    {
+                        Mark(n, TrustKind.Unsafe);
+                    }
+                    else if (c is OpaqueInfo && IsUserFacing(s))
+                    {
+                        opaque.Add(n);
+                    }
+                }
+                foreach (TenetName n in opaque.Where(n => !partial.Contains(n.ToString())))
+                {
+                    Mark(n, TrustKind.Opaque);
+                }
+            }
+            return marks.Values
+                .OrderBy(m => m.Module, StringComparer.Ordinal)
+                .ThenBy(m => m.Line ?? int.MaxValue)
+                .ThenBy(m => m.Name, StringComparer.Ordinal)
+                .ThenBy(m => m.Kind)
+                .ToList();
+        }
     }
 
     // ---- verification ----

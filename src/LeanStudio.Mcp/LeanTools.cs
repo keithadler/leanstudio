@@ -375,6 +375,42 @@ public static class LeanTools
                 return FormatVerification(r);
             }),
 
+        new("assurance_report",
+            "What the project's proofs can be relied on for, in one report: Tenet re-checks every declaration and the report says which are proved outright, which rest on sorry or on axioms the project introduces, which proofs trust compiled code (native_decide), which Tenet rejects, and every @[implemented_by], @[extern], unsafe, partial and opaque declaration (the trust surface). Run build first. The same report as `leanstudio --verify` in CI.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("format", "string", "markdown (default), json, sarif or html.", false),
+                   ("fail_on", "string", "Comma-separated categories that fail the report: rejected, sorry, axiom, native, implemented_by, extern, unsafe, partial, opaque, all or none (default rejected,sorry).", false),
+                   ("allow_axioms", "string[]", "Axioms the project documents and accepts; they do not count as failures.", false)),
+            async (a, ct) =>
+            {
+                ProjectSession s = bench.Session(OptStr(a, "project"));
+                TenetWorkspace ws = s.Tenet();
+                if (ws.OwnModules.Count == 0)
+                {
+                    throw new ToolException("nothing built yet: call build first");
+                }
+                AssurancePolicy policy;
+                try
+                {
+                    policy = new AssurancePolicy(
+                        OptStr(a, "fail_on") is string f ? AssurancePolicy.ParseCategories(f) : AssurancePolicy.Default.FailOn,
+                        a["allow_axioms"] is JsonArray arr ? arr.Select(n => n!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal));
+                }
+                catch (FormatException e)
+                {
+                    throw new ToolException(e.Message);
+                }
+                AssuranceReport r = await Assurance.RunAsync(ws, policy, ct: ct);
+                return (OptStr(a, "format") ?? "markdown") switch
+                {
+                    "json" => Assurance.ToJson(r),
+                    "sarif" => Assurance.ToSarif(r),
+                    "html" => Assurance.ToHtml(r),
+                    "markdown" or "md" => Assurance.ToMarkdown(r, limit: 200).TrimEnd(),
+                    string other => throw new ToolException($"format '{other}' is not markdown, json, sarif or html"),
+                };
+            }),
+
         new("axioms",
             "Every axiom a declaration depends on, transitively, computed by Tenet from the compiled library (like #print axioms). sorryAx means it rests on sorry.",
             Schema(("name", "string", "Fully qualified declaration name, e.g. Nat.add_comm.", true),

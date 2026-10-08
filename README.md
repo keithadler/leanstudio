@@ -260,6 +260,40 @@ The panel also shows the **expected type** of the term under the cursor and the 
 
 A green build tells you Lean accepted the file. These badges tell you whether each theorem is actually proved, and whether a second kernel agrees.
 
+### An assurance report, and a check for CI
+
+**Tenet ▸ Assurance Report** answers the question a reviewer, an auditor or a manager asks of a proof project: what can be relied on? Tenet re-checks every declaration, and one page says:
+
+- what is **proved outright** (nothing beyond Lean's three standard axioms),
+- what **rests on `sorry`**, and what **rests on axioms the project introduces**, with how much of the project rests on each,
+- which proofs **trust compiled code**: `native_decide` and `bv_decide` (whose axioms Lean adds for you, under `_native`), `Lean.ofReduceBool` and `Lean.trustCompiler`. No kernel checks these; Lean's compiler is trusted instead,
+- what **Tenet rejects**,
+- and the **trust surface**: every `@[implemented_by]` and `@[extern]` (the code that runs is not the definition the proofs are about), `unsafe` (outside the logic), `partial` (proofs see an opaque constant, never the body that runs) and `opaque` declaration, each at its line.
+
+The report opens in the browser as one self-contained page (print it to PDF), and is also written as JSON, SARIF and Markdown to `.lake/assurance`. AI assistants have it as `assurance_report`.
+
+In CI, `leanstudio --verify` builds the project, makes the same report, prints it as Markdown (and adds it to the GitHub Actions job summary), and fails when the policy is broken. By default that is a rejection or a `sorry`; `--fail-on` picks from `rejected`, `sorry`, `axiom`, `native`, `implemented_by`, `extern`, `unsafe`, `partial` and `opaque`, and `--allow-axiom` accepts axioms the project documents (Fermat's Last Theorem's `knownin1980s`, say). `--json`, `--sarif`, `--html` and `--badge` write the other formats; `--verify --help` lists them all. Exit code 0 passed, 1 failed, 2 could not run.
+
+The GitHub Action does all of it, and comments the report on each pull request, updated in place on every push:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write     # the comment
+  security-events: write   # SARIF: each finding on its line, in the pull request's diff
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: keithadler/leanstudio@v1.1.0
+        with:
+          fail-on: rejected,sorry
+          sarif: true
+```
+
+**Git ▸ Add Assurance Check Workflow** writes that file for you. The action fetches Mathlib's build cache when the project uses Mathlib, keeps the reports as an artifact, and can write a [shields.io endpoint badge](https://shields.io/badges/endpoint-badge) (`badge: path/to/badge.json`): "proofs: 412 proved, 3 sorry". A green build says the code compiles; this says the proofs still check.
+
 ### A declaration navigator that reads the compiled library
 
 ![Searching declarations; statement, docs, axioms and dependencies of the selection](docs/images/navigator.png)
@@ -506,6 +540,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `references` | Every use of a name across the project. |
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
+| `assurance_report` | What can be relied on, in one report: proved outright, resting on `sorry` or project axioms, trusting compiled code (`native_decide`), rejected, and the trust surface (`implemented_by`, `extern`, `unsafe`, `partial`, `opaque`). Markdown, JSON, SARIF or HTML. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
 | `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. When nothing works, it looks for a counterexample. |
 | `why_not_proved` | For a theorem that rests on `sorry` or an axiom, the chain of lemmas down to it, with file and line. |

@@ -497,4 +497,23 @@ public sealed partial class SourceControlViewModel : ObservableObject
         _log(Status);
         await RefreshAsync();
     }
+
+    /// <summary>
+    /// Add a GitHub Actions workflow that runs the assurance check (<c>leanstudio --verify</c>) on every push and pull
+    /// request, unless there is one. Not committed.
+    /// </summary>
+    [RelayCommand]
+    private async Task AddAssuranceWorkflowAsync()
+    {
+        if (Repository is not GitRepository repo)
+        {
+            return;
+        }
+        string? written = GitHub.AddAssuranceWorkflow(repo.Root, Services.Credits.Version);
+        Status = written is null
+            ? "The project already has a workflow that uses Lean Studio's assurance check."
+            : $"Added {System.IO.Path.GetRelativePath(repo.Root, written)}. Commit and push it: every push and pull request is then re-checked with Tenet, and fails on sorry.";
+        _log(Status);
+        await RefreshAsync();
+    }
 }

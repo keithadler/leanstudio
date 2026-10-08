@@ -191,7 +191,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>The open project, or null. Set by <see cref="OpenProjectAsync"/>.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle), nameof(HasProject), nameof(ProjectName))]
-    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private LeanProject? _project;
 
     /// <summary>
@@ -221,7 +221,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// A long task (a build, a clone, fetching a cache…) is running; project tasks cannot start meanwhile.
     /// </summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BuildCommand), nameof(VerifyCommand), nameof(AssuranceReportCommand), nameof(GetMathlibCacheCommand), nameof(UpdateDependenciesCommand), nameof(CleanCommand))]
     private bool _isBusy;
 
     /// <summary>What the running long task is doing, for the status bar.</summary>
@@ -1473,17 +1473,18 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var started = DateTimeOffset.Now;
         var progress = new Progress<VerificationProgress>(p =>
         {
-            double overall = p.ModuleCount == 0 ? 0 : (p.ModuleIndex + (p.Total == 0 ? 0 : p.Done / (double)p.Total)) / p.ModuleCount;
+            // Tenet numbers modules from 1.
+            double overall = p.ModuleCount == 0 ? 0 : (p.ModuleIndex - 1 + (p.Total == 0 ? 0 : p.Done / (double)p.Total)) / p.ModuleCount;
             Verification.Progress = 100.0 * overall;
             TimeSpan elapsed = DateTimeOffset.Now - started;
             string left = overall > 0.05 && elapsed > TimeSpan.FromSeconds(20)
                 ? " · about " + Core.Workflow.TaskProgress.Format(TimeSpan.FromSeconds(elapsed.TotalSeconds * (1 - overall) / overall)) + " left" : "";
-            Verification.ProgressText = $"{p.Module}  (module {p.ModuleIndex + 1} of {p.ModuleCount}, {p.Done}/{p.Total} here){left}";
+            Verification.ProgressText = $"{p.Module}  (module {p.ModuleIndex} of {p.ModuleCount}, {p.Done}/{p.Total} here){left}";
             HasBusyFraction = true;
             BusyFraction = overall;
             BusyPercent = $"{Math.Floor(overall * 100):0}%";
-            BusyShort = $"module {p.ModuleIndex + 1} of {p.ModuleCount}{left}";
-            BusyDetail = $"module {p.ModuleIndex + 1} of {p.ModuleCount} · {p.Module}{left}";
+            BusyShort = $"module {p.ModuleIndex} of {p.ModuleCount}{left}";
+            BusyDetail = $"module {p.ModuleIndex} of {p.ModuleCount} · {p.Module}{left}";
             BusyElapsed = "Running for " + Core.Workflow.TaskProgress.Format(elapsed);
         });
         _verifyCts?.Cancel();
@@ -1516,6 +1517,64 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
             Verification.IsRunning = false;
             Verification.ProgressText = "";
             EndProgress("Tenet's verification", cancelled: stopped);
+            IsBusy = false;
+            BusyText = "";
+        }
+    }
+
+    /// <summary>
+    /// Re-check the project with Tenet and write the assurance report: what is proved outright, what rests on sorry or
+    /// on the project's axioms, which proofs trust compiled code, and the trust surface. The report goes to Output as
+    /// Markdown and to <c>.lake/assurance</c> as HTML (opened in the browser, to read or print to PDF), JSON, SARIF
+    /// and Markdown: the same files <c>leanstudio --verify</c> writes in CI.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunProjectTask))]
+    private async Task AssuranceReportAsync()
+    {
+        if (!await TenetIsCurrentAsync())
+        {
+            await ReopenTenetAsync();
+        }
+        if (Project is null || _tenet is not TenetWorkspace ws || ws.OwnModules.Count == 0)
+        {
+            Log("Assurance report: nothing built yet. Build the project first (Lean ▸ Build).");
+            return;
+        }
+        IsBusy = true;
+        BusyText = "Making the assurance report…";
+        BeginProgress();
+        _progressReader = null;
+        bool stopped = false;
+        try
+        {
+            AssuranceReport r = await Assurance.RunAsync(ws, AssurancePolicy.Default);
+            string dir = Path.Combine(Project.Root, ".lake", "assurance");
+            Directory.CreateDirectory(dir);
+            string html = Path.Combine(dir, "assurance-report.html");
+            await File.WriteAllTextAsync(html, Assurance.ToHtml(r));
+            await File.WriteAllTextAsync(Path.Combine(dir, "assurance-report.json"), Assurance.ToJson(r));
+            await File.WriteAllTextAsync(Path.Combine(dir, "assurance-report.sarif"), Assurance.ToSarif(r));
+            string markdown = Assurance.ToMarkdown(r);
+            await File.WriteAllTextAsync(Path.Combine(dir, "assurance-report.md"), markdown);
+            foreach (string line in markdown.TrimEnd().Split('\n'))
+            {
+                Log(line);
+            }
+            Log($"Assurance report written to {dir} (HTML, JSON, SARIF and Markdown).");
+            await _dialogs.LaunchAsync(new Uri(html));
+        }
+        catch (OperationCanceledException)
+        {
+            stopped = true;
+            Log("Assurance report: cancelled.");
+        }
+        catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            Log("Assurance report: could not finish: " + e.Message);
+        }
+        finally
+        {
+            EndProgress("The assurance report", cancelled: stopped);
             IsBusy = false;
             BusyText = "";
         }

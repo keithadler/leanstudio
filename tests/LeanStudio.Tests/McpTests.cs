@@ -42,6 +42,7 @@ public sealed class McpTests
         Assert.Contains("check_file", names);
         Assert.Contains("goals", names);
         Assert.Contains("verify", names);
+        Assert.Contains("assurance_report", names);
         Assert.Contains("studio_context", names);
         Assert.Contains("prove", names);
         Assert.Contains("search_mathlib", names);
@@ -227,6 +228,15 @@ public sealed class McpTests
         Assert.Contains("3 verified", verify, StringComparison.Ordinal);
         Assert.Contains("unfinished (Proofs.Basic:20) rests on sorry", verify, StringComparison.Ordinal);
         Assert.Contains("em' (Proofs.Basic:13) is an axiom the project introduces", verify, StringComparison.Ordinal);
+
+        var (assurance, assuranceErr) = await CallAsync(server, "assurance_report", new JsonObject());
+        Assert.False(assuranceErr, assurance);
+        Assert.Contains("❌ Failed: sorry (1).", assurance, StringComparison.Ordinal);
+        Assert.Contains("| `em'` | ", assurance, StringComparison.Ordinal);
+        var (lenient, _) = await CallAsync(server, "assurance_report", new JsonObject { ["fail_on"] = "rejected", ["format"] = "json" });
+        Assert.Contains("\"passed\": true", lenient, StringComparison.Ordinal);
+        var (badFormat, badFormatErr) = await CallAsync(server, "assurance_report", new JsonObject { ["format"] = "pdf" });
+        Assert.True(badFormatErr, badFormat);
 
         var (axioms, _) = await CallAsync(server, "axioms", new JsonObject { ["name"] = "not_not_elim" });
         Assert.Contains("em'", axioms, StringComparison.Ordinal);

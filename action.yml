@@ -1,0 +1,177 @@
+name: "Lean Studio: verify proofs"
+description: "Re-check a Lean 4 project with Tenet, an independent kernel, and report what can be relied on: sorry, axioms, native_decide and the trust surface."
+author: "Keith Adler"
+branding:
+  icon: "shield"
+  color: "blue"
+
+# What it does, in order: installs Lean (elan) if the runner has none, fetches Mathlib's build cache when the project
+# uses Mathlib, downloads Lean Studio, runs `leanstudio --verify` (which runs `lake build`, then re-checks every
+# declaration with Tenet), and then, as asked: writes the job summary, comments on the pull request, uploads SARIF
+# for code scanning, and keeps the reports as an artifact. It fails the job when the policy (`fail-on`) is broken.
+#
+# Permissions the calling workflow needs: `pull-requests: write` for `comment`, `security-events: write` for `sarif`.
+
+inputs:
+  project:
+    description: "The Lake project's folder."
+    required: false
+    default: "."
+  fail-on:
+    description: "What fails the check, comma-separated: rejected, sorry, axiom, native, implemented_by, extern, unsafe, partial, opaque; or all, or none."
+    required: false
+    default: "rejected,sorry"
+  allow-axioms:
+    description: "Axioms the project documents and accepts, comma-separated; they do not count as axiom."
+    required: false
+    default: ""
+  comment:
+    description: "On a pull request, post the report as a comment, updated in place on every push."
+    required: false
+    default: "true"
+  sarif:
+    description: "Upload SARIF to GitHub code scanning, so each finding shows on its line."
+    required: false
+    default: "false"
+  badge:
+    description: "Write a shields.io endpoint badge to this path (relative to the workspace), for a later step to publish."
+    required: false
+    default: ""
+  version:
+    description: "The Lean Studio release to use (a tag without the v), or latest."
+    required: false
+    default: "latest"
+  token:
+    description: "Token for downloading the release and commenting."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  passed:
+    description: "true when nothing broke the policy."
+    value: ${{ steps.verify.outputs.passed }}
+  report-dir:
+    description: "The folder with the reports: assurance-report.md, .json, .sarif and .html."
+    value: ${{ steps.verify.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install elan
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v lake >/dev/null 2>&1 && [ ! -x "$HOME/.elan/bin/lake" ]; then
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+        fi
+        echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+    - name: Fetch Mathlib's build cache
+      shell: bash
+      working-directory: ${{ inputs.project }}
+      run: |
+        set -euo pipefail
+        if [ -f lake-manifest.json ] && grep -q '"name": *"mathlib"' lake-manifest.json; then
+          "$HOME/.elan/bin/lake" exe cache get || echo "::warning::Mathlib's cache could not be fetched; lake build will build it"
+        fi
+
+    - name: Install Lean Studio
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) rid=linux-x64; ext=tar.gz ;;
+          Linux-ARM64) rid=linux-arm64; ext=tar.gz ;;
+          macOS-ARM64) rid=osx-arm64; ext=zip ;;
+          macOS-X64) rid=osx-x64; ext=zip ;;
+          *) echo "::error::Lean Studio's action runs on Linux and macOS runners"; exit 1 ;;
+        esac
+        tag="${{ inputs.version }}"
+        if [ "$tag" = latest ]; then
+          tag=$(gh api repos/keithadler/leanstudio/releases/latest --jq .tag_name)
+        else
+          tag="v${tag#v}"
+        fi
+        dir="$RUNNER_TEMP/leanstudio"
+        rm -rf "$dir" && mkdir -p "$dir"
+        gh release download "$tag" --repo keithadler/leanstudio --pattern "LeanStudio-*-$rid.$ext" --dir "$dir"
+        cd "$dir"
+        if [ "$ext" = zip ]; then
+          ditto -x -k LeanStudio-*.zip .
+          echo "LEANSTUDIO=$dir/Lean Studio.app/Contents/MacOS/LeanStudio" >> "$GITHUB_ENV"
+        else
+          tar -xzf LeanStudio-*.tar.gz
+          echo "LEANSTUDIO=$dir/LeanStudio/LeanStudio" >> "$GITHUB_ENV"
+        fi
+        echo "Lean Studio $tag ($rid)"
+
+    - name: Verify
+      id: verify
+      shell: bash
+      run: |
+        set -uo pipefail
+        out="$RUNNER_TEMP/assurance"
+        mkdir -p "$out"
+        echo "dir=$out" >> "$GITHUB_OUTPUT"
+        args=(--verify --project "${{ inputs.project }}" --fail-on "${{ inputs.fail-on }}"
+              --markdown "$out/assurance-report.md" --json "$out/assurance-report.json"
+              --sarif "$out/assurance-report.sarif" --html "$out/assurance-report.html"
+              --badge "$out/badge.json")
+        if [ -n "${{ inputs.allow-axioms }}" ]; then
+          args+=(--allow-axiom "${{ inputs.allow-axioms }}")
+        fi
+        "$LEANSTUDIO" "${args[@]}"
+        code=$?
+        echo "code=$code" >> "$GITHUB_OUTPUT"
+        if [ "$code" = 0 ]; then echo "passed=true" >> "$GITHUB_OUTPUT"; else echo "passed=false" >> "$GITHUB_OUTPUT"; fi
+        if [ -n "${{ inputs.badge }}" ] && [ -f "$out/badge.json" ]; then
+          mkdir -p "$(dirname "${{ inputs.badge }}")"
+          cp "$out/badge.json" "${{ inputs.badge }}"
+        fi
+        exit 0
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request' && steps.verify.outputs.code != '2'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        PR: ${{ github.event.pull_request.number }}
+      run: |
+        set -euo pipefail
+        marker='<!-- leanstudio-assurance -->'
+        body="$marker
+        $(cat "${{ steps.verify.outputs.dir }}/assurance-report.md")"
+        existing=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+          --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id // empty" | head -n1)
+        if [ -n "$existing" ]; then
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$existing" -f body="$body" >/dev/null
+        else
+          gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -f body="$body" >/dev/null
+        fi
+        # A fork's pull request gets a read-only token; the job summary still has the report.
+      continue-on-error: true
+
+    - name: Upload SARIF
+      if: inputs.sarif == 'true' && steps.verify.outputs.code != '2'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.verify.outputs.dir }}/assurance-report.sarif
+        category: lean-assurance
+
+    - name: Keep the reports
+      if: steps.verify.outputs.code != '2'
+      uses: actions/upload-artifact@v4
+      with:
+        name: assurance-report
+        path: ${{ steps.verify.outputs.dir }}
+
+    - name: Result
+      shell: bash
+      run: |
+        case "${{ steps.verify.outputs.code }}" in
+          0) echo "Passed." ;;
+          1) echo "::error::The assurance check failed (fail-on: ${{ inputs.fail-on }}). See the job summary."; exit 1 ;;
+          *) echo "::error::Lean Studio could not verify the project (see the Verify step)."; exit 2 ;;
+        esac
