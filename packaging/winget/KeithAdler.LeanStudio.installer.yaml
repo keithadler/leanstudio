@@ -3,7 +3,7 @@
 # installed as a portable app and put on the PATH (rather than a symlink to the exe).
 
 PackageIdentifier: KeithAdler.LeanStudio
-PackageVersion: 1.1.0
+PackageVersion: 1.1.1
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
@@ -12,10 +12,10 @@ ArchiveBinariesDependOnPath: true
 ReleaseDate: 2026-10-08
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v1.1.0/LeanStudio-1.1.0-win-x64.zip
-    InstallerSha256: 5E2A295EA9612389C78A195B09CB95F5A58886D4BFB2A0F49B3F3C8878AE8B22
+    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v1.1.1/LeanStudio-1.1.1-win-x64.zip
+    InstallerSha256: D1FA8EF1761BCC9AD1E740369820D870BDDAFCDCDB0708CE47CE01801F590673
   - Architecture: arm64
-    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v1.1.0/LeanStudio-1.1.0-win-arm64.zip
-    InstallerSha256: EB649A9851E7BB0F81484F48982D00BB33C16BDB11532CE517185B0B874F4846
+    InstallerUrl: https://github.com/keithadler/leanstudio/releases/download/v1.1.1/LeanStudio-1.1.1-win-arm64.zip
+    InstallerSha256: 161AA2BFE1564DC37C9E83331D7BE5428F48199E4E5D240B326B3BD3F8E7D659
 ManifestType: installer
 ManifestVersion: 1.9.0

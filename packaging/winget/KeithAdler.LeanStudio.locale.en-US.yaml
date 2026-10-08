@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
 
 PackageIdentifier: KeithAdler.LeanStudio
-PackageVersion: 1.1.0
+PackageVersion: 1.1.1
 PackageLocale: en-US
 Publisher: Keith Adler
 PublisherUrl: https://github.com/keithadler
@@ -29,6 +29,6 @@ Tags:
   - mathematics
   - proof-assistant
   - theorem-prover
-ReleaseNotesUrl: https://github.com/keithadler/leanstudio/releases/tag/v1.1.0
+ReleaseNotesUrl: https://github.com/keithadler/leanstudio/releases/tag/v1.1.1
 ManifestType: defaultLocale
 ManifestVersion: 1.9.0
