@@ -235,6 +235,8 @@
         <MenuItem Header="Verify After Every Build" ToggleType="CheckBox" IsChecked="{Binding Settings.VerifyAfterBuild}" />
         <MenuItem Header="Assurance Report" Command="{Binding AssuranceReportCommand}" />
         <MenuItem Header="Why Isn't This Proved?" Command="{Binding WhyNotProvedAtCaretCommand}" />
+        <MenuItem Header="What's Proved About This?" Command="{Binding ProvedAboutAtCaretCommand}" />
+        <MenuItem Header="What the Theorems Are About" Command="{Binding ShowSpecCoverageCommand}" />
         <MenuItem Header="Project Map…" Command="{Binding ShowProjectMapCommand}" />
       </MenuItem>
       <MenuItem Header="_AI">

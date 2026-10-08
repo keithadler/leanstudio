@@ -238,6 +238,15 @@ public sealed class McpTests
         var (badFormat, badFormatErr) = await CallAsync(server, "assurance_report", new JsonObject { ["format"] = "pdf" });
         Assert.True(badFormatErr, badFormat);
 
+        var (about, aboutErr) = await CallAsync(server, "proved_about", new JsonObject { ["name"] = "double" });
+        Assert.False(aboutErr, about);
+        Assert.Contains("`double_eq_two_mul`", about, StringComparison.Ordinal);
+        var (coverage, _) = await CallAsync(server, "spec_coverage", new JsonObject());
+        Assert.Contains("definitions have a theorem whose statement mentions them", coverage, StringComparison.Ordinal);
+        var (explained, explainErr) = await CallAsync(server, "explain_declaration", new JsonObject { ["path"] = Lean.Sample("Proofs", "Proofs", "Basic.lean"), ["line"] = 4 });
+        Assert.False(explainErr, explained);
+        Assert.Contains("is a theorem", explained, StringComparison.Ordinal);
+
         var (axioms, _) = await CallAsync(server, "axioms", new JsonObject { ["name"] = "not_not_elim" });
         Assert.Contains("em'", axioms, StringComparison.Ordinal);
 

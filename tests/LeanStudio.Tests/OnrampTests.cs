@@ -86,6 +86,8 @@ public sealed class OnrampTests
     [InlineData("theorem add_comm (a b : Nat) : a + b = b + a := by omega", "`add_comm` is a theorem. It says that for any a and b (each a natural number), a + b equals b + a.")]
     [InlineData("theorem foo (p q : Prop) (hp : p) (hq : q) : p ∧ q := ⟨hp, hq⟩", "`foo` is a theorem. It says that for any p and q (each a statement), if p and q, then p and q.")]
     [InlineData("example : 2 + 2 = 4 := rfl", "This example states that 2 + 2 equals 4.")]
+    // A statement that starts with a name keeps the name's capital: `IsEven` is not `isEven`.
+    [InlineData("theorem double_even (n : Nat) : IsEven (double n) := by omega", "`double_even` is a theorem. It says that for any n (a natural number), IsEven (double n).")]
     [InlineData("structure Point where\n  x : Nat\n  y : Nat", "`Point` is a structure: a record that bundles together x (a natural number) and y (a natural number).")]
     [InlineData("inductive Color where\n  | red\n  | green\n  | blue", "`Color` is a type with 3 ways to build a value: `red`, `green`, `blue`.")]
     public void ReadsADeclarationInPlainEnglish(string declaration, string expected) => Assert.Equal(expected, DeclExplain.Read(declaration));

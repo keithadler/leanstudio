@@ -116,7 +116,7 @@ public static class DeclExplain
             }
             else if (IsStatement(type) || propNames.Contains(type))
             {
-                assumptions.Add(propNames.Contains(type) ? type : Lower(PlainEnglish.Read(type)).TrimEnd('.'));
+                assumptions.Add(propNames.Contains(type) ? type : ReadInSentence(type).TrimEnd('.'));
             }
             else
             {
@@ -126,7 +126,7 @@ public static class DeclExplain
         string subject = name.Length > 0 ? $"`{name}`" : "This example";
         if (kw is "theorem" or "lemma" or "example")
         {
-            string claim = result.Length > 0 ? Lower(PlainEnglish.Read(result)) : "something";
+            string claim = result.Length > 0 ? ReadInSentence(result) : "something";
             var sb = new StringBuilder(subject).Append(kw == "example" ? " states" : " is a theorem. It says");
             sb.Append(givens.Count > 0 ? $" that for any {Join(givens)}," : " that");
             if (assumptions.Count > 0)
@@ -213,6 +213,18 @@ public static class DeclExplain
     private static string Article(string word) => word.Length > 0 && "aeiou".Contains(word[0], StringComparison.Ordinal) ? "an" : "a";
 
     private static string Lower(string s) => s.Length > 0 ? char.ToLowerInvariant(s[0]) + s[1..] : s;
+
+    /// <summary>
+    /// A statement read aloud for the middle of a sentence. <see cref="PlainEnglish.Read"/> starts its reading with a
+    /// capital; that capital goes, unless the statement itself starts with it: <c>IsEven (double n)</c> stays
+    /// <c>IsEven</c>, which is a name, not the start of a sentence.
+    /// </summary>
+    private static string ReadInSentence(string statement)
+    {
+        string reading = PlainEnglish.Read(statement);
+        string start = statement.TrimStart();
+        return start.Length > 0 && reading.Length > 0 && char.IsUpper(start[0]) && reading[0] == start[0] ? reading : Lower(reading);
+    }
 
     private static string Cut(string s) => s.Length > 50 ? s[..50] + "…" : s;
 

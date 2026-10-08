@@ -269,6 +269,7 @@ A green build tells you Lean accepted the file. These badges tell you whether ea
 - which proofs **trust compiled code**: `native_decide` and `bv_decide` (whose axioms Lean adds for you, under `_native`), `Lean.ofReduceBool` and `Lean.trustCompiler`. No kernel checks these; Lean's compiler is trusted instead,
 - what **Tenet rejects**,
 - and the **trust surface**: every `@[implemented_by]` and `@[extern]` (the code that runs is not the definition the proofs are about), `unsafe` (outside the logic), `partial` (proofs see an opaque constant, never the body that runs) and `opaque` declaration, each at its line.
+- and **what the theorems are about**: which definitions no theorem's statement mentions. Nothing proved depends on those being right.
 
 The report opens in the browser as one self-contained page (print it to PDF), and is also written as JSON, SARIF and Markdown to `.lake/assurance`. AI assistants have it as `assurance_report`.
 
@@ -293,6 +294,19 @@ jobs:
 ```
 
 **Git ▸ Add Assurance Check Workflow** writes that file for you. The action fetches Mathlib's build cache when the project uses Mathlib, keeps the reports as an artifact, and can write a [shields.io endpoint badge](https://shields.io/badges/endpoint-badge) (`badge: path/to/badge.json`): "proofs: 412 proved, 3 sorry". A green build says the code compiles; this says the proofs still check.
+
+### What the theorems say about the code
+
+A proof can be perfect and still prove the wrong thing. In practice the bugs in verified code are gaps between what a theorem says and what the code does, not broken proofs. **Tenet ▸ What's Proved About This?** lists every theorem whose *statement* mentions the definition at the cursor, each read in plain English:
+
+```
+2 theorems state something about `double`:
+
+- `double_eq` (Cov.lean:20): `double_eq` is a theorem. It says that for any n (a natural number), double n equals 2 * n.
+- `double_even` (Cov.lean:22): `double_even` is a theorem. It says that for any n (a natural number), IsEven (double n).
+```
+
+A theorem that only *uses* a definition in its proof says nothing about it, so it is not listed. **Tenet ▸ What the Theorems Are About** does the whole project: each definition with the theorems about it, and the ones no theorem mentions. Instances, structure projections and definitions of types and propositions are left out, since those are specifications rather than code. The assurance report carries the same list, and `--fail-on unstated` makes CI require a theorem about every definition. AI assistants have `proved_about`, `spec_coverage` and `explain_declaration`.
 
 ### A declaration navigator that reads the compiled library
 
@@ -540,6 +554,7 @@ On macOS the path is `/Applications/Lean Studio.app/Contents/MacOS/LeanStudio`. 
 | `references` | Every use of a name across the project. |
 | `run_lean` | Runs a snippet (`#eval`, `#check`, `#print axioms`) inside the project, so its imports work. |
 | `build`, `verify` | `lake build`, then Tenet's independent check of every declaration: verified, rests on `sorry` or an axiom, or rejected. |
+| `proved_about`, `spec_coverage`, `explain_declaration` | What the theorems state about a definition, in plain English; which definitions no theorem mentions; any declaration read aloud. |
 | `assurance_report` | What can be relied on, in one report: proved outright, resting on `sorry` or project axioms, trusting compiled code (`native_decide`), rejected, and the trust surface (`implemented_by`, `extern`, `unsafe`, `partial`, `opaque`). Markdown, JSON, SARIF or HTML. |
 | `search_declarations`, `declaration`, `axioms` | Read the compiled library, Mathlib included. |
 | `prove` | Tries a portfolio of tactics on each `sorry` in a file and reports which ones close it. It can write the first that works in place of each `sorry`. When nothing works, it looks for a counterexample. |

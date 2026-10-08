@@ -53,15 +53,16 @@ public sealed record AxiomUse(string Name, int Declarations, bool Allowed);
 
 /// <summary>What fails an assurance check: the categories that count, and the axioms that are accepted.</summary>
 /// <param name="FailOn">
-/// The categories that fail the check: <c>rejected</c>, <c>sorry</c>, <c>axiom</c>, <c>native</c>, and the trust
-/// marks <c>implemented_by</c>, <c>extern</c>, <c>unsafe</c>, <c>partial</c> and <c>opaque</c>.
+/// The categories that fail the check: <c>rejected</c>, <c>sorry</c>, <c>axiom</c>, <c>native</c>, the trust
+/// marks <c>implemented_by</c>, <c>extern</c>, <c>unsafe</c>, <c>partial</c> and <c>opaque</c>, and <c>unstated</c>
+/// (a definition no theorem's statement mentions).
 /// </param>
 /// <param name="AllowedAxioms">Axioms that do not count as <c>axiom</c>: deliberate assumptions the project documents.</param>
 public sealed record AssurancePolicy(IReadOnlySet<string> FailOn, IReadOnlySet<string> AllowedAxioms)
 {
     /// <summary>Every category a policy can name.</summary>
     public static readonly IReadOnlyList<string> Categories =
-        ["rejected", "sorry", "axiom", "native", "implemented_by", "extern", "unsafe", "partial", "opaque"];
+        ["rejected", "sorry", "axiom", "native", "implemented_by", "extern", "unsafe", "partial", "opaque", "unstated"];
 
     /// <summary>The default: fail on what Tenet rejects and on <c>sorry</c>, and report the rest.</summary>
     public static AssurancePolicy Default { get; } =
@@ -116,6 +117,8 @@ public sealed record AssurancePolicy(IReadOnlySet<string> FailOn, IReadOnlySet<s
 /// <param name="Axioms">The axioms the project introduces, most used first.</param>
 /// <param name="Marks">The declarations that widen the trust surface.</param>
 /// <param name="Policy">What fails the check.</param>
+/// <param name="Definitions">How many definitions the project has that something could be proved about (see <see cref="TenetWorkspace.Coverage"/>).</param>
+/// <param name="Unstated">The definitions no theorem's statement mentions.</param>
 public sealed record AssuranceReport(
     string Project,
     string Root,
@@ -129,8 +132,13 @@ public sealed record AssuranceReport(
     IReadOnlyList<AssuredDeclaration> Declarations,
     IReadOnlyList<AxiomUse> Axioms,
     IReadOnlyList<TrustMark> Marks,
-    AssurancePolicy Policy)
+    AssurancePolicy Policy,
+    int Definitions = 0,
+    IReadOnlyList<DeclarationRef>? Unstated = null)
 {
+    /// <summary>The definitions no theorem's statement mentions; empty when coverage was not computed.</summary>
+    public IReadOnlyList<DeclarationRef> UnstatedDefinitions => Unstated ?? [];
+
     /// <summary>How many declarations are at <paramref name="level"/>.</summary>
     public int Count(AssuranceLevel level) => Declarations.Count(d => d.Level == level);
 
@@ -151,6 +159,7 @@ public sealed record AssuranceReport(
                     "sorry" => Count(AssuranceLevel.RestsOnSorry),
                     "axiom" => Declarations.Count(d => d.Axioms.Any(a => !Policy.AllowedAxioms.Contains(a))),
                     "native" => Declarations.Count(d => d.CompiledCode.Count > 0),
+                    "unstated" => UnstatedDefinitions.Count,
                     _ => Marks.Count(m => Assurance.Category(m.Kind) == c),
                 };
                 if (n > 0)
@@ -234,7 +243,8 @@ public static class Assurance
         string? commit = null,
         bool dirty = false,
         Func<string, string?>? sourceFileOf = null,
-        DateTimeOffset? now = null)
+        DateTimeOffset? now = null,
+        IReadOnlyList<StatedDefinition>? coverage = null)
     {
         var declarations = new List<AssuredDeclaration>();
         var axiomUses = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -299,7 +309,9 @@ public static class Assurance
                 .ToList(),
             axiomList,
             marks,
-            policy);
+            policy,
+            coverage?.Count ?? 0,
+            coverage?.Where(c => c.Theorems.Count == 0).Select(c => c.Definition).ToList());
     }
 
     /// <summary>
@@ -321,8 +333,9 @@ public static class Assurance
         }
         VerificationReport verification = await ws.VerifyAsync(progress: progress, ct: ct).ConfigureAwait(false);
         IReadOnlyList<TrustMark> marks = ws.TrustSurface(ct);
+        IReadOnlyList<StatedDefinition> coverage = ws.Coverage(ct);
         (string? commit, bool dirty) = await CommitOfAsync(ws.Project.Root, ct).ConfigureAwait(false);
-        return Build(ws.Project, verification, marks, policy, commit, dirty, ws.SourceFileOf);
+        return Build(ws.Project, verification, marks, policy, commit, dirty, ws.SourceFileOf, coverage: coverage);
     }
 
     private static async Task<(string? Commit, bool Dirty)> CommitOfAsync(string root, CancellationToken ct)
@@ -431,6 +444,22 @@ public static class Assurance
             sb.Append('\n');
         }
 
+        if (r.Definitions > 0)
+        {
+            sb.Append(CultureInfo.InvariantCulture,
+                $"**What the theorems are about**: {r.Definitions - r.UnstatedDefinitions.Count:N0} of {r.Definitions:N0} definitions have a theorem whose statement mentions them.");
+            if (r.UnstatedDefinitions.Count > 0)
+            {
+                sb.Append(" No theorem mentions these, so nothing proved depends on them being right:\n\n| Definition | Where |\n|---|---|\n");
+                foreach (DeclarationRef d in r.UnstatedDefinitions.Take(limit))
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"| `{d.Name}` | {Where(r, d.SourceFile, d.Line)} |\n");
+                }
+                More(sb, r.UnstatedDefinitions.Count, limit);
+            }
+            sb.Append("\n\n");
+        }
+
         List<AssuredDeclaration> notProved = r.Declarations.Where(d => d.Level != AssuranceLevel.Proved).ToList();
         if (notProved.Count > 0)
         {
@@ -520,6 +549,17 @@ public static class Assurance
                 ["declarations"] = a.Declarations,
                 ["allowed"] = a.Allowed,
             }).ToArray()),
+            ["coverage"] = new JsonObject
+            {
+                ["definitions"] = r.Definitions,
+                ["stated"] = r.Definitions - r.UnstatedDefinitions.Count,
+                ["unstated"] = new JsonArray(r.UnstatedDefinitions.Select(d => (JsonNode?)new JsonObject
+                {
+                    ["name"] = d.Name,
+                    ["module"] = d.Module,
+                    ["location"] = Loc(d.SourceFile, d.Line),
+                }).ToArray()),
+            },
             ["trustSurface"] = new JsonArray(r.Marks.Select(m => (JsonNode?)new JsonObject
             {
                 ["name"] = m.Name,
@@ -565,6 +605,7 @@ public static class Assurance
             ("unsafe", "Unsafe", "unsafe: outside Lean's logic, so nothing can be proved about it."),
             ("partial", "Partial", "partial: proofs see an opaque constant, never the recursive body that runs."),
             ("opaque", "Opaque", "opaque: proofs know its type and nothing about its value."),
+            ("unstated", "Unstated", "No theorem's statement mentions this definition, so nothing proved depends on it being right."),
         ];
         var results = new JsonArray();
         void Add(string rule, string message, string? file, int? line, bool counts = true)
@@ -613,6 +654,10 @@ public static class Assurance
         foreach (TrustMark m in r.Marks)
         {
             Add(Category(m.Kind), $"{m.Name} is {Keyword(m.Kind)}: {Meaning(m.Kind)}.", m.SourceFile, m.Line);
+        }
+        foreach (DeclarationRef d in r.UnstatedDefinitions)
+        {
+            Add("unstated", $"No theorem's statement mentions {d.Name}.", d.SourceFile, d.Line);
         }
         var sarif = new JsonObject
         {
@@ -725,6 +770,10 @@ public static class Assurance
         Tile(r.Count(AssuranceLevel.RestsOnSorry), "rest on sorry", "bad");
         Tile(r.Count(AssuranceLevel.Rejected), "rejected by Tenet", "bad");
         Tile(r.Marks.Count, "widen the trust surface", "warn");
+        if (r.Definitions > 0)
+        {
+            Tile(r.UnstatedDefinitions.Count, $"of {r.Definitions:N0} definitions no theorem mentions", "warn");
+        }
         sb.Append("</div>\n");
 
         sb.Append("<h2>What this means</h2><p>Every declaration was re-checked by Tenet, a second Lean kernel written independently of Lean's own. <em>Proved outright</em> means it needs nothing beyond Lean's three standard axioms (<code>propext</code>, <code>Classical.choice</code>, <code>Quot.sound</code>). Everything else is listed below with what it rests on. ");
@@ -760,6 +809,25 @@ public static class Assurance
             sb.Append("</table></div>\n");
         }
 
+        if (r.Definitions > 0)
+        {
+            sb.Append("<h2>What the theorems are about</h2>");
+            sb.Append(CultureInfo.InvariantCulture, $"<p>{r.Definitions - r.UnstatedDefinitions.Count:N0} of {r.Definitions:N0} definitions have a theorem whose statement mentions them.");
+            if (r.UnstatedDefinitions.Count == 0)
+            {
+                sb.Append("</p>\n");
+            }
+            else
+            {
+                sb.Append(" No theorem mentions these, so nothing proved depends on them being right:</p>\n<div class=\"scroll\"><table><tr><th>Definition</th><th>Where</th></tr>");
+                foreach (DeclarationRef d in r.UnstatedDefinitions)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"<tr><td><code>{H(d.Name)}</code></td><td class=\"nw\"><code>{H(Where(r, d.SourceFile, d.Line))}</code></td></tr>");
+                }
+                sb.Append("</table></div>\n");
+            }
+        }
+
         sb.Append("<h2>Not proved outright</h2>");
         List<AssuredDeclaration> notProved = r.Declarations.Where(d => d.Level != AssuranceLevel.Proved).ToList();
         if (notProved.Count == 0)
@@ -790,13 +858,14 @@ public static class Assurance
         Builds the project, re-checks every declaration with Tenet (an independent Lean kernel) and reports what
         can be relied on: what is proved outright, what rests on sorry or on axioms the project adds, which proofs
         trust compiled code (native_decide), what Tenet rejects, and every @[implemented_by], @[extern], unsafe,
-        partial and opaque declaration. Prints the report as Markdown, and fails when the policy is broken.
+        partial and opaque declaration, and which definitions no theorem talks about. Prints the report as
+        Markdown, and fails when the policy is broken.
 
           --project DIR        the project (default: the current folder)
           --no-build           do not run lake build first (the project must already be built)
           --fail-on LIST       what fails the check, comma-separated, from: rejected, sorry, axiom, native,
-                               implemented_by, extern, unsafe, partial, opaque; or all, or none
-                               (default: rejected,sorry)
+                               implemented_by, extern, unsafe, partial, opaque, unstated (a definition
+                               no theorem's statement mentions); or all, or none (default: rejected,sorry)
           --fail-on-sorry      the same as adding sorry to --fail-on
           --allow-axiom LIST   axioms the project documents and accepts; they do not count as axiom
           --markdown FILE      also write the report as Markdown ($GITHUB_STEP_SUMMARY is used when set)

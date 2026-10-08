@@ -429,6 +429,54 @@ public static class LeanTools
                 return Task.FromResult(axioms.Count == 0 ? $"{name} depends on no axioms." : $"{name} depends on:\n" + string.Join('\n', axioms.Select(x => "  " + x)));
             }),
 
+        new("proved_about",
+            "What the project's theorems state about a declaration: each theorem whose statement (not proof) mentions it, with file and line and the statement read in plain English. Use it to check that what is proved about a function is what the function is meant to do; 'no theorem states anything' means nothing proved depends on it being right. Run build first.",
+            Schema(("name", "string", "Fully qualified declaration name (the project's own or a library's).", true),
+                   ("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
+                if (ws.OwnModules.Count == 0)
+                {
+                    throw new ToolException("nothing built yet: call build first");
+                }
+                string name = Str(a, "name");
+                if (ws.ModulesDeclaring(name).Count == 0 && Scoped(() => ws.Details(name)) is null)
+                {
+                    throw new ToolException($"{name} is not in the compiled library (is the project built, and is the name fully qualified?)");
+                }
+                return Task.FromResult(SpecCoverage.ProvedAbout(name, ws.TheoremsAbout(name, ct), ws.Project.Root).TrimEnd());
+            }),
+
+        new("spec_coverage",
+            "Which of the project's definitions some theorem's statement mentions, and which none does (code nothing proved depends on), with the theorems about each. Run build first.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            (a, ct) =>
+            {
+                TenetWorkspace ws = bench.Session(OptStr(a, "project")).Tenet();
+                if (ws.OwnModules.Count == 0)
+                {
+                    throw new ToolException("nothing built yet: call build first");
+                }
+                return Task.FromResult(SpecCoverage.ToMarkdown(ws.Coverage(ct), ws.Project.Root, limit: 300).TrimEnd());
+            }),
+
+        new("explain_declaration",
+            "The declaration at a line of a Lean file read aloud in plain English: what a def takes and gives back, what a theorem says (its assumptions and its conclusion), what a structure holds. Read from the text, so nothing has to be built.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("line", "integer", "A 1-based line inside the declaration.", true)),
+            async (a, ct) =>
+            {
+                string path = bench.Resolve(Str(a, "path"));
+                if (!File.Exists(path))
+                {
+                    throw new ToolException($"no file {path}");
+                }
+                string text = await File.ReadAllTextAsync(path, ct);
+                return Core.Learn.DeclExplain.ReadAt(text, Int(a, "line") - 1)
+                    ?? throw new ToolException("that line is not inside a def, theorem, structure, inductive, class or instance");
+            }),
+
         new("why_not_proved",
             "Why a declaration is not fully proved: for each sorry or project axiom it rests on, the shortest chain of declarations leading to it, with file and line of each. The last declaration before the sorry is the one to fix. Run build first.",
             Schema(("name", "string", "Fully qualified declaration name.", true),

@@ -415,6 +415,75 @@ public sealed partial class MainViewModel
         }
     }
 
+    // ---- what the theorems are about ----
+
+    /// <summary>
+    /// List, in Output, the project's theorems whose statements mention the declaration at the caret, each read in plain
+    /// English: what is proved about this piece of code. Says so when nothing is.
+    /// </summary>
+    [RelayCommand]
+    private async Task ProvedAboutAtCaretAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d || EmittedC.DeclarationAt(d.Lines(), d.CaretLine) is not { Name.Length: > 0 } decl)
+        {
+            Log("What's proved about this: put the cursor in a definition first.");
+            return;
+        }
+        if (!await TenetIsCurrentAsync())
+        {
+            await ReopenTenetAsync();
+        }
+        if (Project is null || _tenet is not TenetWorkspace ws || ws.OwnModules.Count == 0)
+        {
+            Log("What's proved about this: build the project first (Lean ▸ Build Project). Tenet reads the statements from what Lean built.");
+            return;
+        }
+        string root = Project.Root;
+        try
+        {
+            IReadOnlyList<DeclarationRef> theorems = await Task.Run(() => ws.TheoremsAbout(decl.Name));
+            foreach (string line in SpecCoverage.ProvedAbout(decl.Name, theorems, root).TrimEnd().Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)
+        {
+            Log("What's proved about this: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// List, in Output, which of the project's definitions some theorem's statement mentions and which none does, with
+    /// the theorems about each.
+    /// </summary>
+    [RelayCommand]
+    private async Task ShowSpecCoverageAsync()
+    {
+        if (!await TenetIsCurrentAsync())
+        {
+            await ReopenTenetAsync();
+        }
+        if (Project is null || _tenet is not TenetWorkspace ws || ws.OwnModules.Count == 0)
+        {
+            Log("What the theorems are about: build the project first (Lean ▸ Build Project).");
+            return;
+        }
+        string root = Project.Root;
+        try
+        {
+            IReadOnlyList<StatedDefinition> coverage = await Task.Run(() => ws.Coverage());
+            foreach (string line in SpecCoverage.ToMarkdown(coverage, root).TrimEnd().Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        catch (Exception e) when (e is Tenet.Kernel.KernelException or IOException or InvalidOperationException)
+        {
+            Log("What the theorems are about: " + e.Message);
+        }
+    }
+
     // ---- the project map ----
 
     /// <summary>Raised with a computed map, for the window to show.</summary>

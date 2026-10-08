@@ -91,6 +91,18 @@ public enum TrustKind
 /// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
 public sealed record TrustMark(string Name, string Module, TrustKind Kind, int? Line, string? SourceFile);
 
+/// <summary>A declaration of the project, and where it is written.</summary>
+/// <param name="Name">The declaration's full name.</param>
+/// <param name="Module">The module that defines it.</param>
+/// <param name="Line">The 1-based line of its keyword in the source file, or <see langword="null"/> when unknown.</param>
+/// <param name="SourceFile">The <c>.lean</c> file it is written in, or <see langword="null"/> when it cannot be found.</param>
+public sealed record DeclarationRef(string Name, string Module, int? Line, string? SourceFile);
+
+/// <summary>A definition of the project, and the theorems whose statements mention it (see <see cref="TenetWorkspace.Coverage"/>).</summary>
+/// <param name="Definition">The definition.</param>
+/// <param name="Theorems">The project's theorems that state something about it, sorted by module and line; empty when none do.</param>
+public sealed record StatedDefinition(DeclarationRef Definition, IReadOnlyList<DeclarationRef> Theorems);
+
 /// <summary>A declaration found by <see cref="TenetWorkspace.Search"/>: its full name and the module that defines it.</summary>
 /// <param name="Name">The declaration's full name.</param>
 /// <param name="Module">The module that defines it.</param>
@@ -1070,6 +1082,136 @@ public sealed class TenetWorkspace : IDisposable
                 .ThenBy(m => m.Kind)
                 .ToList();
         }
+    }
+
+    // ---- what the theorems are about ----
+
+    private static readonly TenetName ProjectionAttribute = TenetName.Of("Lean", "projectionFnInfoExt");
+
+    /// <summary>
+    /// The project's definitions, each with the project's theorems whose statement (not proof) mentions it: what is
+    /// said about each piece of code. A definition no statement mentions is code nothing is proved about, which is where
+    /// a gap between what the theorems say and what the code does hides. Left out, as nothing to prove about: what Lean
+    /// generates (projections, recursors, instances' helpers), instances, and definitions of types and propositions
+    /// (<c>def IsSorted : List Nat → Prop</c> is a specification, not code). Sorted by module and line.
+    /// </summary>
+    public IReadOnlyList<StatedDefinition> Coverage(CancellationToken ct = default)
+    {
+        lock (_lock)
+        {
+            var definitions = new List<DeclarationRef>();
+            var index = new Dictionary<TenetName, int>();
+            var theorems = new List<(DeclarationRef Ref, HashSet<TenetName> Mentions)>();
+            foreach (TenetName module in OwnModules.Where(_checker.Modules.ContainsKey))
+            {
+                OleanModule om = _checker.Modules[module];
+                var projections = new HashSet<TenetName>(om.KeysInExtension(ProjectionAttribute));
+                string? file = SourceFileOf(module.ToString());
+                string[]? lines = null;
+                int? LineOf(TenetName n) => om.SourceRangeOf(n)?.Line is int l
+                    ? Proofs.ProofSteps.DeclarationLine(lines ??= file is null ? [] : File.ReadAllLines(file), l)
+                    : null;
+                foreach (TenetName n in om.ConstantNames)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    string s = n.ToString();
+                    if (!IsUserFacing(s) || om.SourceRangeOf(n) is null || om.FindConstant(n) is not ConstantInfo c)
+                    {
+                        continue;
+                    }
+                    if (c is TheoremInfo)
+                    {
+                        var mentions = new HashSet<TenetName>();
+                        ExprOps.ForEach(c.Type, (e, _) =>
+                        {
+                            if (e is ConstExpr k)
+                            {
+                                mentions.Add(k.Name);
+                            }
+                            return true;
+                        });
+                        theorems.Add((new DeclarationRef(s, module.ToString(), LineOf(n), file), mentions));
+                    }
+                    else if (c is DefinitionInfo or OpaqueInfo && !projections.Contains(n) && !IsInstanceName(s) && !DefinesASort(c.Type))
+                    {
+                        index[n] = definitions.Count;
+                        definitions.Add(new DeclarationRef(s, module.ToString(), LineOf(n), file));
+                    }
+                }
+            }
+            var about = definitions.Select(_ => new List<DeclarationRef>()).ToList();
+            foreach ((DeclarationRef t, HashSet<TenetName> mentions) in theorems)
+            {
+                foreach (TenetName m in mentions)
+                {
+                    if (index.TryGetValue(m, out int i))
+                    {
+                        about[i].Add(t);
+                    }
+                }
+            }
+            return definitions
+                .Select((d, i) => new StatedDefinition(d, about[i].OrderBy(t => t.Module, StringComparer.Ordinal).ThenBy(t => t.Line ?? int.MaxValue).ToList()))
+                .OrderBy(x => x.Definition.Module, StringComparer.Ordinal)
+                .ThenBy(x => x.Definition.Line ?? int.MaxValue)
+                .ThenBy(x => x.Definition.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// The project's theorems whose statements mention <paramref name="name"/>, which may be any declaration (the
+    /// project's own or a library's). Sorted by module and line.
+    /// </summary>
+    public IReadOnlyList<DeclarationRef> TheoremsAbout(string name, CancellationToken ct = default)
+    {
+        TenetName target = TenetName.Parse(name);
+        var hits = new List<DeclarationRef>();
+        lock (_lock)
+        {
+            foreach (TenetName module in OwnModules.Where(_checker.Modules.ContainsKey))
+            {
+                OleanModule om = _checker.Modules[module];
+                string? file = SourceFileOf(module.ToString());
+                string[]? lines = null;
+                foreach (TenetName n in om.ConstantNames)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (om.FindConstant(n) is not TheoremInfo t || !IsUserFacing(n.ToString()))
+                    {
+                        continue;
+                    }
+                    bool found = false;
+                    ExprOps.ForEach(t.Type, (e, _) =>
+                    {
+                        found |= e is ConstExpr k && k.Name == target;
+                        return !found;
+                    });
+                    if (found)
+                    {
+                        int? line = om.SourceRangeOf(n)?.Line is int l
+                            ? Proofs.ProofSteps.DeclarationLine(lines ??= file is null ? [] : File.ReadAllLines(file), l)
+                            : null;
+                        hits.Add(new DeclarationRef(n.ToString(), module.ToString(), line, file));
+                    }
+                }
+            }
+        }
+        return hits.OrderBy(t => t.Module, StringComparer.Ordinal).ThenBy(t => t.Line ?? int.MaxValue).ToList();
+    }
+
+    /// <summary>An instance, by Lean's naming: some part of the name is <c>inst</c> followed by a capital (<c>instReprPoint</c>, <c>instReprPoint.repr</c>).</summary>
+    private static bool IsInstanceName(string name) =>
+        name.Split('.').Any(p => p.Length > 4 && p.StartsWith("inst", StringComparison.Ordinal) && char.IsUpper(p[4]));
+
+    /// <summary>The type ends, after its arguments, in a universe: the definition makes a type or a proposition.</summary>
+    private static bool DefinesASort(Expr type)
+    {
+        while (type is PiExpr pi)
+        {
+            type = pi.Body;
+        }
+        return type is SortExpr;
     }
 
     // ---- verification ----

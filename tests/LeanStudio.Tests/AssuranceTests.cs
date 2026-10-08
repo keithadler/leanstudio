@@ -241,8 +241,85 @@ public sealed class AssuranceLeanTests
             var strict = new AssurancePolicy(AssurancePolicy.ParseCategories("all"), new HashSet<string> { "myAxiom" });
             AssuranceReport s = await Assurance.RunAsync(new LeanProject(root), strict, ct: TestContext.Current.CancellationToken);
             Assert.Equal(
-                ["sorry", "native", "implemented_by", "extern", "unsafe", "partial", "opaque"],
+                ["sorry", "native", "implemented_by", "extern", "unsafe", "partial", "opaque", "unstated"],
                 s.Failures.Select(f => f.Category));
+        }
+        finally
+        {
+            Lean.DeleteTree(root);
+        }
+    }
+}
+
+/// <summary>What the theorems are about: which definitions some theorem's statement mentions, read from a real build.</summary>
+[Collection(Lean.Collection)]
+public sealed class SpecCoverageTests
+{
+    private const string Source = """
+        structure Point where
+          x : Nat
+          y : Nat
+        deriving Repr, BEq, DecidableEq
+
+        instance : Add Point := ⟨fun a b => ⟨a.x + b.x, a.y + b.y⟩⟩
+
+        def Point.swap (p : Point) : Point := ⟨p.y, p.x⟩
+
+        def double (n : Nat) : Nat := n + n
+
+        def helper (n : Nat) : Nat := double n + 1
+
+        abbrev Pair := Nat × Nat
+
+        def IsEven (n : Nat) : Prop := n % 2 = 0
+
+        theorem swap_swap (p : Point) : p.swap.swap = p := rfl
+
+        theorem double_eq (n : Nat) : double n = 2 * n := by unfold double; omega
+
+        theorem double_even (n : Nat) : IsEven (double n) := by unfold IsEven double; omega
+
+        -- `helper` only in the proof: that says nothing about it.
+        theorem three : 3 = 3 := by have := helper 1; rfl
+        """;
+
+    [Fact]
+    public async Task ListsWhatEachDefinitionHasTheoremsAbout()
+    {
+        Lean.RequireLean();
+        string root = Directory.CreateTempSubdirectory("leanstudio-coverage").FullName;
+        File.WriteAllText(Path.Combine(root, "lean-toolchain"), Lean.Toolchain + "\n");
+        File.WriteAllText(Path.Combine(root, "lakefile.toml"), "name = \"Cov\"\ndefaultTargets = [\"Cov\"]\n\n[[lean_lib]]\nname = \"Cov\"\n");
+        File.WriteAllText(Path.Combine(root, "Cov.lean"), Source);
+        var project = new LeanProject(root);
+        try
+        {
+            var build = await Lake.BuildAsync(project, ct: TestContext.Current.CancellationToken);
+            Assert.True(build.Success, build.Output);
+            using TenetWorkspace ws = TenetWorkspace.Open(project);
+
+            // Projections, instances (written or derived), a type abbreviation and a predicate are not code to state things about.
+            IReadOnlyList<StatedDefinition> coverage = ws.Coverage(TestContext.Current.CancellationToken);
+            Assert.Equal(["Point.swap", "double", "helper"], coverage.Select(c => c.Definition.Name));
+            Assert.Equal(["swap_swap"], coverage[0].Theorems.Select(t => t.Name));
+            Assert.Equal(["double_eq", "double_even"], coverage[1].Theorems.Select(t => t.Name));
+            Assert.Empty(coverage[2].Theorems);
+            Assert.Equal(12, coverage[2].Definition.Line);
+
+            Assert.Equal(["double_even"], ws.TheoremsAbout("IsEven", TestContext.Current.CancellationToken).Select(t => t.Name));
+            string said = SpecCoverage.ProvedAbout("double", ws.TheoremsAbout("double", TestContext.Current.CancellationToken), root);
+            Assert.Contains("2 theorems state something about `double`", said, StringComparison.Ordinal);
+            Assert.Contains("`double_eq` (Cov.lean:20): `double_eq` is a theorem. It says that for any n (a natural number), double n equals 2 * n.", said, StringComparison.Ordinal);
+            Assert.Contains("No theorem in the project states anything about `helper`", SpecCoverage.ProvedAbout("helper", [], root), StringComparison.Ordinal);
+
+            // In the assurance report: informational by default, a failure when asked for.
+            AssuranceReport r = await Assurance.RunAsync(ws, AssurancePolicy.Default, ct: TestContext.Current.CancellationToken);
+            Assert.True(r.Passed);
+            Assert.Equal(3, r.Definitions);
+            Assert.Equal(["helper"], r.UnstatedDefinitions.Select(d => d.Name));
+            Assert.Contains("2 of 3 definitions have a theorem", Assurance.ToMarkdown(r), StringComparison.Ordinal);
+            var strict = new AssurancePolicy(AssurancePolicy.ParseCategories("unstated"), new HashSet<string>());
+            Assert.Equal([("unstated", 1)], (await Assurance.RunAsync(ws, strict, ct: TestContext.Current.CancellationToken)).Failures);
         }
         finally
         {

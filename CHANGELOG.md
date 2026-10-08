@@ -10,6 +10,11 @@
 - **`leanstudio --verify`** builds, makes the report, prints it as Markdown (and adds it to the GitHub Actions job summary) and fails (exit 1) when the policy is broken: by default a rejection or a `sorry`. `--fail-on` chooses from `rejected`, `sorry`, `axiom`, `native`, `implemented_by`, `extern`, `unsafe`, `partial` and `opaque`; `--allow-axiom` accepts axioms the project documents; `--json`, `--sarif`, `--html` and `--badge` (a shields.io endpoint) write the other formats.
 - **A GitHub Action** (`uses: keithadler/leanstudio@v…`): installs Lean and Lean Studio, fetches Mathlib's cache when the project uses Mathlib, runs the check, comments the report on the pull request (one comment, updated on every push), uploads SARIF so each finding shows on its line, and keeps the reports as an artifact. *Git ▸ Add Assurance Check Workflow* writes the workflow.
 
+**What the theorems say about the code** (*Tenet ▸ What's Proved About This?*, *Tenet ▸ What the Theorems Are About*, and `proved_about`, `spec_coverage` and `explain_declaration` over MCP):
+- For the definition at the cursor, every theorem whose statement mentions it, with its statement read in plain English. A theorem that uses a definition only in its proof says nothing about it, and is not listed.
+- For the whole project, each definition with the theorems about it, and those no theorem mentions: code nothing proved depends on. Instances, structure projections, and definitions of types and propositions are left out.
+- The assurance report lists the definitions no theorem mentions, and `--fail-on unstated` fails CI on them.
+
 **Fixes**:
 - Verify's progress counted modules from 2 ("module 2 of 1") and its bar ran past the end: Tenet numbers modules from 1, and Lean Studio added one more.
 

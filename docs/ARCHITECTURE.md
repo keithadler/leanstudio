@@ -173,10 +173,10 @@ written to stdout.
 | Area | Tools |
 |---|---|
 | Checking and reading a file | `project_info`, `check_file`, `goals`, `proof_steps`, `hover`, `suggestions`, `references`, `run_lean` |
-| Building and Tenet | `build`, `verify`, `assurance_report`, `axioms`, `why_not_proved`, `project_map` |
+| Building and Tenet | `build`, `verify`, `assurance_report`, `proved_about`, `spec_coverage`, `axioms`, `why_not_proved`, `project_map` |
 | Proof tools | `prove`, `extract_lemma`, `ffi_bindings`, `profile` |
 | For Mathlib contributors | `unused_imports`, `sort_imports`, `style_check`, `stale_deprecations`, `suggest_name`, `duplicate_statements`, `project_health`, `sorry_history`, `statement_changes`, `lint`, `heartbeats`, `instances`, `blueprint` |
-| Walkthroughs and search | `export_walkthrough`, `search_mathlib`, and `declaration` and `search_declarations` (the compiled library, through Tenet) |
+| Walkthroughs and search | `explain_declaration`, `export_walkthrough`, `search_mathlib`, and `declaration` and `search_declarations` (the compiled library, through Tenet) |
 | Toolchains | `toolchains` |
 | The open window | `studio_context`, `studio_show` |
 

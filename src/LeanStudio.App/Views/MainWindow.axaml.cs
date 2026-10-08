@@ -1133,6 +1133,8 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Clean Build", "", Cmd(_vm.CleanCommand));
         yield return ("Tenet: Verify Project", m + "⇧V", Cmd(_vm.VerifyCommand));
         yield return ("Tenet: Assurance Report", "", Cmd(_vm.AssuranceReportCommand));
+        yield return ("Tenet: What's Proved About This?", "", Cmd(_vm.ProvedAboutAtCaretCommand));
+        yield return ("Tenet: What the Theorems Are About", "", Cmd(_vm.ShowSpecCoverageCommand));
         yield return ("Lean: Run Task…", m + "⇧B", RunTaskAsync);
         yield return ("Lean: Restart File (rebuild its imports)", "", Cmd(_vm.RestartFileCommand));
         yield return ("Lean: Install Lean (elan and the latest stable Lean)", "", Cmd(_vm.InstallLeanCommand));
