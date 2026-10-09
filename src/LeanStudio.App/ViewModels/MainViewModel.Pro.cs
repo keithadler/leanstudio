@@ -674,6 +674,32 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
+    /// List, in Output, the docstring claims in the active file that nothing backs up: a definition said to be equivalent to
+    /// another with no theorem stating it, or a docstring that claims generality the definition's hypotheses do not have.
+    /// Read from the text; each hit is a claim to anchor with a theorem, not a bug.
+    /// </summary>
+    [RelayCommand]
+    public void CheckDocstrings()
+    {
+        if (ActiveDocument is not { IsLean: true } d)
+        {
+            return;
+        }
+        string text = d.Document.Text;
+        IReadOnlyList<StyleProblem> hits = DocCheck.Find(text, null, strict: true);
+        if (hits.Count == 0)
+        {
+            Log("Docstrings: no unanchored claims found.");
+            return;
+        }
+        foreach (StyleProblem p in hits)
+        {
+            Log($"  line {p.Line + 1}: {p.Message}");
+        }
+        Log($"Docstrings: {hits.Count} claim{(hits.Count == 1 ? "" : "s")} to anchor with a theorem (above). These are claims to prove, not bugs.");
+    }
+
+    /// <summary>
     /// Suggest a Mathlib-style name for the theorem at the cursor, worked out from its statement (<c>a + b = b + a</c> is
     /// <c>add_comm</c>), and say whether it matches the one it has. The name is only a starting point; Rename Symbol applies it.
     /// </summary>

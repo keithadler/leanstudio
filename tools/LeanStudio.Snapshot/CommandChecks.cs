@@ -88,6 +88,12 @@ internal static class CommandChecks
             Check(Output().Contains("`sInf` returns a made-up value", StringComparison.Ordinal) && Output().Contains("head!", StringComparison.Ordinal),
                 "Find Junk Values lists sInf of a possibly empty set and head!");
 
+            Console.WriteLine("docstring claims");
+            Set("/-- Equivalent to `Irreducible` in Mathlib. -/\ndef MyIrred (x : Nat) : Prop := True\n");
+            await Run(vm.CheckDocstringsCommand);
+            Check(Output().Contains("no theorem in the scope relates them", StringComparison.Ordinal) && Output().Contains("`Irreducible`", StringComparison.Ordinal),
+                "Check Docstrings Against Definitions lists a claim of equivalence no theorem backs up");
+
             Console.WriteLine("proof clean-ups");
             Set("theorem t : P := by\n  intro x\n  intro y\n  rw [a]\n  rw [b]\n  exact h\n");
             await Run(vm.MergeConsecutiveTacticsCommand);

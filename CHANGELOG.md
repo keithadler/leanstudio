@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+**Docstring claims** (*Lean ▸ Check Docstrings Against Definitions*, and `doc_check` over MCP): lists the docstring claims about a definition that nothing backs up. Lean checks that a proof proves the statement as written, never that a definition is the one its comment names, so a definition that is only equivalent to the standard one under extra hypotheses can pass with the standard name in the prose. Prompted by a thread on frontier models smuggling in an incorrect definition under a correct docstring.
+- A docstring that says a definition is equivalent to, the same as, or equals some other `Name`, when no theorem in the scope states the two together. The fix is to prove `A ↔ B`, which anchors the claim. `doc-claim-unproved`.
+- A docstring that claims generality ("for any ring", "the standard") when the definition requires a narrowing class such as `[IsDomain R]`, `[Field K]`, `[CharZero K]` or `[Finite α]` that the docstring never mentions. `doc-overclaims-generality`.
+- With `strict=true`: "the standard/usual definition" claims that name no reference. `doc-claim-unanchored`.
+- Read from the text, so nothing has to be built first. `project=true` looks for the backing theorems in every file of the project. Definitions that are themselves equivalences (`≃`, `Equiv`, `Iso`) and references to theorem names are skipped.
+- It cannot say whether a definition is right: each hit is a claim to anchor with a theorem, not a bug. On Mathlib it lists 78 claims over 8,603 files, mixed in quality; on OpenAI's Navier–Stokes, Euler and Saxl formalizations and on two small proof projects it lists none.
+
 ## 1.2.0
 
 **Junk values** (*Lean ▸ Find Junk Values*, and `junk_values` over MCP): lists the places where Lean quietly returns a made-up value instead of failing, so a definition or statement can compile while describing something that does not exist. Prompted by *Navier–Stokes lost in translation* (Bastounis, Circelli and Hansen), whose Example 4.2 is an `sInf` over an empty set, which Lean takes to be 0.

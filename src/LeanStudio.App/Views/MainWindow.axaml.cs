@@ -1122,6 +1122,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Tidy File (sort imports, fix whitespace)", "", Cmd(_vm.TidyFileCommand));
         yield return ("Lean: Wrap Long Comment Lines", "", Cmd(_vm.WrapLongCommentsCommand));
         yield return ("Lean: Find Junk Values (sInf of nothing, xs[i]!, x / 0)", "", Cmd(_vm.FindJunkValuesCommand));
+        yield return ("Lean: Check Docstrings Against Definitions", "", Cmd(_vm.CheckDocstringsCommand));
         yield return ("Lean: Add Mathlib Copyright Header", "", Cmd(_vm.AddMathlibHeaderCommand));
         yield return ("Lean: Remove Deprecations Older Than Six Months", "", Cmd(_vm.RemoveStaleDeprecationsCommand));
         yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));

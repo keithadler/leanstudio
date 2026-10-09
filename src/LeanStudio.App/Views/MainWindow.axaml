@@ -137,6 +137,7 @@
         <MenuItem Header="Tidy File (sort imports, fix whitespace)" Command="{Binding TidyFileCommand}" />
         <MenuItem Header="Wrap Long Comment Lines" Command="{Binding WrapLongCommentsCommand}" />
         <MenuItem Header="Find Junk Values (sInf of nothing, xs[i]!, x / 0)" Command="{Binding FindJunkValuesCommand}" />
+        <MenuItem Header="Check Docstrings Against Definitions" Command="{Binding CheckDocstringsCommand}" />
         <MenuItem Header="Add Mathlib Copyright Header" Command="{Binding AddMathlibHeaderCommand}" />
         <MenuItem Header="Remove Deprecations Older Than Six Months" Command="{Binding RemoveStaleDeprecationsCommand}" />
         <MenuItem Header="What This Branch Changed Mathematically" Command="{Binding ShowStatementChangesCommand}" />

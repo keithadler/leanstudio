@@ -884,6 +884,40 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("doc_check",
+            "Find the docstring claims about a definition that nothing backs up, the prose that lets a wrong definition pass a cursory read: Lean checks a proof against the statement as written, never that a definition is the one its comment names. Lists (1) a docstring that says a definition is equivalent to, the same as, or equals some other `Name`, when no theorem in the scope states the two together (prove `A ↔ B` to anchor it); (2) a docstring that claims generality (\"for any ring\", \"the standard\") when the definition requires a narrowing class such as [IsDomain R], [Field K], [CharZero K] or [Finite α] that the docstring never mentions. With strict=true, also lists \"the standard/usual definition\" claims that name no reference. Read from the text, so nothing has to be built first. It cannot say whether a definition is right: each hit is a claim to anchor with a theorem, not a bug. Definitions that are themselves equivalences (≃, Equiv, Iso) are skipped.",
+            Schema(("path", "string", "The .lean file.", true),
+                   ("project", "boolean", "Look for the backing theorems in every .lean file of the project, not only this file (default false).", false),
+                   ("strict", "boolean", "Also list standard/usual-definition claims that name no reference (default false).", false)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                string text = await File.ReadAllTextAsync(path, ct);
+                var scope = new DocCheck.Scope();
+                scope.Add(text);
+                if (OptBool(a, "project") == true)
+                {
+                    string root = bench.ProjectFor(path).Root;
+                    foreach (string f in Directory.EnumerateFiles(root, "*.lean", SearchOption.AllDirectories)
+                                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}.lake{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                             && !string.Equals(f, path, StringComparison.Ordinal)).Take(20_000))
+                    {
+                        scope.Add(await File.ReadAllTextAsync(f, ct));
+                    }
+                }
+                IReadOnlyList<StyleProblem> hits = DocCheck.Find(text, scope, OptBool(a, "strict") == true);
+                if (hits.Count == 0)
+                {
+                    return "no unanchored docstring claims found";
+                }
+                var sb = new StringBuilder();
+                foreach (StyleProblem p in hits)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{path}:{p.Line + 1}: {p.Rule}: {p.Message}\n");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
         new("stale_deprecations",
             "The deprecated declarations of a Lean file that are old enough to delete: Mathlib removes a deprecated alias some months after the rename. Reads each (since := \"yyyy-mm-dd\") and lists those at least `months` old (default 6). With apply=true, deletes them, with their doc comments, from the file on disk.",
             Schema(("path", "string", "The .lean file.", true),

@@ -175,7 +175,7 @@ written to stdout.
 | Checking and reading a file | `project_info`, `check_file`, `goals`, `proof_steps`, `hover`, `suggestions`, `references`, `run_lean` |
 | Building and Tenet | `build`, `verify`, `assurance_report`, `proved_about`, `spec_coverage`, `axioms`, `why_not_proved`, `project_map` |
 | Proof tools | `prove`, `extract_lemma`, `ffi_bindings`, `profile` |
-| For Mathlib contributors | `unused_imports`, `sort_imports`, `style_check`, `junk_values`, `stale_deprecations`, `suggest_name`, `duplicate_statements`, `project_health`, `sorry_history`, `statement_changes`, `lint`, `heartbeats`, `instances`, `blueprint` |
+| For Mathlib contributors | `unused_imports`, `sort_imports`, `style_check`, `junk_values`, `doc_check`, `stale_deprecations`, `suggest_name`, `duplicate_statements`, `project_health`, `sorry_history`, `statement_changes`, `lint`, `heartbeats`, `instances`, `blueprint` |
 | Walkthroughs and search | `explain_declaration`, `export_walkthrough`, `search_mathlib`, and `declaration` and `search_declarations` (the compiled library, through Tenet) |
 | Toolchains | `toolchains`, `try_upgrade` |
 | The open window | `studio_context`, `studio_show` |
