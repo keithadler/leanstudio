@@ -29,7 +29,7 @@ public static class DocCheck
     // A sentence that says one thing is another. "standard", "usual" and "canonical" are not here: in Mathlib they are mostly
     // ordinary adjectives, not claims of equivalence.
     private static readonly Regex EquivalenceCue = new(
-        @"\b(equivalent to|equivalent|iff|if and only if|same as|coincides with|agrees with|equals|reduces to|identical to)\b",
+        @"\b(equivalently|equivalent to|equivalent|iff|if and only if|same as|coincides with|agrees with|equals|reduces to|identical to)\b",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     // A sentence that calls the definition the standard one without any reference (strict mode only).
@@ -70,7 +70,11 @@ public static class DocCheck
     {
         private readonly Dictionary<string, List<int>> _byToken = new(StringComparer.Ordinal);
         private readonly HashSet<string> _theorems = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _inEquivalences = new(StringComparer.Ordinal);
         private int _count;
+
+        /// <summary>Whether some added theorem states an equivalence (↔) that mentions this name.</summary>
+        public bool StatesEquivalence(string name) => _inEquivalences.Contains(Last(name));
 
         /// <summary>Whether a theorem or lemma of this name (or last component) was added.</summary>
         public bool IsTheorem(string name) => _theorems.Contains(Last(name));
@@ -107,8 +111,13 @@ public static class DocCheck
                     _theorems.Add(Last(named.Groups["name"].Value));
                 }
                 int id = _count++;
+                bool states = sb.ToString().Contains('↔', StringComparison.Ordinal);
                 foreach (string t in TokensOf(sb.ToString()))
                 {
+                    if (states)
+                    {
+                        _inEquivalences.Add(t);
+                    }
                     if (!_byToken.TryGetValue(t, out List<int>? ids))
                     {
                         _byToken[t] = ids = [];
@@ -215,6 +224,12 @@ public static class DocCheck
                 .Distinct().ToList();
             if (refs.Count == 0)
             {
+                // "equivalently when L / Zv is torsion free": an equivalence claimed with nothing to resolve it to.
+                if (!isEquivalence && Regex.IsMatch(sentence, @"\b(equivalently|is equivalent|are equivalent|equivalent to)\b", RegexOptions.IgnoreCase)
+                    && !scope.StatesEquivalence(name))
+                {
+                    found.Add(new StyleProblem(line, "doc-claim-unproved", $"`{name}`: the docstring claims an equivalence (\"{cue.Value.ToLowerInvariant()}\") but no theorem in the scope states an equivalence about it. Prove it, or drop the claim."));
+                }
                 continue;
             }
             foreach (string r in refs)

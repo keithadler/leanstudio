@@ -723,4 +723,47 @@ public sealed class StatementDiffTests
             Directory.Delete(dir, true);
         }
     }
+
+    [Fact]
+    public async Task ReportsADefinitionWhoseBodyChangedUnderUnchangedStatements()
+    {
+        // The thread on smuggled definitions: the theorem text is the same, the definition under it is not.
+        string dir = Directory.CreateTempSubdirectory("leanstudio-def-").FullName;
+        try
+        {
+            CancellationToken ct = TestContext.Current.CancellationToken;
+            Assert.NotNull((await GitRepository.InitAsync(dir, ct)).Path);
+            var repo = GitRepository.Find(dir)!;
+            async Task Commit(string lean, string message, string file = "A.lean")
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, file), lean, ct);
+                Assert.True((await repo.RunAsync(["add", "-A"], ct: ct)).Success);
+                Assert.True((await repo.RunAsync(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-m", message], ct: ct)).Success);
+            }
+            const string theorem = "theorem scale (v : Fin 12 → Z) (h : IsPrimitive v) : v ≠ 0 := by sorry\n";
+            await File.WriteAllTextAsync(Path.Combine(dir, "B.lean"), "theorem elsewhere (v : Fin 12 → Z) : IsPrimitive v → True := fun _ => trivial\n", ct);
+            await Commit("/-- No common factor. -/\ndef IsPrimitive (v : Fin 12 → Z) : Prop :=\n  v ≠ 0 ∧ ∀ (d : Z) (w : Fin 12 → Z), v = d • w → IsUnit d\n\n" + theorem, "Start");
+            await Commit("/-- The line it spans is a primitive sublattice. -/\ndef IsPrimitive (v : Fin 12 → Z) : Prop :=\n  v ≠ 0 ∧ IsPrimitiveSubmodule (Submodule.span Z {v})\n\n" + theorem, "Change the definition");
+            StatementChanges? changes = await StatementDiff.ReadAsync(repo, "HEAD~1", "HEAD", ct);
+            Assert.NotNull(changes);
+            Assert.Empty(changes.Changed); // not one theorem statement changed as text
+            Assert.False(changes.IsEmpty);
+            ChangedDefinition def = Assert.Single(changes.ChangedDefinitions);
+            Assert.Equal("IsPrimitive", def.Name);
+            Assert.True(def.DocChanged);
+            Assert.Contains("scale", def.Theorems);
+            Assert.Contains(def.Theorems, t => t.Contains("B.lean", StringComparison.Ordinal)); // a file this change did not touch
+            string markdown = StatementDiff.ToMarkdown(changes, "HEAD~1", "HEAD");
+            Assert.Contains("Definitions changed (1)", markdown, StringComparison.Ordinal);
+            Assert.Contains("docstring changed too", markdown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            foreach (string f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(f, FileAttributes.Normal);
+            }
+            Directory.Delete(dir, true);
+        }
+    }
 }

@@ -97,6 +97,7 @@ Most people write Lean in VS Code with the official lean4 extension, and it's ve
 | Sorry Burndown: the project's `sorry` count over its last commits, from Git, and a branch's added, removed and restated theorems with proofs ignored, as Markdown for the pull request | | ✓ |
 | Junk values: where Lean quietly returns a made-up value (`sInf` of an empty set, `xs[i]!`, `x / 0`), so a definition or statement can compile while describing something that does not exist | | ✓ |
 | Docstring claims: a definition said to be equivalent to another with no theorem stating it, or a docstring that claims generality the definition's hypotheses lack, the prose that lets a wrong definition pass a cursory read | | ✓ |
+| Definitions that changed under unchanged theorems: the statement diff lists each definition whose body changed, whether its docstring changed with it, and the theorems that mention it | | ✓ |
 | Mathlib housekeeping: sort imports, tidy whitespace, wrap long comments, add the copyright header, delete old deprecations, a Mathlib-style name for a theorem, theorems that state the same thing, a project health summary | | ✓ |
 | Proof walkthroughs as web pages; share links to the web editor | | ✓ |
 | An onramp for people new to Lean: a tutorial, a puzzle a day with hints, goals read in English, errors explained, a hint for the goal under the cursor, a warning when a tutorial is Lean 3, practice typing symbols, badges for your firsts | | ✓ |

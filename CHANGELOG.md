@@ -1,13 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
-**Docstring claims** (*Lean ▸ Check Docstrings Against Definitions*, and `doc_check` over MCP): lists the docstring claims about a definition that nothing backs up. Lean checks that a proof proves the statement as written, never that a definition is the one its comment names, so a definition that is only equivalent to the standard one under extra hypotheses can pass with the standard name in the prose. Prompted by a thread on frontier models smuggling in an incorrect definition under a correct docstring.
-- A docstring that says a definition is equivalent to, the same as, or equals some other `Name`, when no theorem in the scope states the two together. The fix is to prove `A ↔ B`, which anchors the claim. `doc-claim-unproved`.
+Prompted by a thread on frontier models smuggling an incorrect definition into a formalization under a correct docstring. Lean checks that a proof proves the statement as written, never that a definition is the one its comment names, so these two changes read what Lean does not.
+
+**Definitions that changed under unchanged theorems** (*Lean ▸ What This Branch Changed Mathematically*, and `statement_changes` over MCP): the statement diff compared theorem statements as text, so when a definition's body changed and the theorems about it did not, it said nothing was restated. It now also lists each definition whose body changed (spacing, comments and bound-variable names do not count), says whether its docstring changed with it (the prose was relabeled along with the code), and names the theorems that mention it, including those in files the change did not touch. "No theorem was added, removed or restated" is no longer printed when a definition changed.
+
+**Docstring claims** (*Lean ▸ Check Docstrings Against Definitions*, and `doc_check` over MCP): lists the docstring claims about a definition that nothing backs up.
+- A docstring that says a definition is equivalent to, the same as, or equals some other `Name`, when no theorem in the scope states the two together; fix it by proving `A ↔ B`. And "equivalently" with nothing to resolve it to, when no theorem in the scope states an equivalence about the definition. `doc-claim-unproved`.
 - A docstring that claims generality ("for any ring", "the standard") when the definition requires a narrowing class such as `[IsDomain R]`, `[Field K]`, `[CharZero K]` or `[Finite α]` that the docstring never mentions. `doc-overclaims-generality`.
 - With `strict=true`: "the standard/usual definition" claims that name no reference. `doc-claim-unanchored`.
 - Read from the text, so nothing has to be built first. `project=true` looks for the backing theorems in every file of the project. Definitions that are themselves equivalences (`≃`, `Equiv`, `Iso`) and references to theorem names are skipped.
-- It cannot say whether a definition is right: each hit is a claim to anchor with a theorem, not a bug. On Mathlib it lists 78 claims over 8,603 files, mixed in quality; on OpenAI's Navier–Stokes, Euler and Saxl formalizations and on two small proof projects it lists none.
+- It cannot say whether a definition is right: each hit is a claim to anchor with a theorem, not a bug. On Mathlib it lists 152 claims over 8,603 files, mixed in quality; on OpenAI's Navier–Stokes, Euler and Saxl formalizations and on two small proof projects it lists none. It does not see a definition changed with a docstring that makes no claim, which is what the statement diff above is for.
 
 ## 1.2.0
 
