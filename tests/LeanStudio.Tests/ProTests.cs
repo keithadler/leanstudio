@@ -111,6 +111,20 @@ public sealed class ProTests
     }
 
     [Fact]
+    public void ReadsLeanLinterJsonAmongItsSummary()
+    {
+        const string output = """
+            {"check":"deprecation","declaration":"Fixtures.dep_old","line":51,"message":"deprecated in favor of `Fixtures.dep_mid`, which is itself deprecated","module":"T.Fixtures"}
+            mislabel: 1
+            {"check":"mislabel","declaration":"Fixtures.fooLeft_eq","line":13,"message":"the name says `fooLeft`","module":"T.Fixtures"}
+            """;
+        IReadOnlyList<LeanLinterFinding> f = LeanLinter.Parse(output);
+        Assert.Equal(2, f.Count);
+        Assert.Equal(new LeanLinterFinding("deprecation", "Fixtures.dep_old", "T.Fixtures", 50, "deprecated in favor of `Fixtures.dep_mid`, which is itself deprecated"), f[0]);
+        Assert.Equal("mislabel", f[1].Check);
+    }
+
+    [Fact]
     public void ReadsLakeLintOutput()
     {
         const string output = """

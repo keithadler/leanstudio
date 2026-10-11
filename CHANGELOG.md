@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+**Check Names and Docstrings** (*Lean ▸ Check Names and Docstrings (lean-linter)*, and `lean_linter` over MCP): runs [lean-linter](https://github.com/keithadler/lean-linter) on the open file's module and lists in Problems what Lean's type checker cannot see: lemmas whose names say the opposite of their statements (`mislabel`, `name-shape`, `namespace`), docstrings that describe the wrong property or name declarations that no longer exist (`doc-mislabel`, `doc-refs`), deprecation chains, duplicate statements and instances, and private code nothing uses.
+- It reads the compiled module, so build first. The first run in a project clones lean-linter v0.1.0 and builds it with the project's own Lean version, and keeps it for the next run.
+- Each finding is a thing to read, not a verdict: English is looser than Lean.
+
 ## 1.3.0
 
 Prompted by a thread on frontier models smuggling an incorrect definition into a formalization under a correct docstring. Lean checks that a proof proves the statement as written, never that a definition is the one its comment names, so these two changes read what Lean does not.

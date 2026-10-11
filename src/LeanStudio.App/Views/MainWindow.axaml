@@ -166,6 +166,7 @@
         </MenuItem>
         <MenuItem Header="Find Duplicate Theorem Statements" Command="{Binding FindDuplicateStatementsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
+        <MenuItem Header="Check Names and Docstrings (lean-linter)" Command="{Binding LeanLinterFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />
         <Separator />
         <MenuItem Header="Prove It (try tactics on this sorry)" Command="{Binding ProveItCommand}" InputGesture="{OnPlatform Default='Ctrl+Alt+P', macOS='Cmd+Alt+P'}" />

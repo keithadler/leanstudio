@@ -920,6 +920,54 @@ public sealed partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Run lean-linter on the active file's module (saving it first) and list what it finds in Problems: names that
+    /// say the opposite of their statements, docstrings that name things that no longer exist, duplicates and dead
+    /// private code. The first run in a project builds lean-linter with the project's Lean version.
+    /// </summary>
+    [RelayCommand]
+    public async Task<IReadOnlyList<LeanLinterFinding>> LeanLinterFileAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d || Project is not LeanProject p)
+        {
+            Log("lean-linter: open a file of a Lake project to check it.");
+            return [];
+        }
+        if (d.IsDirty)
+        {
+            await SaveDocumentAsync(d);
+        }
+        ProStatus = $"Running lean-linter on {Path.GetFileName(d.Path)}…";
+        Log(ProStatus + (p.Toolchain is string t && LeanLinter.BuiltFor(t) is null ? " (building it for " + t + " first, once)" : ""));
+        try
+        {
+            var (findings, error) = await LeanLinter.RunAsync(p, d.Path, l => Log("lean-linter: " + l));
+            if (error is not null)
+            {
+                Log("lean-linter: " + error);
+                return [];
+            }
+            SetToolProblems("lean-linter", findings.Select(f => new ProblemItem(Documents.FirstOrDefault(x => x.Path == d.Path), d.Path, new Diagnostic(
+                new Lsp.Range(new Position(f.Line, 0), new Position(f.Line, 0)),
+                DiagnosticSeverity.Warning, $"{f.Message}  ({f.Check}: {f.Declaration})", "lean-linter"))));
+            Log(findings.Count == 0 ? "lean-linter: nothing found." : $"lean-linter: {findings.Count} finding{(findings.Count == 1 ? "" : "s")}, in Problems.");
+            if (findings.Count > 0)
+            {
+                BottomTab = ProblemsPanel;
+            }
+            return findings;
+        }
+        catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception)
+        {
+            Log("lean-linter: " + e.Message);
+            return [];
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
     // ---- renames that keep the old name working ----
 
     /// <summary>

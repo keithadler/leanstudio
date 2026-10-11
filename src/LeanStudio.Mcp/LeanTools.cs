@@ -1179,6 +1179,30 @@ public static class LeanTools
                 return sb.ToString().TrimEnd();
             }),
 
+        new("lean_linter",
+            "Run lean-linter on the module of a Lean file: lemmas whose names say the opposite of their statements (mislabel, name-shape), docstrings that describe the wrong property or name declarations that no longer exist (doc-mislabel, doc-refs), deprecation chains, duplicate statements and instances, and private code nothing uses. Reads the compiled module, so build first; the first run builds lean-linter with the project's Lean version. Each finding is a thing to read, not a verdict.",
+            Schema(("path", "string", "The .lean file.", true)),
+            async (a, ct) =>
+            {
+                string path = LeanFile(bench, a);
+                LeanProject project = bench.ProjectFor(path);
+                var (findings, error) = await LeanLinter.RunAsync(project, path, ct: ct);
+                if (error is not null)
+                {
+                    throw new ToolException(error);
+                }
+                if (findings.Count == 0)
+                {
+                    return "no findings";
+                }
+                var sb = new StringBuilder();
+                foreach (LeanLinterFinding f in findings)
+                {
+                    sb.Append(CultureInfo.InvariantCulture, $"{Path.GetFileName(path)}:{f.Line + 1}: [{f.Check}] {f.Declaration}: {f.Message}\n");
+                }
+                return sb.ToString().TrimEnd();
+            }),
+
         new("heartbeats",
             "Heartbeats per top-level declaration of a Lean file (what maxHeartbeats limits; the default limit is 200000), heaviest first. Use it to see which proofs are close to the limit. The file's imports must be built.",
             Schema(("path", "string", "The .lean file.", true),

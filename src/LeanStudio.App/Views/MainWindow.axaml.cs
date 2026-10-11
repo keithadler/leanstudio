@@ -1126,6 +1126,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Add Mathlib Copyright Header", "", Cmd(_vm.AddMathlibHeaderCommand));
         yield return ("Lean: Remove Deprecations Older Than Six Months", "", Cmd(_vm.RemoveStaleDeprecationsCommand));
         yield return ("Lean: Lint File (the linters CI runs)", "", Cmd(_vm.LintFileCommand));
+        yield return ("Lean: Check Names and Docstrings (lean-linter)", "", Cmd(_vm.LeanLinterFileCommand));
         yield return ("Lean: Import Every Module in the Library Root", "", Cmd(_vm.ImportAllModulesCommand));
         yield return ("Lean: Get Mathlib Cache for Open Files", "", Cmd(_vm.GetCacheForOpenFilesCommand));
         yield return ("Lean: Restart Server", m + "⇧R", Cmd(_vm.RestartServerCommand));
