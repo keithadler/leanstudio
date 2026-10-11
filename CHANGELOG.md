@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 **LeanOut plugin** (`samples/Plugins/LeanOut`): palette commands built on [leanout](https://github.com/keithadler/leanout), a clean-room Lean 4 exporter. *Export: Axioms of the Declaration at the Caret* lists what the declaration under the caret rests on (the standard axioms, a `sorry`, or an axiom a dependency adds); *Export: Check the Declaration at the Caret with Another Kernel* exports it with its dependencies and has Tenet re-check it; *Export: This File's Module to NDJSON* writes a validated export for any checker or CI. The exporter is built once per Lean toolchain, like lean-linter.
 
