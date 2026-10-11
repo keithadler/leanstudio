@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A Lean Studio plugin: a class library that references LeanStudio.Plugins, and nothing else of Lean Studio's.
+       Build it into the plugins folder:  dotnet build -c Release -o "<settings folder>/plugins/LeanOut"  -->
+  <PropertyGroup>
+    <Description>Lean Studio plugin for leanout, a clean-room Lean 4 exporter: what a declaration depends on, and a second-kernel check, from the caret.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Private=false: Lean Studio supplies LeanStudio.Plugins, so the plugin doesn't carry a copy. -->
+    <ProjectReference Include="../../../src/LeanStudio.Plugins/LeanStudio.Plugins.csproj" Private="false" />
+  </ItemGroup>
+</Project>

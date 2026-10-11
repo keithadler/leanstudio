@@ -14,6 +14,7 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Plugins/HelloLean/HelloLean.csproj" />
+    <Project Path="samples/Plugins/LeanOut/LeanOut.csproj" />
   </Folder>
   <Folder Name="/external/">
     <Project Path="external/tenet/src/Tenet.Kernel/Tenet.Kernel.csproj" />

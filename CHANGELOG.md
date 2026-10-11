@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+**LeanOut plugin** (`samples/Plugins/LeanOut`): palette commands built on [leanout](https://github.com/keithadler/leanout), a clean-room Lean 4 exporter. *Export: Axioms of the Declaration at the Caret* lists what the declaration under the caret rests on (the standard axioms, a `sorry`, or an axiom a dependency adds); *Export: Check the Declaration at the Caret with Another Kernel* exports it with its dependencies and has Tenet re-check it; *Export: This File's Module to NDJSON* writes a validated export for any checker or CI. The exporter is built once per Lean toolchain, like lean-linter.
+
 ## 1.4.0
 
 **Check Names and Docstrings** (*Lean ▸ Check Names and Docstrings (lean-linter)*, and `lean_linter` over MCP): runs [lean-linter](https://github.com/keithadler/lean-linter) on the open file's module and lists in Problems what Lean's type checker cannot see: lemmas whose names say the opposite of their statements (`mislabel`, `name-shape`, `namespace`), docstrings that describe the wrong property or name declarations that no longer exist (`doc-mislabel`, `doc-refs`), deprecation chains, duplicate statements and instances, and private code nothing uses.

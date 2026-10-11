@@ -11,6 +11,7 @@
     <ProjectReference Include="../../src/LeanStudio.Mcp/LeanStudio.Mcp.csproj" />
     <!-- Built first, not referenced: the plugin tests load it the way Lean Studio does. -->
     <ProjectReference Include="../../samples/Plugins/HelloLean/HelloLean.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../samples/Plugins/LeanOut/LeanOut.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
