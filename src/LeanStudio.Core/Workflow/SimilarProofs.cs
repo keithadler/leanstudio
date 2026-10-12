@@ -16,7 +16,13 @@ public sealed record TheoremProof(string Path, int Line, string Name, string Sta
 /// <param name="Members">The theorems, in the order found.</param>
 /// <param name="Similarity">How alike the least alike of the linked pairs are, from 0 to 1; 1 means the same tokens.</param>
 /// <param name="SameStatement">Whether every member states the same thing, so that this is a duplicate, not a proof reused.</param>
-public sealed record ProofCluster(IReadOnlyList<TheoremProof> Members, double Similarity, bool SameStatement);
+/// <param name="IsVariantFamily">Whether the names differ in a single word (<c>sum_push</c>, <c>prod_push</c>): a family written on purpose.</param>
+/// <param name="Differences">How each member's statement differs from the first's, or empty when they are the same.</param>
+public sealed record ProofCluster(IReadOnlyList<TheoremProof> Members, double Similarity, bool SameStatement, bool IsVariantFamily, string Differences)
+{
+    /// <summary>The tokens a lemma that took the shared argument out would save: one copy of the proof for each member after the first.</summary>
+    public int Savings => (Members.Count - 1) * Members[0].Tokens.Count;
+}
 
 /// <summary>
 /// Theorems whose proofs are the same up to the names of the variables they introduce, or nearly: the same tactic script
@@ -204,9 +210,53 @@ public static class SimilarProofs
             {
                 TheoremProof[] members = [.. g.Select(i => all[i])];
                 bool same = members.Select(m => DuplicateStatements.Normalize(m.Statement)).Distinct(StringComparer.Ordinal).Count() == 1;
-                return new ProofCluster(members, worst.GetValueOrDefault(g.Key, 1.0), same);
+                return new ProofCluster(members, worst.GetValueOrDefault(g.Key, 1.0), same, IsVariantFamily(members.Select(m => m.Name)), Differences(members));
             })
-            .OrderByDescending(c => c.Members.Count * c.Members[0].Tokens.Count)];
+            .OrderBy(c => c.IsVariantFamily)
+            .ThenByDescending(c => c.Savings)];
+    }
+
+    private static string[] Words(string name) =>
+        name.Split(['.', '_'], StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// Whether the names have the same number of words (split at <c>.</c> and <c>_</c>) and differ in at most one place:
+    /// <c>max_add_left</c> and <c>max_add_right</c>, <c>Array.any_eq</c> and <c>Vector.any_eq</c>. Such a group is a family
+    /// of lemmas written together on purpose.
+    /// </summary>
+    /// <param name="names">The theorems' names.</param>
+    public static bool IsVariantFamily(IEnumerable<string> names)
+    {
+        string[][] words = [.. names.Select(Words)];
+        if (words.Length < 2 || words.Any(w => w.Length != words[0].Length))
+        {
+            return false;
+        }
+        return Enumerable.Range(0, words[0].Length).Count(i => words.Any(w => w[i] != words[0][i])) <= 1;
+    }
+
+    private static readonly Regex Identifier = new(@"[\p{L}_][\p{L}\p{N}_'.!?₀-₉]*", RegexOptions.Compiled);
+
+    /// <summary>
+    /// How the other members' statements differ from the first member's, as the names each has and the first lacks
+    /// (<c>Ico → Ioo</c>), one line per member; empty when the statements are the same.
+    /// </summary>
+    /// <param name="members">The group.</param>
+    public static string Differences(IReadOnlyList<TheoremProof> members)
+    {
+        HashSet<string> first = [.. Identifier.Matches(members[0].Statement).Select(m => m.Value)];
+        var lines = new List<string>();
+        foreach (TheoremProof m in members.Skip(1))
+        {
+            HashSet<string> mine = [.. Identifier.Matches(m.Statement).Select(x => x.Value)];
+            string[] gone = [.. first.Except(mine).Take(4)];
+            string[] added = [.. mine.Except(first).Take(4)];
+            if (gone.Length + added.Length > 0)
+            {
+                lines.Add($"{m.Name}: {(gone.Length == 0 ? "—" : string.Join(", ", gone))} → {(added.Length == 0 ? "—" : string.Join(", ", added))}");
+            }
+        }
+        return string.Join('\n', lines);
     }
 
     private static double Jaccard(long[] x, long[] y)
@@ -254,7 +304,7 @@ public static class SimilarProofs
         return Find(all, threshold);
     }
 
-    /// <summary>The groups as the lines Output and MCP show: each group's similarity, then its members.</summary>
+    /// <summary>The groups as the lines Output and MCP show: each group's kind and similarity, then its members and how their statements differ.</summary>
     /// <param name="groups">What <see cref="Scan"/> found.</param>
     /// <param name="root">Paths are shown relative to this.</param>
     public static string Describe(IReadOnlyList<ProofCluster> groups, string root)
@@ -262,11 +312,16 @@ public static class SimilarProofs
         var sb = new StringBuilder();
         foreach (ProofCluster g in groups)
         {
-            sb.Append(g.Similarity >= 1 ? "same proof" : $"{(int)(g.Similarity * 100)}% alike").Append(g.SameStatement ? ", same statement" : "")
-              .Append(" (").Append(g.Members.Count).Append(" theorems, ").Append(g.Members[0].Tokens.Count).Append(" tokens)\n");
+            sb.Append(g.Similarity >= 1 ? "same proof" : $"{(int)(g.Similarity * 100)}% alike")
+              .Append(g.SameStatement ? ", same statement: a duplicate" : g.IsVariantFamily ? ", a family of variants" : "")
+              .Append(" (").Append(g.Members.Count).Append(" theorems, ").Append(g.Members[0].Tokens.Count).Append(" tokens each, a shared lemma would save ").Append(g.Savings).Append(")\n");
             foreach (TheoremProof t in g.Members)
             {
                 sb.Append("  ").Append(t.Name).Append("  ").Append(System.IO.Path.GetRelativePath(root, t.Path)).Append(':').Append(t.Line + 1).Append('\n');
+            }
+            foreach (string d in g.Differences.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                sb.Append("  differs  ").Append(d).Append('\n');
             }
         }
         return sb.ToString().TrimEnd();

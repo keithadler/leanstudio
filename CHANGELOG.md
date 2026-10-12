@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0
+
+**Find Similar Proofs, better.** Run on all of Mathlib it takes 34 seconds and lists 661 groups, so the list had to be worth reading.
+- The groups that would save the most come first (the proof's size times the copies after the first), not the ones found first.
+- Each group says how its statements differ (`Ioo → Ico`), and a family of variants (`sum_push` and `prod_push`: names that differ in one word) is listed last, since those are usually written together on purpose.
+- Every member is now a Problem you can click, instead of a line in Output.
+
+**lean-linter 0.5.0** is what *Check Names and Docstrings* now builds. It adds `proof-clone` (different theorems whose compiled proofs apply the same lemmas in the same order) and `proof-variant` (the same, for a family of lemmas).
+
 ## 1.6.0
 
 **Find Similar Proofs** (*Lean ▸ Find Similar Proofs*, and `similar_proofs` over MCP): lists theorems whose proofs are the same, or nearly, up to the names of the variables they introduce. Same statement is a duplicate; different statements, the argument may be worth a lemma. Read from the text, so nothing has to be built first; proofs under 20 tokens are skipped.

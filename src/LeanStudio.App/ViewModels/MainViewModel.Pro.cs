@@ -798,8 +798,20 @@ public sealed partial class MainViewModel
             {
                 Log(line);
             }
+            // Each member is a Problem at its theorem, so a click goes there and says who it matches.
+            SetToolProblems("similar-proofs", groups.SelectMany(g => g.Members.Select(t => new ProblemItem(
+                Documents.FirstOrDefault(x => x.Path == t.Path), t.Path, new Diagnostic(
+                    new Lsp.Range(new Position(t.Line, 0), new Position(t.Line, 0)),
+                    g.SameStatement ? DiagnosticSeverity.Warning : DiagnosticSeverity.Information,
+                    (g.SameStatement ? "Same statement and proof as " : g.IsVariantFamily ? "Variant: same proof as " : "Same proof as ")
+                        + string.Join(", ", g.Members.Where(o => o != t).Select(o => o.Name).Take(4))
+                        + (g.Members.Count > 5 ? ", …" : "") + $"  ({(int)(g.Similarity * 100)}%)", "similar-proofs")))));
             Log(groups.Count == 0 ? "Similar proofs: no two proofs are alike."
-                : $"Similar proofs: {groups.Count} group{(groups.Count == 1 ? "" : "s")}. A group with the same statement is a duplicate; with different statements, the argument may be worth a lemma.");
+                : $"Similar proofs: {groups.Count} group{(groups.Count == 1 ? "" : "s")}, the ones that would save most first, in Problems. A group with the same statement is a duplicate; with different statements, the argument may be worth a lemma; a family of variants is usually on purpose.");
+            if (groups.Count > 0)
+            {
+                BottomTab = ProblemsPanel;
+            }
         }
         finally
         {

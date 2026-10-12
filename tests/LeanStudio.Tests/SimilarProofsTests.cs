@@ -46,4 +46,32 @@ public sealed class SimilarProofsTests
         string text = "theorem a (n : \u2115) : n = n := rfl\ntheorem b (m : \u2115) : m = m := rfl\n";
         Assert.Empty(SimilarProofs.Find(SimilarProofs.Proofs("F.lean", text)));
     }
+
+    [Fact]
+    public void RecognisesAFamilyWrittenOnPurpose()
+    {
+        Assert.True(SimilarProofs.IsVariantFamily(["Array.sum_push", "Array.prod_push"]));
+        Assert.True(SimilarProofs.IsVariantFamily(["max_add_left", "max_add_right", "max_add_mid"]));
+        Assert.False(SimilarProofs.IsVariantFamily(["max_add_left", "min_mul_right"]));
+        Assert.False(SimilarProofs.IsVariantFamily(["foo_bar", "foo_bar_baz"]));
+    }
+
+    [Fact]
+    public void SaysHowTheStatementsDiffer()
+    {
+        var a = new TheoremProof("F.lean", 0, "Ioo_subset", "Ioo a b \u2286 s", []);
+        var b = new TheoremProof("F.lean", 5, "Ico_subset", "Ico a b \u2286 s", []);
+        Assert.Equal("Ico_subset: Ioo \u2192 Ico", SimilarProofs.Differences([a, b]));
+        Assert.Equal("", SimilarProofs.Differences([a, a with { Name = "again" }]));
+    }
+
+    [Fact]
+    public void ListsTheGroupThatWouldSaveMostFirst()
+    {
+        string text = Theorem("one_x", "a", "b") + Theorem("one_y", "p", "q") + Theorem("big_one", "m", "n") + Theorem("big_two", "u", "v") +
+            "theorem solo (n : \u2115) : n = n := by\n  intro\n";
+        IReadOnlyList<ProofCluster> groups = SimilarProofs.Find(SimilarProofs.Proofs("F.lean", text), minTokens: 10);
+        Assert.All(groups, g => Assert.True(g.Savings > 0));
+        Assert.Equal(groups.OrderByDescending(g => g.Savings).ThenBy(g => 0).Select(g => g.Savings), groups.Select(g => g.Savings));
+    }
 }
