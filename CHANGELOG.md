@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.2
+
+Tenet 0.11.2. The bundled kernel now rejects an export with no metadata record (an empty file, or one that is not lean4export output) instead of reporting it as a pass; before, such a file printed `OK: 0 checked`. Verify in Lean Studio always feeds Tenet an export it has just written, so this closes a gap rather than a reported failure.
+
 ## 1.8.1
 
 *Check Names and Docstrings* now builds the newest lean-linter instead of the one Lean Studio shipped with. It asks GitHub for the highest `vX.Y.Z` tag (once per run of the app, with an eight-second limit), builds that with the project's Lean version the first time, and keeps it. If GitHub cannot be reached, or the newer release does not build with that Lean, it uses the release it was made with (0.5.0) and says so in Output.
