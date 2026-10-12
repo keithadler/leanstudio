@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.1
+
+*Check Names and Docstrings* now builds the newest lean-linter instead of the one Lean Studio shipped with. It asks GitHub for the highest `vX.Y.Z` tag (once per run of the app, with an eight-second limit), builds that with the project's Lean version the first time, and keeps it. If GitHub cannot be reached, or the newer release does not build with that Lean, it uses the release it was made with (0.5.0) and says so in Output.
+
 ## 1.8.0
 
 **Compare Proof at Caret With Its Closest Match** (*Lean ▸ Compare Proof at Caret With Its Closest Match*, and `compare_proofs` over MCP): the answer to "could one parse both and compare them". Put the caret in a theorem and it finds the proofs in the project most like it and shows the closest beside it: how alike they are, how the statements differ, and the proofs token by token (`= 25 tokens`, `- aes_cst`, `+ aes_bij`). When the files are built it also asks Lean whether the two statements and the two proofs are the same compiled term, and how many lemmas the proofs share. `compare_proofs` takes any two theorems by name.

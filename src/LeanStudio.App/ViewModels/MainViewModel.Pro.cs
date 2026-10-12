@@ -1022,7 +1022,7 @@ public sealed partial class MainViewModel
             await SaveDocumentAsync(d);
         }
         ProStatus = $"Running lean-linter on {Path.GetFileName(d.Path)}…";
-        Log(ProStatus + (p.Toolchain is string t && LeanLinter.BuiltFor(t) is null ? " (building it for " + t + " first, once)" : ""));
+        Log(ProStatus + (p.Toolchain is string t && LeanLinter.BuiltFor(t, await LeanLinter.LatestReleaseAsync() ?? LeanLinter.Release) is null ? " (building the newest lean-linter for " + t + " first, once)" : ""));
         try
         {
             var (findings, error) = await LeanLinter.RunAsync(p, d.Path, l => Log("lean-linter: " + l));

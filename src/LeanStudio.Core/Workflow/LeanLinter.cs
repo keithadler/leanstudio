@@ -21,43 +21,104 @@ public sealed record LeanLinterFinding(string Check, string Declaration, string 
 /// </summary>
 public static class LeanLinter
 {
-    /// <summary>The release of lean-linter that is built.</summary>
+    /// <summary>The release of lean-linter that is built when the newest one cannot be found or does not build.</summary>
     public const string Release = "v0.5.0";
 
     private const string Repository = "https://github.com/keithadler/lean-linter";
 
-    /// <summary>Where the builds are kept, one folder per Lean version.</summary>
-    public static string CacheRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LeanStudio", "lean-linter", Release);
+    /// <summary>Where the builds of <paramref name="release"/> are kept, one folder per Lean version.</summary>
+    /// <param name="release">A release tag, such as <c>v0.5.0</c>.</param>
+    public static string CacheRoot(string release = Release) =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "LeanStudio", "lean-linter", release);
 
     /// <summary>The folder for a toolchain such as <c>leanprover/lean4:v4.35.0-rc4</c>.</summary>
-    public static string FolderFor(string toolchain) =>
-        Path.Combine(CacheRoot, new string([.. toolchain.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' ? c : '_')]));
+    /// <param name="toolchain">The project's toolchain.</param>
+    /// <param name="release">A release tag.</param>
+    public static string FolderFor(string toolchain, string release = Release) =>
+        Path.Combine(CacheRoot(release), new string([.. toolchain.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' ? c : '_')]));
 
-    /// <summary>The executable built for <paramref name="toolchain"/>, or null when it has not been built.</summary>
-    public static string? BuiltFor(string toolchain)
+    /// <summary>The executable of <paramref name="release"/> built for <paramref name="toolchain"/>, or null when it has not been built.</summary>
+    /// <param name="toolchain">The project's toolchain.</param>
+    /// <param name="release">A release tag.</param>
+    public static string? BuiltFor(string toolchain, string release = Release)
     {
-        string exe = Path.Combine(FolderFor(toolchain), ".lake", "build", "bin", OperatingSystem.IsWindows() ? "lean-linter.exe" : "lean-linter");
+        string exe = Path.Combine(FolderFor(toolchain, release), ".lake", "build", "bin", OperatingSystem.IsWindows() ? "lean-linter.exe" : "lean-linter");
         return File.Exists(exe) ? exe : null;
     }
 
-    /// <summary>Clone and build lean-linter with the project's Lean version, unless that is already done. Returns the executable.</summary>
+    private static string? _latest;
+
+    /// <summary>
+    /// The newest <c>vX.Y.Z</c> tag of lean-linter, asked of GitHub once per run of the app; null when it cannot be reached
+    /// within a few seconds (offline, or git missing).
+    /// </summary>
+    /// <param name="ct">Cancels the lookup.</param>
+    public static async Task<string?> LatestReleaseAsync(CancellationToken ct = default)
+    {
+        if (_latest is not null)
+        {
+            return _latest;
+        }
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(8));
+        try
+        {
+            ProcessResult r = await ProcessRunner.RunAsync("git", ["ls-remote", "--tags", "--refs", Repository], ct: timeout.Token).ConfigureAwait(false);
+            _latest = r.Success ? NewestTag(r.Output) : null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            _latest = null;
+        }
+        return _latest;
+    }
+
+    /// <summary>The highest <c>vX.Y.Z</c> among the tags in <paramref name="lsRemoteOutput"/> (<c>git ls-remote --tags</c>), or null.</summary>
+    /// <param name="lsRemoteOutput">Lines of <c>hash refs/tags/name</c>.</param>
+    public static string? NewestTag(string lsRemoteOutput) =>
+        lsRemoteOutput.Split('\n')
+            .Select(l => System.Text.RegularExpressions.Regex.Match(l, @"refs/tags/(v(\d+)\.(\d+)\.(\d+))\s*$"))
+            .Where(m => m.Success)
+            .Select(m => (Tag: m.Groups[1].Value, Version: new Version(int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[4].Value, System.Globalization.CultureInfo.InvariantCulture))))
+            .OrderByDescending(x => x.Version)
+            .Select(x => x.Tag)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// Clone and build the newest lean-linter with the project's Lean version, unless that is already done; if it cannot be
+    /// found or does not build, the release this version of Lean Studio was made with. Returns the executable.
+    /// </summary>
+    /// <param name="project">The project, whose toolchain decides the build.</param>
+    /// <param name="onLine">Called with each line git and Lake print.</param>
+    /// <param name="ct">Cancels the build.</param>
     public static async Task<(string? Exe, string? Error)> EnsureBuiltAsync(LeanProject project, Action<string>? onLine = null, CancellationToken ct = default)
     {
         if (project.Toolchain is not string toolchain)
         {
             return (null, "lean-linter has to be built with the project's Lean version, and the project has no lean-toolchain file.");
         }
-        if (BuiltFor(toolchain) is string built)
+        string latest = await LatestReleaseAsync(ct).ConfigureAwait(false) ?? Release;
+        (string? exe, string? error) = await BuildAsync(toolchain, latest, onLine, ct).ConfigureAwait(false);
+        if (exe is null && latest != Release)
+        {
+            onLine?.Invoke($"lean-linter {latest} did not build; using {Release}.");
+            (exe, error) = await BuildAsync(toolchain, Release, onLine, ct).ConfigureAwait(false);
+        }
+        return (exe, error);
+    }
+
+    private static async Task<(string? Exe, string? Error)> BuildAsync(string toolchain, string release, Action<string>? onLine, CancellationToken ct)
+    {
+        if (BuiltFor(toolchain, release) is string built)
         {
             return (built, null);
         }
-        string folder = FolderFor(toolchain);
+        string folder = FolderFor(toolchain, release);
         if (!Directory.Exists(Path.Combine(folder, ".git")))
         {
-            Directory.CreateDirectory(CacheRoot);
+            Directory.CreateDirectory(CacheRoot(release));
             ProcessResult clone = await ProcessRunner.RunAsync("git",
-                ["clone", "--depth", "1", "--branch", Release, Repository, folder], onLine: onLine, ct: ct).ConfigureAwait(false);
+                ["clone", "--depth", "1", "--branch", release, Repository, folder], onLine: onLine, ct: ct).ConfigureAwait(false);
             if (!clone.Success)
             {
                 return (null, "Could not fetch lean-linter: " + clone.Output.Trim());
@@ -67,9 +128,9 @@ public static class LeanLinter
         await File.WriteAllTextAsync(Path.Combine(folder, LeanProject.ToolchainFile), toolchain + "\n", ct).ConfigureAwait(false);
         string lake = Elan.FindExecutable("lake") ?? "lake";
         ProcessResult build = await ProcessRunner.RunAsync(lake, ["build"], folder, onLine, ct: ct).ConfigureAwait(false);
-        return BuiltFor(toolchain) is string exe
+        return BuiltFor(toolchain, release) is string exe
             ? (exe, null)
-            : (null, $"lean-linter did not build with {toolchain}: " + build.Output.Trim());
+            : (null, $"lean-linter {release} did not build with {toolchain}: " + build.Output.Trim());
     }
 
     /// <summary>The source file of <paramref name="module"/> in <paramref name="project"/>.</summary>

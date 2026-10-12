@@ -127,4 +127,13 @@ public sealed class SimilarProofsTests
             Directory.Delete(project.Root, true);
         }
     }
+
+    [Fact]
+    public void PicksTheNewestLeanLinterTag()
+    {
+        const string tags = "aaa\trefs/tags/v0.3.0\nbbb\trefs/tags/v0.10.0\nccc\trefs/tags/v0.5.0\nddd\trefs/tags/nightly\neee\trefs/tags/v0.9.9-rc1\n";
+        Assert.Equal("v0.10.0", LeanLinter.NewestTag(tags));
+        Assert.Null(LeanLinter.NewestTag("fatal: unable to access"));
+        Assert.EndsWith(Path.Combine("lean-linter", "v0.6.0", "leanprover_lean4_v4.35.0"), LeanLinter.FolderFor("leanprover/lean4:v4.35.0", "v0.6.0"), StringComparison.Ordinal);
+    }
 }
