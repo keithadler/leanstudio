@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 **Find Similar Proofs** (*Lean ▸ Find Similar Proofs*, and `similar_proofs` over MCP): lists theorems whose proofs are the same, or nearly, up to the names of the variables they introduce. Same statement is a duplicate; different statements, the argument may be worth a lemma. Read from the text, so nothing has to be built first; proofs under 20 tokens are skipped.
 
