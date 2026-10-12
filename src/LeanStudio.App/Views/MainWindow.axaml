@@ -165,6 +165,7 @@
           <MenuItem Header="Check Locked Statements" Command="{Binding CheckLockedStatementsCommand}" />
         </MenuItem>
         <MenuItem Header="Find Duplicate Theorem Statements" Command="{Binding FindDuplicateStatementsCommand}" />
+        <MenuItem Header="Find Similar Proofs" Command="{Binding FindSimilarProofsCommand}" />
         <MenuItem Header="Lint File (the linters CI runs)" Command="{Binding LintFileCommand}" />
         <MenuItem Header="Check Names and Docstrings (lean-linter)" Command="{Binding LeanLinterFileCommand}" />
         <MenuItem Header="Import Every Module in the Library Root" Command="{Binding ImportAllModulesCommand}" />

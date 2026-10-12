@@ -778,6 +778,36 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
+    /// Look through the project's Lean files for theorems whose proofs are the same, or nearly, up to the names of the
+    /// variables they introduce, and list each group in Output.
+    /// </summary>
+    [RelayCommand]
+    public async Task FindSimilarProofsAsync()
+    {
+        if (Project is null)
+        {
+            Log("Similar proofs: open a project first.");
+            return;
+        }
+        string root = Project.Root;
+        ProStatus = "Comparing the project's proofs…";
+        try
+        {
+            IReadOnlyList<ProofCluster> groups = await Task.Run(() => SimilarProofs.Scan(root));
+            foreach (string line in SimilarProofs.Describe(groups, root).Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                Log(line);
+            }
+            Log(groups.Count == 0 ? "Similar proofs: no two proofs are alike."
+                : $"Similar proofs: {groups.Count} group{(groups.Count == 1 ? "" : "s")}. A group with the same statement is a duplicate; with different statements, the argument may be worth a lemma.");
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
     /// Count the project's Lean files into a summary in Output: size, <c>sorry</c>s and TODOs, the share of definitions with a doc
     /// comment, deprecations (and how many are old enough to delete) and style problems, then the files with the most still to do.
     /// </summary>

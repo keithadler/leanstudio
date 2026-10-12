@@ -1116,6 +1116,7 @@ public sealed partial class MainWindow : Window, IDialogs
         yield return ("Lean: Sorry Burndown (last 30 commits)", "", Cmd(_vm.ShowSorryBurndownCommand));
         yield return ("Lean: What This Branch Changed Mathematically", "", Cmd(_vm.ShowStatementChangesCommand));
         yield return ("Lean: Find Duplicate Theorem Statements", "", Cmd(_vm.FindDuplicateStatementsCommand));
+        yield return ("Lean: Find Similar Proofs", "", Cmd(_vm.FindSimilarProofsCommand));
         yield return ("Lean: Merge Consecutive rw / intro Steps", "", Cmd(_vm.MergeConsecutiveTacticsCommand));
         yield return ("Lean: Suggest a Name for This Theorem", "", Cmd(_vm.SuggestTheoremNameCommand));
         yield return ("Lean: Tidy Whitespace and Check Style", "", Cmd(_vm.TidyWhitespaceCommand));

@@ -19,7 +19,7 @@ public sealed record TheoremStatement(string Path, int Line, string Name, string
 /// </summary>
 public static class DuplicateStatements
 {
-    private static readonly Regex Declaration = new(@"^(?:@\[[^\]]*\]\s*)*(?:(?:protected|private|nonrec)\s+)*(?:theorem|lemma)\s+(?<name>[^\s:({\[]+)(?<rest>.*)$", RegexOptions.Compiled);
+    internal static readonly Regex Declaration = new(@"^(?:@\[[^\]]*\]\s*)*(?:(?:protected|private|nonrec)\s+)*(?:theorem|lemma)\s+(?<name>[^\s:({\[]+)(?<rest>.*)$", RegexOptions.Compiled);
 
     /// <summary>The theorems and lemmas in <paramref name="text"/> that start at the margin and whose statement ends with <c>:=</c> within a few lines.</summary>
     public static IReadOnlyList<TheoremStatement> Statements(string path, string text)

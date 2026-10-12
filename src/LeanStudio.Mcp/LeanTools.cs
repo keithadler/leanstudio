@@ -994,6 +994,18 @@ public static class LeanTools
                 return Task.FromResult(sb.ToString().TrimEnd());
             }),
 
+        new("similar_proofs",
+            "Theorems of the project whose proofs are the same, or nearly, up to the names of the variables they introduce: the same tactic script copied and edited, or one argument made twice. A group with the same statement is a duplicate; with different statements the argument may be worth a lemma. Proofs are compared as text (comments dropped, local names numbered, four-token runs compared), so two different scripts that close the same goal are not found. Proofs under 20 tokens are skipped.",
+            Schema(("project", "string", "Any path in the project; defaults to the server's project.", false),
+                   ("min_percent", "integer", "How alike two proofs must be, 1 to 100; default 85.", false)),
+            (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                double threshold = Math.Clamp(OptInt(a, "min_percent") ?? 85, 1, 100) / 100.0;
+                IReadOnlyList<ProofCluster> groups = SimilarProofs.Scan(p.Root, threshold, ct);
+                return Task.FromResult(groups.Count == 0 ? "no two proofs are alike" : SimilarProofs.Describe(groups, p.Root));
+            }),
+
         new("project_health",
             "A project's state at a glance, counted from its Lean files without building anything: files, lines, theorems and definitions; sorry and TODO counts; the share of definitions with a doc comment; deprecated declarations and how many are old enough to delete; style problems; and the files with the most still to do. Markdown.",
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),
