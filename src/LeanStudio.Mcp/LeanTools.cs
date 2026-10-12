@@ -1006,6 +1006,30 @@ public static class LeanTools
                 return Task.FromResult(groups.Count == 0 ? "no two proofs are alike" : SimilarProofs.Describe(groups, p.Root));
             }),
 
+        new("compare_proofs",
+            "Two theorems' proofs side by side: how alike they are, how their statements differ, and the proofs token by token (what both have, and what only one has), with comments left out and the names of introduced variables numbered. When the files are built it also asks Lean whether the statements and proofs are the same compiled term and how many lemmas the proofs share. Names are as written, or their last components.",
+            Schema(("a", "string", "The first theorem's name.", true),
+                   ("b", "string", "The second theorem's name.", true),
+                   ("project", "string", "Any path in the project; defaults to the server's project.", false)),
+            async (a, ct) =>
+            {
+                LeanProject p = bench.ProjectFor(OptStr(a, "project"));
+                IReadOnlyList<TheoremProof> all = SimilarProofs.Load(p.Root, ct);
+                TheoremProof One(string key)
+                {
+                    IReadOnlyList<TheoremProof> found = CompareProofs.Find(all, key);
+                    return found.Count switch
+                    {
+                        1 => found[0],
+                        0 => throw new ToolException($"no theorem named {key} in {p.Root}"),
+                        _ => throw new ToolException($"{key} is in {found.Count} places: " + string.Join(", ", found.Select(f => $"{Path.GetRelativePath(p.Root, f.Path)}:{f.Line + 1}"))),
+                    };
+                }
+                TheoremProof x = One(Str(a, "a")), y = One(Str(a, "b"));
+                var (compiled, _) = await CompareProofs.CompiledAsync(p, x, y, ct);
+                return CompareProofs.Describe(CompareProofs.Compare(x, y), p.Root, compiled);
+            }),
+
         new("project_health",
             "A project's state at a glance, counted from its Lean files without building anything: files, lines, theorems and definitions; sorry and TODO counts; the share of definitions with a doc comment; deprecated declarations and how many are old enough to delete; style problems; and the files with the most still to do. Markdown.",
             Schema(("project", "string", "Any path in the project; defaults to the server's project.", false)),

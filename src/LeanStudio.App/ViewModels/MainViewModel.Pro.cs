@@ -820,6 +820,48 @@ public sealed partial class MainViewModel
     }
 
     /// <summary>
+    /// Find the proofs in the project most like the theorem the caret is in, and show the closest one beside it:
+    /// how alike they are, how the statements differ, the proofs token by token, and, when the files are built,
+    /// whether Lean's compiled terms are the same.
+    /// </summary>
+    [RelayCommand]
+    public async Task CompareProofAtCaretAsync()
+    {
+        if (ActiveDocument is not { IsLean: true } d || Project is not LeanProject p)
+        {
+            Log("Compare proofs: open a Lean file of a project first.");
+            return;
+        }
+        TheoremProof? mine = SimilarProofs.Proofs(d.Path, d.Document.Text).LastOrDefault(t => t.Line <= d.CaretLine);
+        if (mine is null)
+        {
+            Log("Compare proofs: put the caret in a theorem.");
+            return;
+        }
+        ProStatus = $"Looking for proofs like {mine.Name}…";
+        try
+        {
+            string root = p.Root;
+            var near = await Task.Run(() => CompareProofs.Nearest(mine, SimilarProofs.Load(root)));
+            if (near.Count == 0)
+            {
+                Log($"Compare proofs: nothing in the project is much like the proof of {mine.Name}.");
+                return;
+            }
+            Log($"Proofs most like {mine.Name}: " + string.Join(", ", near.Select(n => $"{n.Proof.Name} ({(int)(n.Similarity * 100)}%)")));
+            var (compiled, _) = await CompareProofs.CompiledAsync(p, mine, near[0].Proof);
+            foreach (string line in CompareProofs.Describe(CompareProofs.Compare(mine, near[0].Proof), root, compiled).Split('\n'))
+            {
+                Log(line);
+            }
+        }
+        finally
+        {
+            ProStatus = "";
+        }
+    }
+
+    /// <summary>
     /// Count the project's Lean files into a summary in Output: size, <c>sorry</c>s and TODOs, the share of definitions with a doc
     /// comment, deprecations (and how many are old enough to delete) and style problems, then the files with the most still to do.
     /// </summary>

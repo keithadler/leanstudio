@@ -1,3 +1,4 @@
+using LeanStudio.Core.Projects;
 using LeanStudio.Core.Workflow;
 
 namespace LeanStudio.Tests;
@@ -73,5 +74,57 @@ public sealed class SimilarProofsTests
         IReadOnlyList<ProofCluster> groups = SimilarProofs.Find(SimilarProofs.Proofs("F.lean", text), minTokens: 10);
         Assert.All(groups, g => Assert.True(g.Savings > 0));
         Assert.Equal(groups.OrderByDescending(g => g.Savings).ThenBy(g => 0).Select(g => g.Savings), groups.Select(g => g.Savings));
+    }
+
+    [Fact]
+    public void ComparesTwoProofsTokenByToken()
+    {
+        IReadOnlyList<TheoremProof> found = SimilarProofs.Proofs("F.lean", Theorem("one", "a", "b") + Theorem("two", "p", "q"));
+        ProofComparison same = CompareProofs.Compare(found[0], found[1]);
+        Assert.True(same.Identical);
+        Assert.Equal(1.0, same.Similarity);
+
+        TheoremProof edited = found[1] with { Tokens = [.. found[1].Tokens.Select(t => t == "Nat.le_succ" ? "Nat.le_refl" : t)] };
+        ProofComparison c = CompareProofs.Compare(found[0], edited);
+        Assert.False(c.Identical);
+        Assert.Contains("- Nat.le_succ", c.Diff, StringComparison.Ordinal);
+        Assert.Contains("+ Nat.le_refl", c.Diff, StringComparison.Ordinal);
+        Assert.Contains("= ", c.Diff, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FindsTheClosestProofAndLooksNamesUp()
+    {
+        IReadOnlyList<TheoremProof> all = SimilarProofs.Proofs("F.lean", Theorem("one", "a", "b") + Theorem("two", "p", "q") +
+            "theorem other (n : \u2115) : n + 0 = n := by\n  induction n with\n  | zero => rfl\n  | succ k ih => simp [Nat.add_zero, Nat.succ_eq_add_one, ih]\n");
+        var near = CompareProofs.Nearest(all[0], all);
+        Assert.Equal("two", Assert.Single(near).Proof.Name);
+        Assert.Equal("one", Assert.Single(CompareProofs.Find(all, "one")).Name);
+        Assert.Empty(CompareProofs.Find(all, "missing"));
+    }
+
+    [Fact]
+    public async Task AsksLeanWhetherTheCompiledTermsAreTheSame()
+    {
+        Lean.RequireLean();
+        LeanProject project = await ProTests.BuiltProjectAsync("Cmp",
+            ("Cmp.lean", "import Cmp.Basic\n"),
+            ("Cmp/Basic.lean", "theorem one (a b : Nat) (h : a \u2264 b) : a \u2264 b + 1 := Nat.le_succ_of_le h\ntheorem two (x y : Nat) (h : x \u2264 y) : x \u2264 y + 1 := Nat.le_succ_of_le h\ntheorem three (a b : Nat) (h : a \u2264 b) : a \u2264 b + 1 + 1 := Nat.le_succ_of_le (Nat.le_succ_of_le h)\n"));
+        try
+        {
+            IReadOnlyList<TheoremProof> all = SimilarProofs.Load(project.Root, TestContext.Current.CancellationToken);
+            var (same, error) = await CompareProofs.CompiledAsync(project, CompareProofs.Find(all, "one")[0], CompareProofs.Find(all, "two")[0], TestContext.Current.CancellationToken);
+            Assert.Null(error);
+            Assert.Equal(new CompiledComparison(true, true, 1, 1, 1), same);
+            var (different, _) = await CompareProofs.CompiledAsync(project, CompareProofs.Find(all, "one")[0], CompareProofs.Find(all, "three")[0], TestContext.Current.CancellationToken);
+            Assert.False(different!.SameType);
+            Assert.False(different.SameProof);
+            var (_, missing) = await CompareProofs.CompiledAsync(project, CompareProofs.Find(all, "one")[0] with { Name = "nothing_here" }, CompareProofs.Find(all, "two")[0], TestContext.Current.CancellationToken);
+            Assert.Contains("nothing_here", missing, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(project.Root, true);
+        }
     }
 }

@@ -282,11 +282,10 @@ public static class SimilarProofs
         return (double)both / (x.Length + y.Length - both);
     }
 
-    /// <summary>The groups of similar proofs among the Lean files under <paramref name="root"/>.</summary>
+    /// <summary>Every theorem with its proof in the Lean files under <paramref name="root"/>.</summary>
     /// <param name="root">The project folder.</param>
-    /// <param name="threshold">From 0 to 1.</param>
     /// <param name="ct">Cancels the scan.</param>
-    public static IReadOnlyList<ProofCluster> Scan(string root, double threshold = 0.85, CancellationToken ct = default)
+    public static IReadOnlyList<TheoremProof> Load(string root, CancellationToken ct = default)
     {
         var all = new List<TheoremProof>();
         foreach (string file in ProjectSearch.Files(root, leanOnly: true))
@@ -301,6 +300,44 @@ public static class SimilarProofs
                 // a file that can't be read has no proofs to compare
             }
         }
+        return all;
+    }
+
+    /// <summary>The four-token runs of a proof, as hashes.</summary>
+    /// <param name="tokens">A proof read by <see cref="Tokens"/>.</param>
+    public static HashSet<long> Shingles(IReadOnlyList<string> tokens)
+    {
+        var set = new HashSet<long>();
+        for (int i = 0; i + Shingle <= tokens.Count; i++)
+        {
+            long h = 17;
+            for (int k = 0; k < Shingle; k++)
+            {
+                h = unchecked((h * 1000003) + StringComparer.Ordinal.GetHashCode(tokens[i + k]));
+            }
+            set.Add(h);
+        }
+        return set;
+    }
+
+    /// <summary>How alike two proofs are, from 0 to 1: the share of their four-token runs they have in common.</summary>
+    /// <param name="a">One proof.</param>
+    /// <param name="b">The other.</param>
+    public static double Similarity(TheoremProof a, TheoremProof b)
+    {
+        HashSet<long> x = Shingles(a.Tokens);
+        HashSet<long> y = Shingles(b.Tokens);
+        int both = x.Count(y.Contains);
+        return x.Count + y.Count - both == 0 ? 0 : (double)both / (x.Count + y.Count - both);
+    }
+
+    /// <summary>The groups of similar proofs among the Lean files under <paramref name="root"/>.</summary>
+    /// <param name="root">The project folder.</param>
+    /// <param name="threshold">From 0 to 1.</param>
+    /// <param name="ct">Cancels the scan.</param>
+    public static IReadOnlyList<ProofCluster> Scan(string root, double threshold = 0.85, CancellationToken ct = default)
+    {
+        IReadOnlyList<TheoremProof> all = Load(root, ct);
         return Find(all, threshold);
     }
 
