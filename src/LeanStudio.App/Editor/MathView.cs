@@ -155,7 +155,7 @@ public sealed class MathView : Control
             bool italic = a.Kind == TexKind.Var;
             FormattedText t = Text(a.Text, s, italic);
             // Italic glyphs lean into the next symbol; a little space keeps them apart.
-            return new Glyphs(t, t.WidthIncludingTrailingWhitespace + (italic ? s * 0.12 : 0));
+            return new Glyphs(t, t.WidthIncludingTrailingWhitespace + (italic ? s * 0.04 : 0));
         }
 
         private Box Row(TexRow r, double size, bool display)
@@ -220,7 +220,7 @@ public sealed class MathView : Control
                 {
                     g.Add(sub, (w - sub.Width) / 2, b.Descent + sub.Ascent + size * 0.08);
                 }
-                g.Width = w;
+                g.Width = w + size * 0.1;
                 return g;
             }
             g.Add(b, 0, 0);
@@ -348,12 +348,13 @@ public sealed class MathView : Control
                     case ")":
                     {
                         bool left = d == "(";
-                        double x1 = left ? x + w * 0.8 : x + w * 0.2, x2 = left ? x + w * 0.25 : x + w * 0.75;
+                        // A cubic with both controls well out to one side gives a round arc, not a point.
+                        double x1 = left ? x + w * 0.85 : x + w * 0.15, x2 = left ? x + w * 0.05 : x + w * 0.95;
                         var path = new StreamGeometry();
                         using (StreamGeometryContext ctx = path.Open())
                         {
                             ctx.BeginFigure(new Point(x1, top), false);
-                            ctx.QuadraticBezierTo(new Point(x2, mid), new Point(x1, bottom));
+                            ctx.CubicBezierTo(new Point(x2, top + h * 0.28), new Point(x2, bottom - h * 0.28), new Point(x1, bottom));
                             ctx.EndFigure(false);
                         }
                         c.DrawGeometry(null, rule, path);
@@ -529,13 +530,16 @@ public sealed class MathView : Control
                     g.Descent = Math.Max(g.Descent, edge + brace);
                 }
             }
+            // A lone symbol's box has the font's full ascent, far above the glyph; labels sit on the glyph instead.
+            double top = st.Body is TexAtom && !st.Brace ? Math.Min(body.Ascent, size * 0.72) : body.Ascent;
+            double bottom = st.Body is TexAtom && !st.Brace ? Math.Min(body.Descent, size * 0.1) : body.Descent;
             if (over is not null)
             {
-                g.Add(over, (w - over.Width) / 2, -(body.Ascent + gap + brace + over.Descent + gap));
+                g.Add(over, (w - over.Width) / 2, -(top + gap + brace + over.Descent + gap));
             }
             if (under is not null)
             {
-                g.Add(under, (w - under.Width) / 2, body.Descent + gap + brace + under.Ascent + gap);
+                g.Add(under, (w - under.Width) / 2, bottom + gap + brace + under.Ascent + gap);
             }
             g.Width = w;
             return g;

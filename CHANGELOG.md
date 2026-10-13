@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.1
+
+Typeset math, polished: round brackets (`\left( \right)`, `pmatrix`) are drawn as arcs instead of pointed slashes, italic letters sit together (`ad`, not `a d`), the label of `\overset` and `\underset` hugs a lone symbol, and a sum's stacked limits no longer run into what follows.
+
 ## 1.9.0
 
 **Typeset math in comments.** The LaTeX in Lean docstrings and comments is drawn as maths, in place, where it is written: `$\sum_{k=1}^n k = \frac{n(n+1)}{2}$` shows as a sum with its limits above and below and a stacked fraction, sitting on the baseline of the text round it. `**bold**` and `*italic*` show as bold and italic, without their asterisks. Put the caret on a formula, or next to it, and its source comes back to edit; move away and it is typeset again. The file is never changed: this only draws.
