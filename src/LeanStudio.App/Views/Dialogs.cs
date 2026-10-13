@@ -264,6 +264,7 @@ internal static class Dialogs
         var unicode = Check("Unicode input (\\alpha becomes α)", s.UnicodeInput);
         var autosave = Check("Auto save", s.AutoSave, "Save a moment after typing stops, and when the window loses focus");
         var inline = Check("Show #eval and #check results at the end of the line", s.InlineResults);
+        var typeset = Check("Typeset math and emphasis in comments ($\\sum k$ drawn as a sum; the one under the caret shows its source)", s.TypesetComments);
         var marks = Check("Mark the end of each proof (✔ finished, ⊢ goals left)", s.ShowProofMarks);
         var semantic = Check("Colour variables and fields as Lean sees them (semantic highlighting)", s.SemanticHighlighting);
         var hints = Check("Show inlay hints (what Lean fills in, such as implicit arguments)", s.InlayHints);
@@ -315,7 +316,7 @@ internal static class Dialogs
             Children =
             {
                 Head("Appearance"), Row("Theme", theme), Row("Editor font", font), Row("Font size", size), lineNumbers, wrap, semantic, hints, sticky, crumbs, minimap, aiInline,
-                Head("Editing"), unicode, autosave, inline, marks, vim, emacs,
+                Head("Editing"), unicode, autosave, inline, typeset, marks, vim, emacs,
                 Head("Lean"), english, explain, autofix, verify, Row("Loose files use", fallback), Row("Lean arguments", serverArgs), logServer,
                 Head("Other"), blame, updates,
                 new TextBlock { Text = "Settings are kept in " + Services.Settings.FilePath, FontSize = 11, Opacity = 0.6, Margin = new Thickness(0, 12, 0, 0), TextWrapping = TextWrapping.Wrap },
@@ -336,6 +337,7 @@ internal static class Dialogs
             s.UnicodeInput = unicode.IsChecked == true;
             s.AutoSave = autosave.IsChecked == true;
             s.InlineResults = inline.IsChecked == true;
+            s.TypesetComments = typeset.IsChecked == true;
             s.SemanticHighlighting = semantic.IsChecked == true;
             s.InlayHints = hints.IsChecked == true;
             s.StickyScroll = sticky.IsChecked == true;

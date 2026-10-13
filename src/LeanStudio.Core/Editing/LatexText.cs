@@ -112,6 +112,10 @@ public static partial class LatexText
         return s.Replace("{", "", StringComparison.Ordinal).Replace("}", "", StringComparison.Ordinal).Replace("  ", " ", StringComparison.Ordinal);
     }
 
+    /// <summary>The symbol for the command <c>\name</c> (without the backslash), or null when there is none.</summary>
+    public static string? Command(string name) =>
+        Extra.TryGetValue(name, out string? e) ? e : Abbreviations.Lookup(name);
+
     private static string Group(string s) => s.Length <= 1 || s.All(char.IsLetterOrDigit) ? s : "(" + s + ")";
 
     [GeneratedRegex(@"\\[dt]?frac\s*\{(?<a>[^{}]*)\}\s*\{(?<b>[^{}]*)\}")]

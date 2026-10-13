@@ -33,6 +33,9 @@ public sealed class Settings
     /// <summary>Show #eval and #check results at the end of their line.</summary>
     public bool InlineResults { get; set; } = true;
 
+    /// <summary>Draw the math and emphasis in Lean comments typeset (<c>$\sum_{k=1}^n k$</c> as a sum, <c>**bold**</c> as bold); the one under the caret shows its source.</summary>
+    public bool TypesetComments { get; set; } = true;
+
     /// <summary>Colour bound variables and fields as Lean classifies them, over the grammar's highlighting.</summary>
     public bool SemanticHighlighting { get; set; } = true;
 

@@ -399,6 +399,7 @@ GitHub works through the [GitHub CLI](https://cli.github.com) (`gh`), so your lo
 ### The editor knows what Lean knows
 
 - **Semantic highlighting.** Bound variables and fields are coloured as Lean classifies them, which a grammar can't do. Deprecated names are struck through.
+- **Typeset math in comments.** The LaTeX in a docstring (`$\sum_{k=1}^n k$`, `\frac{a}{b}`, matrices, `cases`) is drawn as maths in the editor, on the text baseline, and `**bold**` and `*italic*` show without their asterisks. The caret on a formula brings its source back. Settings turns it off.
 - **Inlay hints.** What Lean fills in for you shows in the text, dimmed and boxed, such as `{α}` for a type variable it binds automatically.
 - **Every use of the name under the cursor** is highlighted, by Lean's own resolution rather than a text search.
 - **Who Uses This / What This Uses** (⌘⌥H / Ctrl+Alt+H). Lean's call hierarchy lists every declaration that uses the one at the cursor, at the place it uses it, and everything it uses.

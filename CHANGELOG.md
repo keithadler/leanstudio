@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0
+
+**Typeset math in comments.** The LaTeX in Lean docstrings and comments is drawn as maths, in place, where it is written: `$\sum_{k=1}^n k = \frac{n(n+1)}{2}$` shows as a sum with its limits above and below and a stacked fraction, sitting on the baseline of the text round it. `**bold**` and `*italic*` show as bold and italic, without their asterisks. Put the caret on a formula, or next to it, and its source comes back to edit; move away and it is typeset again. The file is never changed: this only draws.
+- Drawn by Lean Studio itself (no web view): fractions, sums, products and integrals with limits (stacked for sums and `lim`, at the side for integrals), sub- and superscripts, roots (`\sqrt[3]{x}`), brackets that grow with what they hold (`\left( \right)`, `\left\{ \right.`), accents (`\overline`, `\hat`, `\vec`, `\underline`), `\underbrace` and `\overbrace` with labels, `\overset` and `\underset`, `\binom`, matrices (`matrix`, `pmatrix`, `bmatrix`, `Bmatrix`, `vmatrix`, `Vmatrix`), `cases`, `aligned`, and the Greek and symbol names Lean's Unicode input knows. `\mathbb`, `\mathcal`, `\mathfrak` and `\mathbf` use Unicode's mathematical alphabets.
+- Only math found inside block comments (`/-- -/`, `/-! -/`, `/- -/`) is drawn; not code, strings, line comments or backticks, and `$5 or $6` is not math. A formula or emphasis that runs over more than one line is left as source.
+- *Settings ▸ Typeset math and emphasis in comments* turns it off. On by default.
+- Anything the drawing does not know is shown as typed, so no formula is ever lost, and a malformed one cannot throw.
+- Checked by 51 unit tests (the reader of formulas and the finder of math in comments, including random-input runs) and by `LeanStudio.Snapshot --typeset`, which draws the formulas in the headless window and checks their sizes, the caret reveal, the setting, and the time taken on a 20,000-line file (an edit and redraw: 23 ms).
+
 ## 1.8.2
 
 Tenet 0.11.2. The bundled kernel now rejects an export with no metadata record (an empty file, or one that is not lean4export output) instead of reporting it as a pass; before, such a file printed `OK: 0 checked`. Verify in Lean Studio always feeds Tenet an export it has just written, so this closes a gap rather than a reported failure.

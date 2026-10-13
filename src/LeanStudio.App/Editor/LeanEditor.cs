@@ -51,6 +51,7 @@ public sealed class LeanEditor : UserControl
     private readonly OccurrenceHighlighter _occurrences = new();
     private readonly InlayHintGenerator _hints = new();
     private readonly GhostText _ghost = new();
+    private readonly DocMarkupGenerator _docMarkup = new();
     private CancellationTokenSource? _ghostCts;
     private readonly StickyScroll _sticky;
     private readonly Breadcrumbs _crumbs = new();
@@ -112,6 +113,7 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.TextView.BackgroundRenderers.Add(_occurrences);
         _editor.TextArea.TextView.ElementGenerators.Add(_hints);
         _editor.TextArea.TextView.ElementGenerators.Add(_ghost);
+        _editor.TextArea.TextView.ElementGenerators.Add(_docMarkup);
         _vimCaret = new VimBlockCaret(_editor);
         _editor.TextArea.TextView.BackgroundRenderers.Add(_vimCaret);
         _vim = new VimEngine(new EditorVimHost(_editor, VimEx));
@@ -347,6 +349,9 @@ public sealed class LeanEditor : UserControl
         OnVimChanged();
         _semantic.Enabled = s.SemanticHighlighting;
         _hints.Enabled = s.InlayHints;
+        _docMarkup.Enabled = s.TypesetComments;
+        _docMarkup.FontFamily = _editor.FontFamily;
+        _docMarkup.FontSize = _editor.FontSize;
         _sticky.Enabled = s.StickyScroll;
         _sticky.Update();
         _crumbs.IsVisible = s.Breadcrumbs;
@@ -365,6 +370,8 @@ public sealed class LeanEditor : UserControl
             var options = (LeanRegistryOptions)_textMate.RegistryOptions;
             _textMate.SetTheme(options.LoadTheme(dark ? ThemeName.DarkPlus : ThemeName.LightPlus));
         }
+        // The comment colour of the TextMate themes (Dark+ and Light+), so typeset math reads as part of its comment.
+        _docMarkup.Foreground = new SolidColorBrush(Color.Parse(dark ? "#6A9955" : "#008000"));
         ApplyThemeColors();
     }
 
@@ -588,6 +595,19 @@ public sealed class LeanEditor : UserControl
         _editor.TextArea.Focus();
     }
 
+    /// <summary>Show the source of the typeset span the caret is in, and typeset the one it left.</summary>
+    private void UpdateTypesetComments()
+    {
+        if (_editor.Document is not { } doc)
+        {
+            return;
+        }
+        foreach (Core.Editing.DocSpan span in _docMarkup.MoveCaret(doc, _editor.CaretOffset))
+        {
+            _editor.TextArea.TextView.Redraw(span.Start, span.Length);
+        }
+    }
+
     private void OnCaretMoved()
     {
         if (_current is null || Main is null || _switching)
@@ -595,6 +615,7 @@ public sealed class LeanEditor : UserControl
             return;
         }
         UpdateCrumbs();
+        UpdateTypesetComments();
         if (_ghost.Suggestion is { } g && g.Offset != _editor.CaretOffset)
         {
             DropSuggestion();

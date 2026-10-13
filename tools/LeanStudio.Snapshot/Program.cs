@@ -50,7 +50,9 @@ Dispatcher.UIThread.Post(async () =>
 {
     try
     {
-        failures = args.Length > 2 && args[0] == "--validate"
+        failures = args.Length > 0 && args[0] == "--typeset"
+            ? await LeanStudio.Snapshot.TypesetChecks.RunAsync(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.GetFullPath("snapshots"))
+            : args.Length > 2 && args[0] == "--validate"
             ? await Validate.RunAsync(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), args[3..])
             : args.Length > 0 && args[0] == "--commands"
             ? await LeanStudio.Snapshot.CommandChecks.RunAsync()
