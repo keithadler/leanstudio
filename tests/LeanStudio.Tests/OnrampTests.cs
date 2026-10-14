@@ -271,4 +271,25 @@ public sealed class OnrampTests
             Assert.NotNull(Abbreviations.Lookup(word));
         }
     }
+
+    [Fact]
+    public void EveryLearnCommandAnswersThroughSayWhichShowsTheOutputPanel()
+    {
+        // The Learn menu's commands answer in the Output panel. A bare Log(...) leaves the answer in a tab nobody is
+        // looking at, and the command seems to do nothing (Tip of the Day did exactly that).
+        string dir = AppContext.BaseDirectory;
+        string? file = null;
+        for (var d = new DirectoryInfo(dir); d is not null && file is null; d = d.Parent)
+        {
+            string candidate = Path.Combine(d.FullName, "src", "LeanStudio.App", "ViewModels", "MainViewModel.Onramp.cs");
+            file = File.Exists(candidate) ? candidate : null;
+        }
+        Assert.NotNull(file);
+        string[] lines = File.ReadAllLines(file!);
+        var bare = lines.Select((l, i) => (l, i))
+            .Where(x => System.Text.RegularExpressions.Regex.IsMatch(x.l, @"(?<![\w.])Log\(") && !x.l.TrimStart().StartsWith("///") && !x.l.TrimStart().StartsWith("Log(line);"))
+            .ToList();
+        Assert.True(bare.Count == 0, "Use Say(...) so the Output panel is shown: " + string.Join("; ", bare.Select(x => $"line {x.i + 1}")));
+        Assert.Contains(lines, l => l.Contains("BottomTab = OutputPanel;"));
+    }
 }

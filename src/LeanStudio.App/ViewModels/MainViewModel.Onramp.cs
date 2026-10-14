@@ -21,14 +21,14 @@ public sealed partial class MainViewModel
     {
         if (!Info.HasGoals || Info.Goals.Count == 0)
         {
-            Log("Hint: put the cursor in a proof, on a line after `by`, so there is a goal to give a hint about.");
+            Say("Hint: put the cursor in a proof, on a line after `by`, so there is a goal to give a hint about.");
             return;
         }
         string goal = Info.Goals[0].Target;
         IReadOnlyList<string> hints = GoalHints.For(goal);
         _hintStep = goal == _hintGoal ? Math.Min(_hintStep + 1, hints.Count) : 1;
         _hintGoal = goal;
-        Log($"Hint {_hintStep} of {hints.Count}: {hints[_hintStep - 1]}" + (_hintStep < hints.Count ? "   (ask again for a bigger one)" : ""));
+        Say($"Hint {_hintStep} of {hints.Count}: {hints[_hintStep - 1]}" + (_hintStep < hints.Count ? "   (ask again for a bigger one)" : ""));
     }
 
     /// <summary>Read the declaration at the cursor aloud in plain English: what it takes, what it gives, what it claims.</summary>
@@ -39,7 +39,7 @@ public sealed partial class MainViewModel
         {
             return;
         }
-        Log(DeclExplain.ReadAt(d.Document.Text, d.CaretLine) is string s
+        Say(DeclExplain.ReadAt(d.Document.Text, d.CaretLine) is string s
             ? "In plain words: " + s
             : "Explain: put the cursor on a `def`, `theorem`, `structure` or `inductive` (or in its body).");
     }
@@ -55,9 +55,9 @@ public sealed partial class MainViewModel
         IReadOnlyList<Lean3Finding> found = Lean3.Find(d.Document.Text);
         foreach (Lean3Finding f in found)
         {
-            Log($"  line {f.Line + 1}: {f.Found}: {f.Lean4}");
+            Say($"  line {f.Line + 1}: {f.Found}: {f.Lean4}");
         }
-        Log(found.Count == 0 ? "Lean 3: nothing here looks like Lean 3."
+        Say(found.Count == 0 ? "Lean 3: nothing here looks like Lean 3."
             : $"Lean 3: {found.Count} thing{(found.Count == 1 ? "" : "s")} here {(found.Count == 1 ? "is" : "are")} Lean 3 (most tutorials online are). Lean 4 says it the way described above.");
     }
 
@@ -72,9 +72,9 @@ public sealed partial class MainViewModel
         IReadOnlyList<Gotcha> found = Gotchas.Find(d.Document.Text);
         foreach (Gotcha g in found)
         {
-            Log($"  line {g.Line + 1}: {g.Title}. {g.Explanation}");
+            Say($"  line {g.Line + 1}: {g.Title}. {g.Explanation}");
         }
-        Log(found.Count == 0 ? "Surprises: nothing here that usually surprises a beginner." : $"Surprises: {found.Count} found. None of them is a mistake; they are how Lean works.");
+        Say(found.Count == 0 ? "Surprises: nothing here that usually surprises a beginner." : $"Surprises: {found.Count} found. None of them is a mistake; they are how Lean works.");
     }
 
     /// <summary>A cheat sheet of the tactics and keywords the active file uses, each explained, written to Output.</summary>
@@ -87,7 +87,7 @@ public sealed partial class MainViewModel
         }
         foreach (string line in CheatSheet.ToMarkdown(d.Document.Text).TrimEnd().Split('\n'))
         {
-            Log(line);
+            Say(line);
         }
     }
 
@@ -115,9 +115,9 @@ public sealed partial class MainViewModel
         (int right, int answered, IReadOnlyList<string> wrong) = SymbolTrainer.Grade(d.Document.Text);
         foreach (string w in wrong)
         {
-            Log("  " + w);
+            Say("  " + w);
         }
-        Log(answered == 0 ? "Symbols: type a symbol after an arrow in the practice sheet first (Learn ▸ Practice Typing Symbols)."
+        Say(answered == 0 ? "Symbols: type a symbol after an arrow in the practice sheet first (Learn ▸ Practice Typing Symbols)."
             : $"Symbols: {right} of {answered} right." + (right == answered ? " Well done." : " Type the backslash word and a space, and the symbol appears."));
     }
 
@@ -151,7 +151,7 @@ public sealed partial class MainViewModel
         texts.AddRange(Documents.Where(x => x.IsLean).Select(x => x.Document.Text));
         foreach (string line in Achievements.ToText(Achievements.Earned(texts)).Split('\n'))
         {
-            Log(line);
+            Say(line);
         }
     }
 
@@ -172,7 +172,7 @@ public sealed partial class MainViewModel
         {
             d.Reveal(3, 0);
         }
-        Log($"Puzzle {index + 1} of {Puzzles.All.Count}: {Puzzles.All[index].Title}. Replace the sorry. Stuck? Learn ▸ Puzzle Hint.");
+        Say($"Puzzle {index + 1} of {Puzzles.All.Count}: {Puzzles.All[index].Title}. Replace the sorry. Stuck? Learn ▸ Puzzle Hint.");
     }
 
     /// <summary>The next hint for the puzzle in the active file, each a little bigger than the one before.</summary>
@@ -181,13 +181,13 @@ public sealed partial class MainViewModel
     {
         if (ActiveDocument is not { } d || Puzzles.IndexOf(d.Document.Text) is not int index)
         {
-            Log("Puzzle hint: open a puzzle first (Learn ▸ New Puzzle).");
+            Say("Puzzle hint: open a puzzle first (Learn ▸ New Puzzle).");
             return;
         }
         IReadOnlyList<string> hints = Puzzles.All[index].Hints;
         int step = Math.Min(_puzzleHints.GetValueOrDefault(index) + 1, hints.Count);
         _puzzleHints[index] = step;
-        Log($"Puzzle {index + 1}, hint {step} of {hints.Count}: {hints[step - 1]}");
+        Say($"Puzzle {index + 1}, hint {step} of {hints.Count}: {hints[step - 1]}");
     }
 
     /// <summary>Show how the puzzle in the active file is solved. For when you have really tried.</summary>
@@ -196,13 +196,13 @@ public sealed partial class MainViewModel
     {
         if (ActiveDocument is not { } d || Puzzles.IndexOf(d.Document.Text) is not int index)
         {
-            Log("Puzzle solution: open a puzzle first (Learn ▸ New Puzzle).");
+            Say("Puzzle solution: open a puzzle first (Learn ▸ New Puzzle).");
             return;
         }
-        Log($"Puzzle {index + 1}, one solution: replace `sorry` with");
+        Say($"Puzzle {index + 1}, one solution: replace `sorry` with");
         foreach (string line in Puzzles.All[index].Solution.Split('\n'))
         {
-            Log("    " + line.Trim());
+            Say("    " + line.Trim());
         }
     }
 
@@ -214,16 +214,27 @@ public sealed partial class MainViewModel
         string? md = Rosetta.ToMarkdown(language ?? "");
         if (md is null)
         {
-            Log("Coming from: python, haskell, javascript or rust.");
+            Say("Coming from: python, haskell, javascript or rust.");
             return;
         }
         foreach (string line in md.TrimEnd().Split('\n'))
         {
-            Log(line);
+            Say(line);
         }
     }
 
     /// <summary>A small thing that makes Lean nicer: the tip of the day.</summary>
     [RelayCommand]
-    public void ShowTip() => Log("Tip of the day: " + Tips.ForDate(DateOnly.FromDateTime(DateTime.Today)));
+    public void ShowTip() => Say("Tip of the day: " + Tips.ForDate(DateOnly.FromDateTime(DateTime.Today)));
+
+    /// <summary>
+    /// Show a line of the Learn menu's answer. These commands answer in the Output panel, so it is brought to the front first:
+    /// logging alone left the line in a tab nobody was looking at and the command seemed to do nothing.
+    /// </summary>
+    /// <param name="line">The line, without a newline.</param>
+    private void Say(string line)
+    {
+        BottomTab = OutputPanel;
+        Log(line);
+    }
 }
