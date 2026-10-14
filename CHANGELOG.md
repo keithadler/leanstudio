@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2
+
+The Learn menu answers where you can see it. Tip of the Day, the hints, *Explain This Declaration*, *Is This Lean 3?*, *Surprises in This File*, the cheat sheet, the puzzle and symbol-practice commands, *My Badges* and *Coming From* wrote their answer to the Output panel without showing it, so with the Problems panel open (the default) they seemed to do nothing. They now bring the Output panel to the front first. A test fails if a Learn command logs without doing so.
+
 ## 1.9.1
 
 Typeset math, polished: round brackets (`\left( \right)`, `pmatrix`) are drawn as arcs instead of pointed slashes, italic letters sit together (`ad`, not `a d`), the label of `\overset` and `\underset` hugs a lone symbol, and a sum's stacked limits no longer run into what follows.
