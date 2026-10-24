@@ -11,7 +11,7 @@ You need:
 
 - The [.NET 10 SDK](https://dotnet.microsoft.com/download). `global.json` pins the version.
 - [elan](https://github.com/leanprover/elan#installation), with the toolchain the tests use:
-  `elan toolchain install leanprover/lean4:v4.34.0`.
+  `elan toolchain install leanprover/lean4:v4.35.0`.
 - `git`. The GitHub features also need the [GitHub CLI](https://cli.github.com) (`gh`), but no tests depend on it.
 
 Clone with the Tenet submodule:

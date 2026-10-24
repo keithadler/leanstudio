@@ -5,7 +5,7 @@ namespace LeanStudio.Tests;
 /// <summary>Where the tests find Lean, and a way to skip the ones that need it when it is not installed.</summary>
 internal static class Lean
 {
-    public const string Toolchain = "leanprover/lean4:v4.34.0";
+    public const string Toolchain = "leanprover/lean4:v4.35.0";
 
     /// <summary>
     /// Tests that start a Lean server run one at a time: several servers elaborating at once on a small CI

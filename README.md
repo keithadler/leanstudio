@@ -706,7 +706,7 @@ The runtime IDs are `osx-arm64`, `osx-x64`, `win-x64`, `win-arm64`, `linux-x64` 
 dotnet test --project tests/LeanStudio.Tests
 ```
 
-The tests run against a **real Lean server** and a **real Lake build**, on the toolchain `leanprover/lean4:v4.34.0` (`elan toolchain install leanprover/lean4:v4.34.0`). They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
+The tests run against a **real Lean server** and a **real Lake build**, on the toolchain `leanprover/lean4:v4.35.0` (`elan toolchain install leanprover/lean4:v4.35.0`). They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
 
 ```bash
 dotnet run --project tools/LeanStudio.Snapshot -- . snapshots

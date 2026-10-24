@@ -302,6 +302,11 @@ public static partial class ProofSearch
                 if let some r ← leanstudioHunt vars samples props goal (i+1) (acc.push v) budget then return some r
               return none
 
+            /-- Trim whitespace from both ends. `String.trim` was removed in Lean 4.35 and its replacement is newer,
+                so this uses neither. -/
+            private def leanstudioTrim (s : String) : String :=
+              ((s.toList.dropWhile Char.isWhitespace).reverse.dropWhile Char.isWhitespace).reverse.asString
+
             open Lean Elab Tactic Meta in
             /-- Plausible (in Mathlib projects) tests a goal with random values of many more types. -/
             private def leanstudioPlausible : TacticM (Option String) := do
@@ -317,10 +322,10 @@ public static partial class ProofSearch
                   let msg := (← e.toMessageData.toString)
                   if (msg.splitOn "Found a counter-example").length > 1 then
                     let assigns := (msg.splitOn "\n").filter fun l => (l.splitOn " := ").length == 2
-                    if assigns.isEmpty then return some (msg.trim.replace "\n" " ")
-                    return some (", ".intercalate (assigns.map fun l => l.trim.replace " := " " = "))
+                    if assigns.isEmpty then return some ((leanstudioTrim msg).replace "\n" " ")
+                    return some (", ".intercalate (assigns.map fun l => (leanstudioTrim l).replace " := " " = "))
                   if (msg.splitOn "Found problems").length > 1 then
-                    return some (msg.trim.replace "\n" " ")
+                    return some ((leanstudioTrim msg).replace "\n" " ")
                   return none
 
             open Lean Elab Tactic Meta in

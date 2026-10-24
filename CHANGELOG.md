@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.3
+
+Lean 4.35.0. **Prove It found nothing on Lean 4.35.** The Lean it adds to your file to try each tactic used `String.trim`, which 4.35 removed, so that code did not compile and every sorry was reported as "not reached". It now uses a small trim of its own that compiled on every version tried (4.24, 4.26, 4.33.1, 4.34.0 and 4.35.0). The bundled Tenet is 0.11.3, which checks Lean 4.35.0 exports. The tests and the sample projects now run on Lean 4.35.0 (before, 4.34.0): 3 tests failed on the first run, one from this bug and two because the samples still pinned 4.34.0.
+
 ## 1.9.2
 
 The Learn menu answers where you can see it. Tip of the Day, the hints, *Explain This Declaration*, *Is This Lean 3?*, *Surprises in This File*, the cheat sheet, the puzzle and symbol-practice commands, *My Badges* and *Coming From* wrote their answer to the Output panel without showing it, so with the Problems panel open (the default) they seemed to do nothing. They now bring the Output panel to the front first. A test fails if a Learn command logs without doing so.
