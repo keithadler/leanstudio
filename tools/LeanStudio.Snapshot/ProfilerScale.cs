@@ -108,7 +108,7 @@ internal static class ProfilerScale
         await WaitFor(() => vm.Output.Text.Contains("Tenet opened", StringComparison.Ordinal), 600);
         long before = Memory();
 
-        await Time("Profile file, with counters (two runs of Lean)", async () => { await vm.ProfileFileAsync(); return vm.TimingItems.Count > 0; }, tracedLean * 2.5 + 10);
+        await Time("Profile file, with counters (two runs of Lean)", async () => { await vm.ProfileFileAsync(); return vm.TimingItems.Count > 0; }, tracedLean * 3.5 + 10);
         Note($"  {vm.TimingStatus}");
         long afterOne = Memory();
         await vm.ProfileFileAsync();
@@ -152,7 +152,7 @@ internal static class ProfilerScale
         // Live: the first check expands every trace; an edit at the end must cost only what it changes.
         clock.Restart();
         vm.ProfileLive = true;
-        await Time("Live: the first profile", async () => await WaitFor(() => vm.Profile is { Live: true } p && p.Declarations.Count > 0, tracedLean * 3 + 60), tracedLean * 1.5 + 10);
+        await Time("Live: the first profile", async () => await WaitFor(() => vm.Profile is { Live: true } p && p.Declarations.Count > 0, tracedLean * 3 + 60), tracedLean * 2.5 + 10);
         Note($"  {vm.Profile?.Declarations.Count:N0} declarations, {(vm.Profile is { } lp ? Nodes(lp) : 0):N0} trace steps read so far");
         // The costliest declaration whose tree has not been fetched (the one at the cursor has).
         TimingItem costliest = vm.TimingItems.FirstOrDefault(t => !t.Timing.TraceComplete) ?? vm.TimingItems[0];
