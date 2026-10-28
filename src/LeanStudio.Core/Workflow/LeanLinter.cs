@@ -22,7 +22,7 @@ public sealed record LeanLinterFinding(string Check, string Declaration, string 
 public static class LeanLinter
 {
     /// <summary>The release of lean-linter that is built when the newest one cannot be found or does not build.</summary>
-    public const string Release = "v0.5.0";
+    public const string Release = "v0.5.2";
 
     private const string Repository = "https://github.com/keithadler/lean-linter";
 

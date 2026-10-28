@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.9.4
 
-Lint File works on older Lean. It always ran `lake lint --builtin-only`, which Lake before 4.35 does not have, so on a project pinned to Lean 4.29.1 it failed with "unknown long option". It now asks Lake whether it can do builtin linting and, if not, builds the file with the same linter options (`lake env lean -Dlinter.all=true`), which gives the same findings.
+Lint File works on older Lean. It always ran `lake lint --builtin-only`, which Lake before 4.35 does not have, so on a project pinned to Lean 4.29.1 it failed with "unknown long option". It now asks Lake whether it can do builtin linting and, if not, builds the file with the same linter options (`lake env lean -Dlinter.all=true`), which gives the same findings. The lean-linter it falls back to when GitHub cannot be reached is now 0.5.2, which builds on Lean older than 4.35 (0.5.0 and 0.5.1 did not, so Check Names and Docstrings failed on those versions).
 
 ## 1.9.3
 
