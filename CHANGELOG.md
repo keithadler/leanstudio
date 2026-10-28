@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+Lint File works on older Lean. It always ran `lake lint --builtin-only`, which Lake before 4.35 does not have, so on a project pinned to Lean 4.29.1 it failed with "unknown long option". It now asks Lake whether it can do builtin linting and, if not, builds the file with the same linter options (`lake env lean -Dlinter.all=true`), which gives the same findings.
+
 ## 1.9.3
 
 Lean 4.35.0. **Prove It found nothing on Lean 4.35.** The Lean it adds to your file to try each tactic used `String.trim`, which 4.35 removed, so that code did not compile and every sorry was reported as "not reached". It now uses a small trim of its own that compiled on every version tried (4.24, 4.26, 4.33.1, 4.34.0 and 4.35.0). The bundled Tenet is 0.11.3, which checks Lean 4.35.0 exports. The tests and the sample projects now run on Lean 4.35.0 (before, 4.34.0): 3 tests failed on the first run, one from this bug and two because the samples still pinned 4.34.0.

@@ -16,7 +16,8 @@ namespace LeanStudio.Core.Workflow;
 public sealed record LintFinding(string Path, int Line, int Column, bool IsError, string Message, string? Linter);
 
 /// <summary>
-/// The linters, run the way CI runs them (Lean ▸ Lint File): <c>lake lint --builtin-only</c> on the file's module,
+/// The linters, run the way CI runs them (Lean ▸ Lint File): <c>lake lint --builtin-only</c> on the file's module
+/// (or, with a Lake too old for that, <c>lake env lean -D…</c> on the file),
 /// with the linters a library is held to turned on: in a project that uses Mathlib, Mathlib's standard set (its style
 /// linters among them), and elsewhere every linter Lean has. In a project that depends on Batteries (Mathlib does),
 /// Batteries' environment linters run too (<c>lake exe runLinter</c>: missing docstrings, simp normal form, unused
@@ -35,8 +36,12 @@ public static class Lint
             return ([], "Linting needs a file in a Lake project's library.");
         }
         string lake = Elan.FindExecutable("lake") ?? "lake";
-        ProcessResult r = await ProcessRunner.RunAsync(lake,
-            ["lint", "--builtin-only", "--linters", LintersFor(project), module], project.Root, ct: ct).ConfigureAwait(false);
+        // Builtin linting arrived in newer Lake. Older ones have no `--builtin-only`; for those, build the file with
+        // the same linter options turned on, which is what Lake does underneath.
+        string[] args = await SupportsBuiltinLintAsync(lake, project.Root, ct).ConfigureAwait(false)
+            ? ["lint", "--builtin-only", "--linters", LintersFor(project), module]
+            : ["env", "lean", $"-D{LintersFor(project)}=true", file];
+        ProcessResult r = await ProcessRunner.RunAsync(lake, args, project.Root, ct: ct).ConfigureAwait(false);
         IReadOnlyList<LintFinding> findings = Parse(r.Output, project.Root);
         if (project.DependsOnBatteries)
         {
@@ -53,6 +58,13 @@ public static class Lint
         }
         // Lake exits non-zero when a linter reports something; only a run with nothing to show is a failure.
         return findings.Count == 0 && !r.Success ? ([], r.Output.Trim()) : (findings, null);
+    }
+
+    /// <summary>Whether this project's Lake can run builtin linters (<c>lake lint --builtin-only</c>).</summary>
+    public static async Task<bool> SupportsBuiltinLintAsync(string lake, string root, CancellationToken ct = default)
+    {
+        ProcessResult help = await ProcessRunner.RunAsync(lake, ["lint", "--help"], root, ct: ct).ConfigureAwait(false);
+        return help.Output.Contains("--builtin-only", StringComparison.Ordinal);
     }
 
     /// <summary>The path with every symbolic link in it resolved (as on macOS, where /var is /private/var).</summary>
