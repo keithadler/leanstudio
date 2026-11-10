@@ -1477,7 +1477,11 @@ internal static class Scenario
         Snap(window, outDir, "33-tactic-state-options");
         vm.Info.HideTypes = false;
         vm.Info.TargetFirst = false;
-        Check(vm.Settings.HideTypeAssumptions == false && vm.Info.Goals[0].Hypotheses.Count == hypsBefore, "and they come back, and are remembered in Settings");
+        // Taking the snapshot runs the dispatcher, so a refresh that was waiting on Lean can land here and leave the
+        // goals empty for a moment: wait for them rather than index into an empty list.
+        Check(vm.Settings.HideTypeAssumptions == false
+            && await WaitFor(() => vm.Info.Goals.Count > 0 && vm.Info.Goals[0].Hypotheses.Count == hypsBefore, 30),
+            "and they come back, and are remembered in Settings");
         string at = vm.Info.Position;
         vm.Info.Paused = true;
         doc.Reveal(5, 2);
