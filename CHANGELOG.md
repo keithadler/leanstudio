@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.9.5
+
+Lean 4.37.0-rc1. The tests and the sample projects now run on Lean 4.37.0-rc1 (before, 4.35.0), and the bundled Tenet is 0.11.4, which checks 4.36.0 and 4.37.0-rc1 exports with the 4.37 definitional-equality rules. On the first run 3 tests failed, from two changes in Lean:
+- **Instances of Class at Cursor failed on Lean 4.37** with "failed to synthesize instance ForIn". Lean's instance table is now a `DeclKeyedMap`, which can't be looped over directly. The query now goes through `.toList`, which both the old and the new table have (tried on 4.33.1, 4.35.0 and 4.37.0-rc1).
+- **The assurance report failed every project with an inductive on Lean 4.37.** Lean 4.37 gives each inductive with more than one constructor a `T.ctorIdx` marked `@[implemented_by T.ctorIdx._impl]`, and the report counted these as the project's own `implemented_by`. Lean generates both, so they are no longer counted.
+
+Claude: the default model is now Claude Sonnet 5.5 (`claude-sonnet-5-5`, before `claude-sonnet-5`). The models offered are Claude Opus 5.5, Claude Fable 5.2 and Claude Haiku 5.5 (before, Opus 5.5 and Haiku 4.5).
+
 ## 1.9.4
 
 Lint File works on older Lean. It always ran `lake lint --builtin-only`, which Lake before 4.35 does not have, so on a project pinned to Lean 4.29.1 it failed with "unknown long option". It now asks Lake whether it can do builtin linting and, if not, builds the file with the same linter options (`lake env lean -Dlinter.all=true`), which gives the same findings. The lean-linter it falls back to when GitHub cannot be reached is now 0.5.2, which builds on Lean older than 4.35 (0.5.0 and 0.5.1 did not, so Check Names and Docstrings failed on those versions).

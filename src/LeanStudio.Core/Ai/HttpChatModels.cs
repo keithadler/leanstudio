@@ -359,7 +359,7 @@ public sealed class OllamaModel : IChatModel
 public sealed class AnthropicModel : IChatModel
 {
     /// <summary>The model used when none is chosen.</summary>
-    public const string DefaultModel = "claude-sonnet-5";
+    public const string DefaultModel = "claude-sonnet-5-5";
 
     /// <summary>The API's address.</summary>
     public const string DefaultBaseUrl = "https://api.anthropic.com";
@@ -376,7 +376,7 @@ public sealed class AnthropicModel : IChatModel
         _http = http ?? AiHttp.Shared;
     }
 
-    /// <summary>The model's id, such as <c>claude-sonnet-5</c>.</summary>
+    /// <summary>The model's id, such as <c>claude-sonnet-5-5</c>.</summary>
     public string Model { get; }
 
     /// <summary>The API's address, without a trailing slash.</summary>

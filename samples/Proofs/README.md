@@ -1,6 +1,6 @@
 # Proofs
 
-A small Lake project (Lean `v4.34.0`, no Mathlib) that Lean Studio's tests, its headless snapshot run and the
+A small Lake project (Lean `v4.37.0-rc1`, no Mathlib) that Lean Studio's tests, its headless snapshot run and the
 README's screenshots all use. Each declaration in `Proofs/Basic.lean` is there to show a different outcome:
 
 | Declaration | What it shows |

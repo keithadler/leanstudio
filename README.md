@@ -706,7 +706,7 @@ The runtime IDs are `osx-arm64`, `osx-x64`, `win-x64`, `win-arm64`, `linux-x64` 
 dotnet test --project tests/LeanStudio.Tests
 ```
 
-The tests run against a **real Lean server** and a **real Lake build**, on the toolchain `leanprover/lean4:v4.35.0` (`elan toolchain install leanprover/lean4:v4.35.0`). They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
+The tests run against a **real Lean server** and a **real Lake build**, on the toolchain `leanprover/lean4:v4.37.0-rc1` (`elan toolchain install leanprover/lean4:v4.37.0-rc1`). They also speak MCP to the server, carry a request across the bridge, and check that the Gemini and Codex setup keeps everything else in those config files. They start `lean --server`, check the goals, hypotheses and diff flags at known positions, build `samples/Proofs`, and confirm Tenet's verdicts on it. When Lean isn't installed, the tests that need it are skipped.
 
 ```bash
 dotnet run --project tools/LeanStudio.Snapshot -- . snapshots
@@ -765,7 +765,7 @@ The build generates XML documentation for every project in `src/`, and a public 
 
 ## Status
 
-Lean Studio is at **1.5**, and the [changelog](CHANGELOG.md) lists what is new in each release. The whole workflow works end to end and is tested against real Lean 4.34. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
+Lean Studio is at **1.9**, and the [changelog](CHANGELOG.md) lists what is new in each release. The whole workflow works end to end and is tested against real Lean 4.37.0-rc1. It has been used by hand on macOS; on Windows and Linux it is built and tested by CI. Known gaps:
 
 - User widgets render in the Infoview tab, not in the Tactic State panel, which shows Lean's interactive text. On Linux the tab needs WebKitGTK; without it, widgets open in the browser.
 - Tenet's badges describe the last build. After you edit a file, rebuild to refresh them.

@@ -542,7 +542,7 @@ Environment variables, mostly for tests and for running two setups side by side:
 ## Tests, the headless run and CI
 
 [`tests/LeanStudio.Tests`](../tests/LeanStudio.Tests) uses xUnit v3 on Microsoft.Testing.Platform. Most tests run
-against a real Lean (toolchain `leanprover/lean4:v4.34.0`, pinned in [`Lean.cs`](../tests/LeanStudio.Tests/Lean.cs),
+against a real Lean (toolchain `leanprover/lean4:v4.37.0-rc1`, pinned in [`Lean.cs`](../tests/LeanStudio.Tests/Lean.cs),
 in `samples/*/lean-toolchain` and in CI). Tests that need Lean call `Lean.RequireLean()`, and are skipped when elan
 isn't installed. Tests that start a Lean server join the `Lean` collection
 ([`LeanCollection.cs`](../tests/LeanStudio.Tests/LeanCollection.cs)), so they run one at a time. The tests use the

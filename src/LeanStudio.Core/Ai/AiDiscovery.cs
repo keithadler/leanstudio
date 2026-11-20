@@ -290,7 +290,7 @@ public sealed class AiDiscovery
     private async Task<AiCandidate> AnthropicAsync(CancellationToken ct)
     {
         bool has = await _secrets.GetAsync("anthropic", ct).ConfigureAwait(false) is not null;
-        return new AiCandidate(AiProviders.Anthropic, has, has ? "key set; sends your code to Anthropic" : "no API key", has ? [AnthropicModel.DefaultModel, "claude-opus-5-5", "claude-haiku-4-5-20251001"] : [], AiLocation.Cloud);
+        return new AiCandidate(AiProviders.Anthropic, has, has ? "key set; sends your code to Anthropic" : "no API key", has ? [AnthropicModel.DefaultModel, "claude-opus-5-5", "claude-fable-5-2", "claude-haiku-5-5"] : [], AiLocation.Cloud);
     }
 
     private static string Count(IReadOnlyList<string> models) =>

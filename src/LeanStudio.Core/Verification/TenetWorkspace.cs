@@ -1056,6 +1056,13 @@ public sealed class TenetWorkspace : IDisposable
                 }
                 foreach (TenetName n in om.KeysInExtension(ImplementedByAttribute))
                 {
+                    // Lean 4.37 gives every inductive with several constructors a `T.ctorIdx` that runs as
+                    // `T.ctorIdx._impl` (reading the object's tag). Lean makes both; nothing the project wrote.
+                    string s = n.ToString();
+                    if (s.EndsWith(".ctorIdx", StringComparison.Ordinal) && om.FindConstant(TenetName.Parse(s + "._impl")) is { IsUnsafe: true })
+                    {
+                        continue;
+                    }
                     Mark(n, TrustKind.ImplementedBy);
                 }
                 foreach (TenetName n in om.KeysInExtension(ExternAttribute))

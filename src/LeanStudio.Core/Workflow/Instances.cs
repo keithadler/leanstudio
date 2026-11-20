@@ -23,7 +23,7 @@ public static class Instances
           IO.println s!"class {{cls}}"
           let env ← getEnv
           let mut found : Array (Name × String) := #[]
-          for (n, _) in (instanceExtension.getState env).instanceNames do
+          for (n, _) in (instanceExtension.getState env).instanceNames.toList do
             let some ci := env.find? n | continue
             let head ← forallTelescopeReducing ci.type fun _ body => pure body.getAppFn.constName?
             if head == some cls then
