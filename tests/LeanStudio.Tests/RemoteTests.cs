@@ -192,6 +192,7 @@ public sealed class RemoteLeanTests : IDisposable
             var got = new TaskCompletionSource<IReadOnlyList<Diagnostic>>(TaskCreationOptions.RunContinuationsAsynchronously);
             var uris = new List<string>();
             IReadOnlyList<Diagnostic> last = [];
+            bool done = false;
             server.DiagnosticsPublished += (u, d) =>
             {
                 lock (uris)
@@ -201,13 +202,22 @@ public sealed class RemoteLeanTests : IDisposable
                 if (u == uri)
                 {
                     last = d;
+                    // Lean can send the file's last diagnostics after it reports the file done.
+                    if (done && d.Count > 0)
+                    {
+                        got.TrySetResult(d);
+                    }
                 }
             };
             server.FileProgress += (u, p) =>
             {
                 if (u == uri && p.Count == 0)
                 {
-                    got.TrySetResult(last);
+                    done = true;
+                    if (last.Count > 0)
+                    {
+                        got.TrySetResult(last);
+                    }
                 }
             };
             await server.StartAsync(TestContext.Current.CancellationToken);
@@ -244,18 +254,28 @@ public sealed class RemoteLeanTests : IDisposable
             await using var server = new LeanServer(new LeanProject(target.LocalRoot).ServerCommand());
             var got = new TaskCompletionSource<IReadOnlyList<Diagnostic>>(TaskCreationOptions.RunContinuationsAsynchronously);
             IReadOnlyList<Diagnostic> last = [];
+            bool done = false;
             server.DiagnosticsPublished += (u, d) =>
             {
                 if (u == uri)
                 {
                     last = d;
+                    // Lean can send the file's last diagnostics after it reports the file done.
+                    if (done && d.Count > 0)
+                    {
+                        got.TrySetResult(d);
+                    }
                 }
             };
             server.FileProgress += (u, p) =>
             {
                 if (u == uri && p.Count == 0)
                 {
-                    got.TrySetResult(last);
+                    done = true;
+                    if (last.Count > 0)
+                    {
+                        got.TrySetResult(last);
+                    }
                 }
             };
             await server.StartAsync(TestContext.Current.CancellationToken);
