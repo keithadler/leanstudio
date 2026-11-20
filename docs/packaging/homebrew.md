@@ -58,9 +58,10 @@ up from there. The `livecheck` block also lets `brew livecheck lean-studio` repo
 
 ## Gatekeeper
 
-Until releases are signed with a Developer ID and notarized (see [signing.md](signing.md)), macOS blocks the first
-launch of an app Homebrew downloaded. The cask's caveats tell people to allow it in **System Settings ▸ Privacy &
-Security ▸ Open Anyway**. Once notarized builds ship, remove that paragraph from the caveats.
+Releases from 1.9.5 on are signed with a Developer ID and notarized (see [signing.md](signing.md)), so Gatekeeper
+opens an app Homebrew downloaded without asking, and the cask's caveats no longer explain how to allow it. If a
+release ever ships without notarization, macOS blocks its first launch until the person allows it in **System
+Settings ▸ Privacy & Security ▸ Open Anyway**.
 
 ## The main Homebrew repository
 

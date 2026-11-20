@@ -36,9 +36,5 @@ cask "lean-studio" do
     Lean Studio needs elan, Lean's toolchain manager. If you don't have it, Lean Studio
     offers to install it on first launch, or run:
       brew install elan-init
-
-    Releases that are not yet notarized are blocked by Gatekeeper on first launch.
-    If macOS says it cannot check the app, open System Settings > Privacy & Security
-    and click "Open Anyway" for Lean Studio.
   EOS
 end
