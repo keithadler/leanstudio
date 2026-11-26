@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+**ProofWidgets plots draw in Lean's infoview.** Every Recharts chart (`LineChart` and the rest, as in ProofWidgets' `Demos/Plot.lean`) failed with "Error: Invariant failed", in the Infoview tab and in the browser. The infoview loaded ProofWidgets' recharts module once for each part of the chart drawn at the same time, and recharts' parts only find each other within one copy. The infoview page now gives each widget module one address, so it is loaded once. **The Infoview tab no longer stays empty.** It sometimes missed the message that Lean had started, sent before it was listening, and waited for good; it now asks only once it is ready. Notes and a check: `docs/notes/proofwidgets-recharts.md`, `LeanStudio.Snapshot --native-recharts`.
+
 ## 1.9.5
 
 Lean 4.37.0-rc1. The tests and the sample projects now run on Lean 4.37.0-rc1 (before, 4.35.0), and the bundled Tenet is 0.11.4, which checks 4.36.0 and 4.37.0-rc1 exports with the 4.37 definitional-equality rules. On the first run 3 tests failed, from two changes in Lean:

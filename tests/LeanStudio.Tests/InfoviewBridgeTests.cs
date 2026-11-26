@@ -214,4 +214,23 @@ public sealed class InfoviewBridgeTests
         Assert.Contains("copy ⊢ p", editor.Calls);
         Assert.Equal(1, bridge.Connections);
     }
+
+    [Fact]
+    public async Task APageOpenedBeforeLeanStartsIsNotToldItHasStarted()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using var bridge = new InfoviewBridge(() => null, new Editor(), _ => null);
+        Uri page = bridge.Start();
+        bridge.CursorMoved("file:///A.lean", new Position(1, 0));
+        var socket = new ClientWebSocket();
+        socket.Options.SetRequestHeader("Origin", $"http://127.0.0.1:{page.Port}");
+        await socket.ConnectAsync(new Uri($"ws://127.0.0.1:{page.Port}/ws?t={System.Web.HttpUtility.ParseQueryString(page.Query)["t"]}"), ct);
+        await using var client = new Client(socket);
+
+        // With no server the page hears where the cursor is, but no serverRestarted: an empty one (no capabilities,
+        // no version) would be taken for Lean. It waits for the real one, which ServerRestarted sends.
+        await client.SendAsync(new JsonObject { ["op"] = "ready" });
+        JsonObject first = await client.ReceiveAsync(_ => true);
+        Assert.Equal("initialize", first["op"]!.GetValue<string>());
+    }
 }

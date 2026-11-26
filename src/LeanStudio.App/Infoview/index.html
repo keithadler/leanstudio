@@ -131,6 +131,24 @@
 <script type="module">
   import { loadRenderInfoview } from './iv/loader.production.min.js';
 
+  // One instance of each widget module. The infoview (importWidgetModule in @leanprover/infoview 0.13) caches a
+  // module only once its import has finished, and imports it from a fresh blob: URL, File `widget_<hash>.js`. When
+  // several components of one module are rendered at once (ProofWidgets' LineChart, XAxis, YAxis and Line, all
+  // from its recharts module) each gets its own copy of the module. Recharts finds the axes through React contexts
+  // created in the module, so a chart whose parts come from different copies throws "Invariant failed". The hash
+  // names the module's source, so the same name is given the same URL, and the browser loads it once.
+  {
+    const createObjectURL = URL.createObjectURL.bind(URL);
+    const widgetUrls = new Map();
+    URL.createObjectURL = object => {
+      if (object instanceof File && /^widget_[0-9]+\.js$/.test(object.name)) {
+        if (!widgetUrls.has(object.name)) widgetUrls.set(object.name, createObjectURL(object));
+        return widgetUrls.get(object.name);
+      }
+      return createObjectURL(object);
+    };
+  }
+
   const query = new URLSearchParams(location.search);
   const setTheme = theme => { document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark'; };
   setTheme(query.get('theme'));
@@ -175,6 +193,7 @@
   };
 
   let infoview = null;
+  let live = false;
   const early = [];
   const deliver = msg => {
     switch (msg.op) {
@@ -194,7 +213,7 @@
       return;
     }
     if (msg.op === 'theme') { setTheme(msg.theme); return; }
-    if (infoview) deliver(msg); else early.push(msg);
+    if (live) deliver(msg); else early.push(msg);
   });
   socket.addEventListener('open', () => status('connected to Lean Studio: follows the cursor there', true));
   socket.addEventListener('close', () => {
@@ -211,8 +230,23 @@
   }, [editorApi, document.getElementById('infoview')], api => {
     infoview = api;
     window.leanStudioInfoview = api;
-    for (const msg of early.splice(0)) deliver(msg);
-    tell('ready', {});
+    // The infoview hears that the server started (and where the cursor is) through events it subscribes to in
+    // React effects, which run only after its first render, some time after this. An event fired before then is
+    // lost, and the infoview says "Waiting for Lean server to start..." for good: in Lean Studio's own web view
+    // the bridge's answer to 'ready' sometimes came back that soon. So wait for the first render, then a moment for its
+    // effects, before passing anything on or asking for the server's state.
+    const root = document.getElementById('infoview');
+    const start = () => setTimeout(() => {
+      live = true;
+      for (const msg of early.splice(0)) deliver(msg);
+      tell('ready', {});
+    }, 50);
+    if (root.childElementCount > 0) {
+      start();
+    } else {
+      const rendered = new MutationObserver(() => { rendered.disconnect(); start(); });
+      rendered.observe(root, { childList: true });
+    }
   });
 </script>
 </body>
