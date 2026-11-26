@@ -241,7 +241,12 @@ public sealed class InfoviewBridge : IAsyncDisposable
         switch (op)
         {
             case "ready":
-                await SendAsync(page, new JsonObject { ["op"] = "serverRestarted", ["result"] = InitializeResult() }).ConfigureAwait(false);
+                // Only a running server: the page waits for ServerRestarted otherwise, rather than taking an empty
+                // one (no capabilities, no version) for Lean.
+                if (_server() is { State: LeanServerState.Running })
+                {
+                    await SendAsync(page, new JsonObject { ["op"] = "serverRestarted", ["result"] = InitializeResult() }).ConfigureAwait(false);
+                }
                 if (_cursor is not null)
                 {
                     await SendAsync(page, new JsonObject { ["op"] = "initialize", ["loc"] = _cursor.DeepClone() }).ConfigureAwait(false);

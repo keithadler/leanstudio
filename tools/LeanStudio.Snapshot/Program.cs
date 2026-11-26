@@ -35,6 +35,12 @@ if (args.Length > 0 && args[0] == "--native-infoview")
     return NativeInfoview.Run(args.Length > 1 ? Path.GetFullPath(args[1]) : Path.GetFullPath("."), args.Length > 2 ? Path.GetFullPath(args[2]) : Path.GetFullPath("snapshots"));
 }
 
+if (args.Length > 3 && args[0] == "--native-recharts")
+{
+    // Not headless: a ProofWidgets Recharts plot in the Infoview tab, in the real window.
+    return NativeRecharts.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]), int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture));
+}
+
 // Headless: there is no native window to put a web view in, so the Infoview tab shows its fallback.
 InfoviewPane.NativeWebViewAllowed = false;
 
