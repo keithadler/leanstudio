@@ -95,8 +95,9 @@ change, then publish it:
 - **winget:** submit `packaging/winget/` to `manifests/k/KeithAdler/LeanStudio/X.Y.Z/` in
   [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs), with `wingetcreate submit` or a pull request.
   [winget.md](winget.md) has the details.
-- **Microsoft Store:** download the tag run's `store-msixbundle` artifact and upload it to a new submission in
-  Partner Center. [microsoft-store.md](microsoft-store.md) has the details.
+- **Microsoft Store:** CI submits the tag's bundle for certification by itself once the Store credentials are set.
+  Without them, upload the tag run's `store-msixbundle` artifact to a new submission in Partner Center.
+  [microsoft-store.md](microsoft-store.md) has the details.
 
 ## 5. Check the installs
 

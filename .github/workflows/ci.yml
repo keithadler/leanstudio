@@ -219,3 +219,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "Lean Studio ${GITHUB_REF_NAME#v}" --generate-notes
+
+  store-publish:
+    name: Submit to the Microsoft Store
+    # After the GitHub release, send the tag's .msixbundle to Partner Center and submit it for certification.
+    # Runs only when the four Store secrets are set (docs/packaging/microsoft-store.md); without them the
+    # bundle is still built, and a person uploads it.
+    needs: [store, release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - name: Check for Store credentials
+        id: creds
+        shell: bash
+        env:
+          STORE: ${{ secrets.STORE_TENANT_ID != '' && secrets.STORE_SELLER_ID != '' && secrets.STORE_CLIENT_ID != '' && secrets.STORE_CLIENT_SECRET != '' }}
+        run: |
+          echo "store=$STORE" >> "$GITHUB_OUTPUT"
+          echo "Microsoft Store credentials: $STORE"
+      - uses: actions/checkout@v5
+        if: steps.creds.outputs.store == 'true'
+        with:
+          sparse-checkout: packaging/windows/store
+      - uses: actions/download-artifact@v7
+        if: steps.creds.outputs.store == 'true'
+        with:
+          name: store-msixbundle
+          path: store
+      - uses: microsoft/microsoft-store-apppublisher@v1.4
+        if: steps.creds.outputs.store == 'true'
+      - name: Submit the package
+        if: steps.creds.outputs.store == 'true'
+        shell: pwsh
+        env:
+          MSSTORE_OUTPUT_STREAM: stdout
+          STORE_TENANT_ID: ${{ secrets.STORE_TENANT_ID }}
+          STORE_SELLER_ID: ${{ secrets.STORE_SELLER_ID }}
+          STORE_CLIENT_ID: ${{ secrets.STORE_CLIENT_ID }}
+          STORE_CLIENT_SECRET: ${{ secrets.STORE_CLIENT_SECRET }}
+        run: |
+          $appId = (Get-Content packaging/windows/store/identity.json -Raw | ConvertFrom-Json).StoreId
+          $bundle = Get-ChildItem store -Filter *.msixbundle | Select-Object -First 1
+          # msstore takes .msix or .msixupload. An .msixupload is a zip holding the bundle, as Visual Studio makes it.
+          $upload = Join-Path store ($bundle.BaseName + '.msixupload')
+          Compress-Archive -Path $bundle.FullName -DestinationPath ($upload + '.zip')
+          Move-Item ($upload + '.zip') $upload
+          msstore settings --enableTelemetry false
+          msstore reconfigure --tenantId $env:STORE_TENANT_ID --sellerId $env:STORE_SELLER_ID --clientId $env:STORE_CLIENT_ID --clientSecret $env:STORE_CLIENT_SECRET
+          # Starts a new submission from the live one (listing, pricing and ratings carry over), replaces the
+          # package and submits it for certification. It fails while another submission is still in progress.
+          msstore publish store --inputFile $upload --appId $appId
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }

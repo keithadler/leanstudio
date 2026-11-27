@@ -5,7 +5,7 @@ The Store gets the same build as the Windows zips, packaged as an MSIX bundle (x
 ## The files
 
 - `packaging/windows/store/AppxManifest.template.xml`: the package's description of the app. It sets the `leanstudio` command (an app execution alias, the same name as winget's) and asks for `runFullTrust`.
-- `packaging/windows/store/identity.json`: the three values that tie the package to the Store listing, from Partner Center, Lean Studio, Product management, Product identity.
+- `packaging/windows/store/identity.json`: the values that tie the package to the Store listing, from Partner Center, Lean Studio, Product management, Product identity, and the Store ID that CI submits to.
 - `packaging/windows/store/Assets/`: logos and tiles in every size Windows asks for. `make-assets.py` remakes them from `packaging/icons/leanstudio.png`.
 - `packaging/windows/store/build-msix.ps1`: builds `artifacts/msix/LeanStudio_X.Y.Z.0.msixbundle` on Windows. `-TestSign` also signs it so it installs on a test PC.
 - CI's **Microsoft Store package** job runs the script on every tag (and when the workflow is run by hand) and uploads the bundle as the `store-msixbundle` artifact. It is not attached to the GitHub release, because only the Store's signature lets it install.
@@ -16,12 +16,23 @@ The Store gets the same build as the Windows zips, packaged as an MSIX bundle (x
 
 ## Submitting a release
 
-1. Tag the release as usual (RELEASING.md). When CI finishes, download `store-msixbundle` from the tag's run:
+With the Store credentials set (below), there is nothing to do: after a tag's GitHub release, CI's **Submit to the Microsoft Store** job wraps the bundle in an `.msixupload` and runs `msstore publish`. That starts a new submission from the live one (listing, pricing and ratings carry over), replaces the package and submits it for certification, which takes from a few hours to three business days. Partner Center allows one submission in progress at a time, so the job fails if an earlier one is still in certification; run the job again once it has published.
 
-       gh run download <run id> -n store-msixbundle -D store
+Without the credentials the job skips itself, and the bundle goes up by hand:
 
-2. Partner Center, Lean Studio, the new submission, **Packages**: upload `LeanStudio_X.Y.Z.0.msixbundle`. Each upload needs a higher version than the last, which the release version already gives.
-3. Submit. Certification takes from a few hours to three business days.
+1. Download `store-msixbundle` from the tag's run: `gh run download <run id> -n store-msixbundle -D store`.
+2. Partner Center, Lean Studio, **Update**, **Packages**: upload `LeanStudio_X.Y.Z.0.msixbundle` (each upload needs a higher version than the last, which the release version gives), then **Submit for certification**.
+
+### The Store credentials
+
+CI signs in to Partner Center as an app registration in Microsoft Entra ID. Set it up once:
+
+1. Partner Center, **Account settings**, **User management**, **Microsoft Entra applications**: **Create Microsoft Entra application** (or add an existing one), with the **Manager** role.
+2. Open it and **Add new key**. Copy the client secret now: Partner Center shows it once. Keys expire; make a new one before then.
+3. Note the **Tenant ID** and **Client ID** on the same page, and the **Seller ID** under **Account settings**, **Legal info**, **Developer**.
+4. Add them to the repository's Actions secrets as `STORE_TENANT_ID`, `STORE_CLIENT_ID`, `STORE_SELLER_ID` and `STORE_CLIENT_SECRET`, for example `gh secret set STORE_CLIENT_SECRET -R keithadler/leanstudio`, which asks for the value.
+
+`StoreId` in `identity.json` names the product the job submits to.
 
 ## The first submission
 
