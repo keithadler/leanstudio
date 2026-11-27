@@ -43,6 +43,11 @@ public sealed class AgentSetup
     /// </summary>
     public static AgentSetup ForCurrentProcess()
     {
+        if (Platform.StorePackage.IsStoreInstall)
+        {
+            // The install folder changes with every Store update; the alias always starts the current version.
+            return new AgentSetup(Platform.StorePackage.AliasPath, ["--mcp"]);
+        }
         string exe = Environment.ProcessPath ?? "LeanStudio";
         string entry = System.Reflection.Assembly.GetEntryAssembly()?.Location ?? "";
         // Run as `dotnet LeanStudio.dll` (from source): the assistant must do the same.

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+**Microsoft Store package.** CI builds an MSIX bundle (x64 and arm64) for the Microsoft Store on every release, with `leanstudio` as its command. A Store copy leaves updates to the Store and points assistants at the `leanstudio` command, whose target stays current across updates. `PRIVACY.md` says what Lean Studio sends over the network. Notes: `docs/packaging/microsoft-store.md`.
+
 ## 1.9.6
 
 **ProofWidgets plots draw in Lean's infoview.** Every Recharts chart (`LineChart` and the rest, as in ProofWidgets' `Demos/Plot.lean`) failed with "Error: Invariant failed", in the Infoview tab and in the browser. The infoview loaded ProofWidgets' recharts module once for each part of the chart drawn at the same time, and recharts' parts only find each other within one copy. The infoview page now gives each widget module one address, so it is loaded once. **The Infoview tab no longer stays empty.** It sometimes missed the message that Lean had started, sent before it was listening, and waited for good; it now asks only once it is ready. Notes and a check: `docs/notes/proofwidgets-recharts.md`, `LeanStudio.Snapshot --native-recharts`.

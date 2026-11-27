@@ -416,6 +416,14 @@ public sealed class McpTests
 
 public sealed class AgentSetupTests
 {
+    [Theory]
+    [InlineData(@"C:\Program Files\WindowsApps\KeithAdler.LeanStudio_1.9.7.0_x64__8wekyb3d8bbwe\LeanStudio.exe", true)]
+    [InlineData(@"C:\Users\me\AppData\Local\Microsoft\WinGet\Packages\KeithAdler.LeanStudio\LeanStudio\LeanStudio.exe", false)]
+    [InlineData("/Applications/Lean Studio.app/Contents/MacOS/LeanStudio", false)]
+    [InlineData(null, false)]
+    public void AStoreInstallIsRecognizedByItsFolder(string? exe, bool store) =>
+        Assert.Equal(store, LeanStudio.Core.Platform.StorePackage.IsPackagedPath(exe));
+
     private static readonly AgentSetup Setup = new("/Applications/Lean Studio.app/Contents/MacOS/LeanStudio", ["--mcp"]);
 
     [Fact]

@@ -122,6 +122,15 @@ public sealed partial class MainViewModel
     /// </param>
     public async Task CheckForUpdatesAsync(bool manual)
     {
+        if (LeanStudio.Core.Platform.StorePackage.IsStoreInstall)
+        {
+            // The Store updates its own installs; a download from GitHub would install a second copy beside it.
+            if (manual)
+            {
+                await _dialogs.ConfirmAsync("Check for updates", $"{CurrentVersionText} was installed from the Microsoft Store, which keeps it up to date.");
+            }
+            return;
+        }
         if (!manual && (!Settings.CheckForUpdates || Settings.LastUpdateCheck is DateTime last && DateTime.UtcNow - last < TimeSpan.FromHours(20)))
         {
             return;

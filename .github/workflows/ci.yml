@@ -179,6 +179,28 @@ jobs:
         if: always() && steps.signing.outputs.macos == 'true'
         run: security delete-keychain "$MACOS_KEYCHAIN" || true
 
+  store:
+    name: Microsoft Store package
+    needs: test
+    # The .msixbundle to upload to Partner Center. It is not attached to the GitHub release: the Store signs
+    # it, so it does not install anywhere else (docs/packaging/microsoft-store.md).
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Build the package
+        run: packaging/windows/store/build-msix.ps1
+      - uses: actions/upload-artifact@v6
+        with:
+          name: store-msixbundle   # not leanstudio-*, which the release job attaches
+          if-no-files-found: error
+          path: artifacts/msix/*.msixbundle
+
   release:
     name: Release
     needs: package
