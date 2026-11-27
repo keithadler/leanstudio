@@ -44,7 +44,7 @@
       </uap:VisualElements>
       <Extensions>
         <!-- `leanstudio` on the command line, as with winget. AI assistants start the MCP server
-             through it (`leanstudio --mcp`), since the install folder changes with each update. -->
+             through it, with the mcp option, since the install folder changes with each update. -->
         <uap5:Extension Category="windows.appExecutionAlias">
           <uap5:AppExecutionAlias>
             <uap5:ExecutionAlias Alias="leanstudio.exe" />
