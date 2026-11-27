@@ -39,12 +39,14 @@ These are filled in once and carried over to later submissions.
 
     > Lean Studio is an IDE for Lean 4, the programming language and theorem prover. Write definitions and proofs with the goal state beside your cursor, see errors as you type, and step through a proof one tactic at a time.
     >
+    > New to Lean? The built-in tutorial is ten short lessons, from #eval 2 + 2 to induction and proving your own programs correct. Each ends in exercises that Lean checks, goals are read back in plain English, errors are explained, and a Playground lets you try things with no project to set up.
+    >
     > It installs and switches Lean toolchains for you, sets up Mathlib projects with their prebuilt cache, and searches Mathlib with Loogle and LeanSearch. ProofWidgets, plots and the infoview work as in the browser. Optional AI features use your own Anthropic or OpenAI key, and the built-in MCP server lets coding assistants check proofs with the real Lean.
     >
     > Lean Studio is free and open source (MIT).
 
   - Short description: An IDE for the Lean 4 theorem prover.
-  - Features: Live goal state and errors; Lean toolchains and Mathlib set up for you; Mathlib search; ProofWidgets and the infoview; Optional AI with your own key; MCP server for coding assistants.
+  - Features: A ten-lesson tutorial for newcomers, with exercises Lean checks; Live goal state and errors; Lean toolchains and Mathlib set up for you; Mathlib search; ProofWidgets and the infoview; Optional AI with your own key; MCP server for coding assistants.
   - Keywords: Lean, Lean 4, theorem prover, proof assistant, Mathlib, formal verification, mathematics.
   - Screenshots: at least one at 1366x768 or larger, from a Windows PC (`tools/LeanStudio.Snapshot` makes the ones in `docs/images`).
 
